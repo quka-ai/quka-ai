@@ -1,0 +1,16 @@
+.DS_Store 
+.vscode
+.env
+_build
+
+go.work 
+go.work.*
+
+config-dev.toml
+config-*.toml
+
+commercial
+cmd/inject_*
+build-local.sh
+Dockerfile-local
+tmp

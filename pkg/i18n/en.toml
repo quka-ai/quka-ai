@@ -1,0 +1,119 @@
+['error.image.type.unsupport']
+one = "Unsupport image type"
+other = "Unsupport image type"
+
+['error.image.read_file']
+one = "Unable to read image"
+other = "Unable to read image"
+
+['error.moreThanMax']
+one = "More than the max limit"
+other = "More than the max limit"
+
+['error.already_saved']
+one = "Already saved"
+other = "Already saved"
+
+['error.user_space_not_found']
+one = "User space not found"
+other = "User space not found"
+
+['error.redeem.must_new_user']
+one = "Available for new users only"
+other = "Available for new users only"
+
+['error.ineffective']
+one = "Ineffective"
+other = "Ineffective"
+
+['error.incorrect.verifycode.expired']
+one = "The verification code has expired. Please resend it"
+other = "The verification code has expired. Please resend it"
+
+['error.payment_required']
+one = "Payment required, Please upgrade your account"
+other = "Payment required, Please upgrade your account"
+
+['error.already_invited']
+one = "Already invited"
+other = "Already invited"
+
+['error.email_not_registered']
+one = "This email is not registered"
+other = "This email is not registered"
+
+['error.email_not_match']
+one = "No valid email matched"
+other = "No valid email matched"
+
+['error.login.account.incorrect']
+one = "Incorrect account or password"
+other = "Incorrect account or password"
+
+['error.reset_email_sended']
+one = "The password reset email has been sent. Please do not repeat the operation" 
+other = "The password reset email has been sent. Please do not repeat the operation"
+
+['error.email_has_already_registed']
+one = "Email has already registed"
+other = "Email has already registed"
+
+['error.incorrect.verifycode']
+one = "Incorrect verification code"
+other = "Incorrect verification code"
+
+['error.verifycodesended']
+one = "The verification code email has been sent. Please do not resend it"
+other = "The verification code email has been sent. Please do not resend it"
+
+['error.unsupported.feature']
+one = "Unsupported Feature"
+other = "Unsupported Feature"
+
+['error.notfound']
+one = "Resource does not exist"
+other = "Resource does not exist"
+
+['error.internal']
+one = "Internal system error"
+other = "Internal system error"
+
+['error.invalidargument']
+one = "Invalid arguments"
+other = "Invalid arguments"
+
+['error.invalid.token']
+one = "Invalid token"
+other = "Invalid token"
+
+['error.permission.denied']
+one = "Permission denied"
+other = "Permission denied"
+
+['error.unauthorized']
+one = "Unauthorized"
+other = "Unauthorized"
+
+['error.timeout']
+one = "Request timed out"
+other = "Request timed out"
+
+['error.exist']
+one = "Resource already exist"
+other = "Resource already exist"
+
+['error.title.exist']
+one = "Title Duplicate"
+other = "Title Duplicate"
+
+['error.forbidden']
+one = "Request forbidden, refresh or try again later"
+other = "Request forbidden, refresh or try again later"
+
+['error.tooManyRequests']
+one = "Request forbidden, Too many requests"
+other = "Request forbidden, Too many requests"
+
+['error.logic.vector.db.notmatch.content.db']
+one = "The vector database differs from the knowledge base, so it is recommended to reinitialize"
+other = "The vector database differs from the knowledge base, so it is recommended to reinitialize"

@@ -1,0 +1,33 @@
+addr = ":{your service port}"
+
+[log]
+level = "debug"
+path = ""
+
+[postgres]
+dsn = "postgresql://root:{your password}@127.0.0.1:5432/brew?sslmode=disable"
+
+[ai]
+[ai.openai]
+token = ""
+endpoint = ""
+embedding_model = ""
+chat_model = ""
+
+[ai.azure_openai]
+token = ""
+endpoint = ""
+
+[ai.qwen]
+token = ""
+endpoint = ""
+embedding_model = ""
+chat_model = ""
+
+[ai.usage]
+# which ai driver you want to ...
+"embedding.query"=""  # eg: qwen 
+"embedding.document"=""
+"query"="" # eg: openai 
+"summarize"=""
+"enhance_query"=""
