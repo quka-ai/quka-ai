@@ -172,7 +172,6 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			chat.GET("/list", s.ListChatSession)
 			chat.POST("/:session/message/id", middleware.PaymentRequired, s.GenMessageID)
 			chat.PUT("/:session/named", spaceLimit("named_session"), middleware.PaymentRequired, s.RenameChatSession)
-			chat.GET("/:session/message/:messageid/ext", s.GetChatMessageExt)
 
 			history := chat.Group("/:session/history")
 			{
@@ -181,6 +180,8 @@ func setupHttpRouter(s *handler.HttpSrv) {
 
 			message := chat.Group("/:session/message")
 			{
+				chat.GET("/:messageid/ext", s.GetChatMessageExt)
+				message.POST("/:messageid/stop", s.StopChatStream)
 				message.Use(spaceLimit("create_message"), middleware.PaymentRequired)
 				message.POST("", aiLimit("chat_message"), s.CreateChatMessage)
 			}

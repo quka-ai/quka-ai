@@ -178,7 +178,6 @@ func handleAndNotifyAssistantFailed(core *core.Core, receiver types.Receiver, re
 // requestAI
 func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionContext *SessionContext, marks map[string]string, receiveFunc types.ReceiveFunc, done types.DoneFunc) error {
 	// slog.Debug("request to ai", slog.Any("context", sessionContext.MessageContext), slog.String("prompt", sessionContext.Prompt))
-
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

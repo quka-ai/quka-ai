@@ -86,12 +86,6 @@ func (s *sg) GetChatMessageSequence(ctx context.Context, spaceID, sessionID stri
 	return latestChat.Sequence + 1, nil
 }
 
-func buildSeqGenerator(core *Core) srv.SeqGen {
-	return &sg{
-		msgStore: core.stores().ChatMessageStore(),
-	}
-}
-
 func (s *Core) Cfg() CoreConfig {
 	return s.cfg
 }

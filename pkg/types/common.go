@@ -36,3 +36,8 @@ const (
 	LANGUAGE_EN_KEY = "en"
 	LANGUAGE_CN_KEY = "zh-CN"
 )
+
+const (
+	// event notify
+	TOWER_EVENT_CLOSE_CHAT_STREAM = "/qukaai/event/chat/close_stream"
+)

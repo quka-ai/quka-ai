@@ -19,7 +19,7 @@ require (
 	github.com/go-redis/redis/v9 v9.0.0-beta.2
 	github.com/google/generative-ai-go v0.18.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/holdno/firetower v0.4.4
+	github.com/holdno/firetower v0.4.5
 	github.com/holdno/snowFlakeByGo v1.0.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9

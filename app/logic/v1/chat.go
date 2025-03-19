@@ -317,13 +317,18 @@ func JournalSessionHandle(core *core.Core, receiver types.Receiver, userMessage 
 		return err
 	}
 
-	if err := receiver.RecvMessageInit(userMessage, logic.GenMessageID(), seqID, ext); err != nil {
+	answerMessageID := logic.GenMessageID()
+	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
 		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
 			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
 	}
 
 	ctx, cancel = context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
+	// listen to stop chat stream
+	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(answerMessageID, cancel)
+	defer removeSignalFunc()
 
 	return logic.RequestAssistant(ctx,
 		types.RAGDocs{},
@@ -358,13 +363,19 @@ func ButlerSessionHandle(core *core.Core, receiver types.Receiver, userMessage *
 		return err
 	}
 
-	if err := receiver.RecvMessageInit(userMessage, logic.GenMessageID(), seqID, ext); err != nil {
+	answerMessageID := logic.GenMessageID()
+	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
 		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
 			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
 	}
 
 	ctx, cancel = context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
+	// listen to stop chat stream
+	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(answerMessageID, cancel)
+	defer removeSignalFunc()
+
 	return logic.RequestAssistant(ctx,
 		types.RAGDocs{},
 		userMessage)
@@ -406,7 +417,8 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 		return err
 	}
 
-	if err := receiver.RecvMessageInit(userMessage, logic.GenMessageID(), seqID, ext); err != nil {
+	answerMessageID := logic.GenMessageID()
+	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
 		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
 			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
 		return err
@@ -415,6 +427,11 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 
 	ctx, cancel = context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
+	// listen to stop chat stream
+	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(answerMessageID, cancel)
+	defer removeSignalFunc()
+
 	return logic.RequestAssistant(ctx,
 		docs,
 		userMessage)
@@ -436,4 +453,12 @@ func chatMsgToTextMsg(msg *types.ChatMessage) *types.MessageMeta {
 		Attach:   msg.Attach,
 		Complete: msg.Complete,
 	}
+}
+
+func (l *ChatLogic) StopStream(answerMessageID string) error {
+	err := l.core.Srv().Tower().NewCloseChatStreamSignal(answerMessageID)
+	if err != nil {
+		return errors.New("ChatLogic.StopStream.Srv.Tower.NewCloseChatStreamSignal", i18n.ERROR_INTERNAL, err)
+	}
+	return nil
 }
