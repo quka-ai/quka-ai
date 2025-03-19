@@ -53,7 +53,7 @@ func MustSetupCore(cfg CoreConfig) *Core {
 	core := &Core{
 		cfg:        cfg,
 		httpClient: &http.Client{Timeout: time.Second * 3},
-		metrics:    NewMetrics("brew-api", "core"),
+		metrics:    NewMetrics("quka", "core"),
 		httpEngine: gin.New(),
 		prompt:     cfg.Prompt,
 	}

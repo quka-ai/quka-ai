@@ -3,7 +3,7 @@
 cd `dirname $0`
 cd ../
 
-SERVICE="brew-api"
+SERVICE="quka"
 SUB_SERVICE="service"
 BUILD_DIR=${PWD}/_build
 

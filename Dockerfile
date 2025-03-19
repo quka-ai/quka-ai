@@ -18,14 +18,14 @@ COPY pkg/ pkg/
 COPY tpls/ tpls/
 
 # Start build
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -ldflags '-extldflags "-static"' -o _build/brew-api ./cmd/
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -ldflags '-extldflags "-static"' -o _build/quka ./cmd/
 
 FROM alpine:3.18
 LABEL MAINTAINER=hey@brew.re
 
 WORKDIR /app
 COPY --from=builder /app/cmd/service/etc/service-default.toml /app/etc/service-default.toml
-COPY --from=builder /app/_build/brew-api /app/brew-api
+COPY --from=builder /app/_build/quka /app/quka
 COPY --from=builder /app/_build/tpls /app/tpls
 
-CMD ["/app/brew-api", "service", "-c", "/app/etc/service-default.toml"]
+CMD ["/app/quka", "service", "-c", "/app/etc/service-default.toml"]

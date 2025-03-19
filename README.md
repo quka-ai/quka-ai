@@ -31,7 +31,7 @@ Join our community on Discord to connect with other users, share ideas, and get 
 
 - Clone & go build cmd/main.go
 - Copy default config(cmd/service/etc/service-default.toml) to your config path  
-  `brew-api service -c {your config path}` to start selfhost service.
+  `quka service -c {your config path}` to start selfhost service.
 
 ### Web
 
