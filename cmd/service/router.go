@@ -180,7 +180,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 
 			message := chat.Group("/:session/message")
 			{
-				chat.GET("/:messageid/ext", s.GetChatMessageExt)
+				message.GET("/:messageid/ext", s.GetChatMessageExt)
 				message.POST("/:messageid/stop", s.StopChatStream)
 				message.Use(spaceLimit("create_message"), middleware.PaymentRequired)
 				message.POST("", aiLimit("chat_message"), s.CreateChatMessage)
