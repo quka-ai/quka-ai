@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/" #
+    schedule:
+      interval: "weekly"
+    ignore:
+      # For all dependencies
+      - dependency-name: "*"
+        # ignore all major updates
+        update-types: ["version-update:semver-major"]
