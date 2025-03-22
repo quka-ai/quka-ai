@@ -1,7 +1,7 @@
 <p align="center">
  <img align="center" src="https://raw.githubusercontent.com/quka-ai/quka-ai/main/assets/logo.jpg" height="180" style="border-radius: 30px"/>
  <h1 align="center">
-  QukaAI
+  QukaAI (Quokka)
  </h1>
 </p>
 
