@@ -1,5 +1,5 @@
 <p align="center">
- <img align="center" src="https://raw.githubusercontent.com/quka-ai/quka-ai/main/assets/logo.png" height="96" />
+ <img align="center" src="https://raw.githubusercontent.com/quka-ai/quka-ai/main/assets/logo.png" height="96" style="border-radius: 25px"/>
  <h1 align="center">
   QukaAI
  </h1>
