@@ -2,6 +2,7 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -21,7 +22,7 @@ func NewSpaceApplicationStore(provider SqlProviderAchieve) *SpaceApplicationImpl
 	repo.SetProvider(provider)
 	repo.SetTable(types.TABLE_SPACE_APPLICATION)
 	repo.SetAllColumns(
-		"id", "space_id", "user_id", "desc", "updated_at", "created_at",
+		"id", "space_id", "user_id", "description", "status", "updated_at", "created_at",
 	)
 	return repo
 }
@@ -40,8 +41,8 @@ func (s *SpaceApplicationImpl) Create(ctx context.Context, data *types.SpaceAppl
 	}
 
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "space_id", "user_id", "user_name", "user_email", "desc", "updated_at", "created_at").
-		Values(data.ID, data.SpaceID, data.UserID, data.UserName, data.UserEmail, data.Desc, data.UpdatedAt, data.CreatedAt)
+		Columns("id", "space_id", "user_id", "description", "status", "updated_at", "created_at").
+		Values(data.ID, data.SpaceID, data.UserID, data.Description, data.Status, data.UpdatedAt, data.CreatedAt)
 
 	sql, args, err := query.ToSql()
 	if err != nil {
@@ -56,7 +57,7 @@ func (s *SpaceApplicationImpl) Create(ctx context.Context, data *types.SpaceAppl
 func (s *SpaceApplicationImpl) Get(ctx context.Context, spaceID, userID string) (*types.SpaceApplication, error) {
 	query := sq.Select(s.GetAllColumns()...).
 		From(s.GetTable()).
-		Where(sq.Eq{"space_id": spaceID, "user_id": userID})
+		Where(sq.Eq{"space_id": spaceID, "user_id": userID}).OrderBy("created_at DESC, id DESC")
 
 	sql, args, err := query.ToSql()
 	if err != nil {
@@ -93,7 +94,7 @@ func (s *SpaceApplicationImpl) GetByID(ctx context.Context, id string) (*types.S
 }
 
 func (s *SpaceApplicationImpl) List(ctx context.Context, spaceID string, opts types.ListSpaceApplicationOptions, page, pagesize uint64) ([]types.SpaceApplication, error) {
-	query := sq.Select(s.GetAllColumns()...).
+	query := sq.Select(s.GetAllColumnsWithPrefix(s.GetTable())...).
 		From(s.GetTable()).
 		Where(sq.Eq{"space_id": spaceID})
 
@@ -107,6 +108,8 @@ func (s *SpaceApplicationImpl) List(ctx context.Context, spaceID string, opts ty
 	if err != nil {
 		return nil, ErrorSqlBuild(err)
 	}
+
+	fmt.Println(sql, args)
 
 	var data []types.SpaceApplication
 	err = s.GetReplica(ctx).Select(&data, sql, args...)
@@ -138,8 +141,18 @@ func (s *SpaceApplicationImpl) Total(ctx context.Context, spaceID string, opts t
 	return data, nil
 }
 
-func (s *SpaceApplicationImpl) UpdateStatus(ctx context.Context, id, status string) error {
-	query := sq.Update(s.GetTable()).Set("status", status).Where(sq.Eq{"id": id})
+func (s *SpaceApplicationImpl) UpdateStatus(ctx context.Context, ids []string, status types.SpaceApplicationType) error {
+	query := sq.Update(s.GetTable()).Set("status", status).Where(sq.Eq{"id": ids})
+	sql, args, err := query.ToSql()
+	if err != nil {
+		return ErrorSqlBuild(err)
+	}
+	_, err = s.GetMaster(ctx).Exec(sql, args...)
+	return err
+}
+
+func (s *SpaceApplicationImpl) UpdateAllWaittingStatus(ctx context.Context, spaceID string, status types.SpaceApplicationType) error {
+	query := sq.Update(s.GetTable()).Set("status", status).Where(sq.Eq{"space_id": spaceID, "status": types.SPACE_APPLICATION_WAITING})
 	sql, args, err := query.ToSql()
 	if err != nil {
 		return ErrorSqlBuild(err)

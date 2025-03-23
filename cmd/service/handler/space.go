@@ -58,6 +58,7 @@ func (s *HttpSrv) CreateUserSpace(c *gin.Context) {
 }
 
 type ListSpaceUsersRequest struct {
+	Keywords string `json:"keywords" form:"keywords"`
 	Page     uint64 `json:"page" form:"page" binding:"required"`
 	PageSize uint64 `json:"pagesize" form:"pagesize" binding:"required,lte=50"`
 }
@@ -79,7 +80,7 @@ func (s *HttpSrv) ListSpaceUsers(c *gin.Context) {
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
-	list, total, err := v1.NewSpaceLogic(c, s.Core).ListSpaceUsers(spaceID, req.Page, req.PageSize)
+	list, total, err := v1.NewSpaceLogic(c, s.Core).ListSpaceUsers(spaceID, req.Keywords, req.Page, req.PageSize)
 	if err != nil {
 		response.APIError(c, err)
 		return

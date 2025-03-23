@@ -1,6 +1,10 @@
 package types
 
-import sq "github.com/Masterminds/squirrel"
+import (
+	"fmt"
+
+	sq "github.com/Masterminds/squirrel"
+)
 
 // UserSpace 数据表结构
 type UserSpace struct {
@@ -12,8 +16,9 @@ type UserSpace struct {
 }
 
 type ListUserSpaceOptions struct {
-	UserID  string
-	SpaceID string
+	UserID   string
+	SpaceID  string
+	Keywords string
 }
 
 func (opts ListUserSpaceOptions) Apply(query *sq.SelectBuilder) {
@@ -22,6 +27,9 @@ func (opts ListUserSpaceOptions) Apply(query *sq.SelectBuilder) {
 	}
 	if opts.SpaceID != "" {
 		*query = query.Where(sq.Eq{"space_id": opts.SpaceID})
+	}
+	if opts.Keywords != "" {
+		*query = query.InnerJoin(fmt.Sprintf("%s as u ON u.id = %s.user_id", TABLE_USER.Name(), TABLE_USER_SPACE.Name())).Where(sq.Or{sq.Eq{"u.id": opts.Keywords}, sq.Like{"u.name": "%" + opts.Keywords + "%"}, sq.Eq{"email": opts.Keywords}})
 	}
 }
 

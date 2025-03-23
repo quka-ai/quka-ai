@@ -6,6 +6,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 
+	"github.com/quka-ai/quka-ai/app/core/srv"
 	"github.com/quka-ai/quka-ai/pkg/register"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
@@ -67,6 +68,21 @@ func (s *UserSpaceStore) GetUserSpaceRole(ctx context.Context, userID, spaceID s
 	return &res, nil
 }
 
+func (s *UserSpaceStore) GetSpaceChief(ctx context.Context, spaceID string) (*types.UserSpace, error) {
+	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "role": srv.RoleChief})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, ErrorSqlBuild(err)
+	}
+
+	var res types.UserSpace
+	if err = s.GetReplica(ctx).Get(&res, queryString, args...); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 // Update 更新用户与空间关系
 func (s *UserSpaceStore) Update(ctx context.Context, userID, spaceID, role string) error {
 	query := sq.Update(s.GetTable()).
@@ -109,7 +125,7 @@ func (s *UserSpaceStore) DeleteAll(ctx context.Context, spaceID string) error {
 
 // List 分页获取用户与空间关系记录
 func (s *UserSpaceStore) List(ctx context.Context, opts types.ListUserSpaceOptions, page, pageSize uint64) ([]types.UserSpace, error) {
-	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).OrderBy("created_at DESC")
+	query := sq.Select(s.GetAllColumnsWithPrefix(s.GetTable())...).From(s.GetTable()).OrderBy("created_at DESC")
 	if page != 0 && pageSize != 0 {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}

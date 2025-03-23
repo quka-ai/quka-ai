@@ -103,6 +103,10 @@ func genSessionShareURL(domain, token string) string {
 	return fmt.Sprintf("%s/s/s/%s", domain, token)
 }
 
+func genSpaceShareURL(domain, token string) string {
+	return fmt.Sprintf("%s/s/sp/%s", domain, token)
+}
+
 func (s *HttpSrv) GetKnowledgeByShareToken(c *gin.Context) {
 	token, _ := c.Params.Get("token")
 
@@ -175,6 +179,30 @@ func (s *HttpSrv) BuildSessionSharePage(c *gin.Context) {
 	})
 }
 
+func (s *HttpSrv) BuildSpaceSharePage(c *gin.Context) {
+	token, _ := c.Params.Get("token")
+
+	res, err := v1.NewShareLogic(c, s.Core).GetSpaceByShareToken(token)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	parsedURL, err := url.Parse(res.EmbeddingURL)
+	if err != nil {
+		response.APIError(c, errors.New("api.BuildSharePage.url.Parse", i18n.ERROR_INTERNAL, err))
+		return
+	}
+
+	c.HTML(http.StatusOK, "share.html", gin.H{
+		"siteTitle":       s.Core.Cfg().Site.Share.SiteTitle,
+		"siteDescription": s.Core.Cfg().Site.Share.SiteDescription,
+		"title":           res.Space.Title,
+		"contentURL":      res.EmbeddingURL,
+		"frontendURL":     fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host),
+	})
+}
+
 type CopyKnowledgeRequest struct {
 	Token        string `json:"token" binding:"required"`
 	UserSpace    string `json:"user_space" binding:"required"`
@@ -226,7 +254,7 @@ func (s *HttpSrv) CreateSpaceShareToken(c *gin.Context) {
 
 	var shareURL string
 	if s.Core.Cfg().Site.Share.Domain != "" {
-		shareURL = genSessionShareURL(s.Core.Cfg().Site.Share.Domain, res.Token)
+		shareURL = genSpaceShareURL(s.Core.Cfg().Site.Share.Domain, res.Token)
 	} else {
 		shareURL = strings.ReplaceAll(req.EmbeddingURL, "{token}", res.Token)
 	}

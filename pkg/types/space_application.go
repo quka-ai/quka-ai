@@ -7,38 +7,38 @@ import (
 )
 
 type SpaceApplication struct {
-	ID        string `json:"id" db:"id"`
-	SpaceID   string `json:"space_id" db:"space_id"`
-	UserID    string `json:"user_id" db:"user_id"`
-	UserName  string `json:"user_name" db:"user_name"`
-	UserEmail string `json:"user_email" db:"user_email"`
-	Desc      string `json:"desc" db:"desc"`
-	Status    string `json:"status" db:"status"`
-	UpdatedAt int64  `json:"updated_at" db:"updated_at"`
-	CreatedAt int64  `json:"created_at" db:"created_at"`
+	ID          string               `json:"id" db:"id"`
+	SpaceID     string               `json:"space_id" db:"space_id"`
+	UserID      string               `json:"user_id" db:"user_id"`
+	Description string               `json:"description" db:"description"`
+	Status      SpaceApplicationType `json:"status" db:"status"`
+	UpdatedAt   int64                `json:"updated_at" db:"updated_at"`
+	CreatedAt   int64                `json:"created_at" db:"created_at"`
 }
 
 type ListSpaceApplicationOptions struct {
-	UserIDs   []string
-	UserName  string
-	UserEmail string
+	IDs      []string
+	Keywords string
+	Status   SpaceApplicationType
 }
 
 func (opts ListSpaceApplicationOptions) Apply(query *sq.SelectBuilder) {
-	if len(opts.UserIDs) > 0 {
-		*query = query.Where(sq.Eq{"user_id": opts.UserIDs})
+	if len(opts.IDs) > 0 {
+		*query = query.Where(sq.Eq{"id": opts.IDs})
 	}
-	if opts.UserName != "" {
-		*query = query.Where(sq.Like{"user_name": fmt.Sprintf("%%%s%%", opts.UserName)})
+	if opts.Status != "" {
+		*query = query.Where(sq.Eq{"status": opts.Status})
 	}
-	if opts.UserName != "" {
-		*query = query.Where(sq.Like{"user_email": fmt.Sprintf("%%%s%%", opts.UserEmail)})
+	if opts.Keywords != "" {
+		*query = query.InnerJoin(fmt.Sprintf("%s as u ON u.id = %s.user_id", TABLE_USER.Name(), TABLE_USER_SPACE.Name())).Where(sq.Or{sq.Eq{"u.id": opts.Keywords}, sq.Like{"u.name": "%" + opts.Keywords + "%"}, sq.Eq{"email": opts.Keywords}})
 	}
 }
 
+type SpaceApplicationType string
+
 const (
-	SPACE_APPLICATION_NONE    = "none"
-	SPACE_APPLICATION_ACCESS  = "access"
-	SPACE_APPLICATION_WAITING = "waiting"
-	SPACE_APPLICATION_REFUSE  = "refuse"
+	SPACE_APPLICATION_NONE     SpaceApplicationType = "none"
+	SPACE_APPLICATION_APPROVED SpaceApplicationType = "approved"
+	SPACE_APPLICATION_WAITING  SpaceApplicationType = "waiting"
+	SPACE_APPLICATION_REFUSE   SpaceApplicationType = "refused"
 )

@@ -76,7 +76,7 @@ func (s *SpaceStore) Update(ctx context.Context, spaceID, title, desc, basePromp
 		query = query.Set("title", title)
 	}
 	if desc != "" {
-		query = query.Set("desc", desc)
+		query = query.Set("description", desc)
 	}
 
 	query = query.Set("base_prompt", basePrompt).Set("chat_prompt", chatPrompt)
