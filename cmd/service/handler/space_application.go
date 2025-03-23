@@ -26,7 +26,7 @@ type ApplySpaceRequest struct {
 }
 
 type ApplySpaceResponse struct {
-	Status string `json:"status"`
+	Status types.SpaceApplicationType `json:"status"`
 }
 
 func (s *HttpSrv) ApplySpace(c *gin.Context) {
@@ -53,8 +53,8 @@ func (s *HttpSrv) ApplySpace(c *gin.Context) {
 }
 
 type HandlerSpaceApplicationRequest struct {
-	ID     string `json:"id" binding:"required"`
-	Status string `json:"status" binding:"required"`
+	IDs    []string                   `json:"ids"`
+	Status types.SpaceApplicationType `json:"status" binding:"required"`
 }
 
 func (s *HttpSrv) HandlerSpaceApplication(c *gin.Context) {
@@ -66,8 +66,8 @@ func (s *HttpSrv) HandlerSpaceApplication(c *gin.Context) {
 		response.APIError(c, err)
 		return
 	}
-
-	err = v1.NewSpaceApplicationLogic(c, s.Core).HandlerApplication(req.ID, req.Status)
+	spaceID, _ := c.Params.Get("spaceid")
+	err = v1.NewSpaceApplicationLogic(c, s.Core).HandlerApplication(spaceID, req.IDs, req.Status)
 	if err != nil {
 		response.APIError(c, err)
 		return
@@ -77,10 +77,9 @@ func (s *HttpSrv) HandlerSpaceApplication(c *gin.Context) {
 }
 
 type GetSpaceApplicationWaitingListRequest struct {
-	Page      uint64 `json:"page" form:"page" binding:"required"`
-	Pagesize  uint64 `json:"pagesize" form:"pagesize" binding:"required"`
-	UserEmail string `json:"user_email" form:"user_email"`
-	UserName  string `json:"user_name" form:"user_name"`
+	Page     uint64 `json:"page" form:"page" binding:"required"`
+	Pagesize uint64 `json:"pagesize" form:"pagesize" binding:"required"`
+	Keywords string `json:"keywords" form:"keywords"`
 }
 
 type GetSpaceApplicationWaitingListResponse struct {
@@ -101,8 +100,8 @@ func (s *HttpSrv) GetSpaceApplicationWaitingList(c *gin.Context) {
 
 	spaceID, _ := c.Params.Get("spaceid")
 	list, total, err := v1.NewSpaceApplicationLogic(c, s.Core).WaitingList(spaceID, types.ListSpaceApplicationOptions{
-		UserEmail: req.UserEmail,
-		UserName:  req.UserName,
+		Status:   types.SPACE_APPLICATION_WAITING,
+		Keywords: req.Keywords,
 	}, req.Page, req.Pagesize)
 	if err != nil {
 		response.APIError(c, err)

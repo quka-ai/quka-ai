@@ -84,6 +84,7 @@ type UserSpaceStore interface {
 	sqlstore.SqlCommons
 	Create(ctx context.Context, data types.UserSpace) error
 	GetUserSpaceRole(ctx context.Context, userID, spaceID string) (*types.UserSpace, error)
+	GetSpaceChief(ctx context.Context, spaceID string) (*types.UserSpace, error)
 	Update(ctx context.Context, userID, spaceID, role string) error
 	List(ctx context.Context, opts types.ListUserSpaceOptions, page, pageSize uint64) ([]types.UserSpace, error)
 	Total(ctx context.Context, opts types.ListUserSpaceOptions) (int64, error)
@@ -245,7 +246,8 @@ type SpaceApplicationStore interface {
 	Create(ctx context.Context, data *types.SpaceApplication) error
 	Get(ctx context.Context, spaceID, userID string) (*types.SpaceApplication, error)
 	GetByID(ctx context.Context, id string) (*types.SpaceApplication, error)
-	UpdateStatus(ctx context.Context, id, status string) error
+	UpdateStatus(ctx context.Context, ids []string, status types.SpaceApplicationType) error
+	UpdateAllWaittingStatus(ctx context.Context, spaceID string, status types.SpaceApplicationType) error
 	Delete(ctx context.Context, spaceID, userID string) error
 	Total(ctx context.Context, spaceID string, opts types.ListSpaceApplicationOptions) (int64, error)
 	List(ctx context.Context, spaceID string, opts types.ListSpaceApplicationOptions, page, pagesize uint64) ([]types.SpaceApplication, error)

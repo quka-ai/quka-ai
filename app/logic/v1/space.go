@@ -112,14 +112,15 @@ type SpaceUser struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
-func (l *SpaceLogic) ListSpaceUsers(spaceID string, page, pageSize uint64) ([]SpaceUser, int64, error) {
+func (l *SpaceLogic) ListSpaceUsers(spaceID, keywords string, page, pageSize uint64) ([]SpaceUser, int64, error) {
 	user := l.GetUserInfo()
 	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionAdmin) {
 		return nil, 0, errors.New("SpaceLogic.ListSpaceUsers.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
 	}
 
 	opts := types.ListUserSpaceOptions{
-		SpaceID: spaceID,
+		SpaceID:  spaceID,
+		Keywords: keywords,
 	}
 
 	spaceUsers, err := l.core.Store().UserSpaceStore().List(l.ctx, opts, page, pageSize)

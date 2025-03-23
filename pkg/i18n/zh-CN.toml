@@ -1,3 +1,7 @@
+['error.already_applied']
+one = "已提交过申请，请勿重复提交"
+other = "已提交过申请，请勿重复提交"
+
 ['error.image.type.unsupport']
 one = "暂不支持当前图片格式"
 other = "暂不支持当前图片格式"

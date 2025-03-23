@@ -446,3 +446,33 @@ func (l *ManageShareLogic) CreateSpaceShareToken(spaceID, embeddingURL string) (
 
 	return res, nil
 }
+
+type SpaceShareInfo struct {
+	Space        *types.Space `json:"space"`
+	EmbeddingURL string       `json:"embedding_url"`
+}
+
+func (l *ShareLogic) GetSpaceByShareToken(token string) (*SpaceShareInfo, error) {
+	link, err := l.core.Store().ShareTokenStore().GetByToken(l.ctx, token)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("ManageShareLogic.GetSpaceByShareToken.ShareTokenStore.GetByToken", i18n.ERROR_INTERNAL, err)
+	}
+
+	if link == nil {
+		return nil, errors.New("ManageShareLogic.GetSpaceByShareToken.ShareTokenStore.GetByToken.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNoContent)
+	}
+
+	space, err := l.core.Store().SpaceStore().GetSpace(l.ctx, link.SpaceID)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("ManageShareLogic.GetSpaceByShareToken.SpaceStore.GetSpace", i18n.ERROR_INTERNAL, err)
+	}
+
+	if space == nil {
+		return nil, errors.New("ManageShareLogic.GetSpaceByShareToken.SpaceStore.GetSpace.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNoContent)
+	}
+
+	return &SpaceShareInfo{
+		Space:        space,
+		EmbeddingURL: link.EmbeddingURL,
+	}, nil
+}

@@ -63,6 +63,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	s.Engine.LoadHTMLGlob("./tpls/*")
 	s.Engine.GET("/s/k/:token", s.BuildKnowledgeSharePage)
 	s.Engine.GET("/s/s/:token", s.BuildSessionSharePage)
+	s.Engine.GET("/s/sp/:token", s.BuildSessionSharePage)
 	// auth
 	s.Engine.Use(middleware.I18n(), response.NewResponse())
 	s.Engine.Use(middleware.Cors)
@@ -83,9 +84,9 @@ func setupHttpRouter(s *handler.HttpSrv) {
 		authed := apiV1.Group("")
 		authed.Use(middleware.Authorization(s.Core))
 
-		spaceShare := authed.Group("/space/application/:token")
+		spaceShare := authed.Group("/space/landing/:token")
 		{
-			spaceShare.GET("/landing", s.GetSpaceApplicationLandingDetail)
+			spaceShare.GET("", s.GetSpaceApplicationLandingDetail)
 			spaceShare.POST("/apply", s.ApplySpace)
 		}
 
@@ -98,6 +99,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			user.DELETE("/secret/tokens", s.DeleteAccessTokens)
 		}
 
+		// space 相关路由
 		space := authed.Group("/space")
 		{
 			space.GET("/list", s.ListUserSpaces)
@@ -111,6 +113,8 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			space.POST("/:spaceid/application/handler")
 			space.PUT("/:spaceid/user/role", userLimit("modify_space"), s.SetUserSpaceRole)
 			space.GET("/:spaceid/users", s.ListSpaceUsers)
+			space.GET("/:spaceid/application/users", s.GetSpaceApplicationWaitingList)
+			space.PUT("/:spaceid/application/handler", s.HandlerSpaceApplication)
 			space.DELETE("/:spaceid/user/remove", s.RemoveSpaceUser)
 			// share
 			space.POST("/:spaceid/knowledge/share", middleware.PaymentRequired, s.CreateKnowledgeShareToken)
@@ -166,7 +170,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 
 		chat := authed.Group("/:spaceid/chat")
 		{
-			chat.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView))
+			chat.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionMember))
 			chat.POST("", middleware.PaymentRequired, s.CreateChatSession)
 			chat.DELETE("/:session", s.DeleteChatSession)
 			chat.GET("/list", s.ListChatSession)
