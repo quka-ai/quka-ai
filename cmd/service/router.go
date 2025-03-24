@@ -110,12 +110,11 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			space.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionAdmin))
 			space.DELETE("/:spaceid", s.DeleteUserSpace)
 			space.PUT("/:spaceid", userLimit("modify_space"), s.UpdateSpace)
-			space.POST("/:spaceid/application/handler")
 			space.PUT("/:spaceid/user/role", userLimit("modify_space"), s.SetUserSpaceRole)
 			space.GET("/:spaceid/users", s.ListSpaceUsers)
 			space.GET("/:spaceid/application/users", s.GetSpaceApplicationWaitingList)
 			space.PUT("/:spaceid/application/handler", s.HandlerSpaceApplication)
-			space.DELETE("/:spaceid/user/remove", s.RemoveSpaceUser)
+			space.DELETE("/:spaceid/user/:userid", s.RemoveSpaceUser)
 			// share
 			space.POST("/:spaceid/knowledge/share", middleware.PaymentRequired, s.CreateKnowledgeShareToken)
 			space.POST("/:spaceid/session/share", middleware.PaymentRequired, s.CreateSessionShareToken)

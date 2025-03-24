@@ -3,7 +3,6 @@ package v1
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -155,8 +154,6 @@ func (l *SpaceApplicationLogic) HandlerApplication(spaceID string, ids []string,
 	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionAdmin) {
 		return errors.New("SpaceApplicationLogic.HandlerApplication.RBAC.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
 	}
-
-	fmt.Println("ids", ids, status)
 
 	datas, err := l.core.Store().SpaceApplicationStore().List(l.ctx, spaceID, types.ListSpaceApplicationOptions{
 		IDs: ids,

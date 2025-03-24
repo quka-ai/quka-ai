@@ -44,13 +44,9 @@ type CreateKnowledgeShareTokenResult struct {
 func (l *ManageShareLogic) CreateKnowledgeShareToken(spaceID, knowledgeID, embeddingURL string) (CreateKnowledgeShareTokenResult, error) {
 	res := CreateKnowledgeShareTokenResult{}
 
-	userSpaceRole, err := l.core.Store().UserSpaceStore().GetUserSpaceRole(l.ctx, l.GetUserInfo().User, spaceID)
-	if err != nil && err != sql.ErrNoRows {
-		return res, errors.New("ManageShareLogic.CreateKnowledgeShareToken.UserSpaceStore.GetUserSpaceRole", i18n.ERROR_INTERNAL, err)
-	}
-
-	if userSpaceRole == nil || userSpaceRole.Role != srv.RoleAdmin {
-		return res, errors.New("ManageShareLogic.CreateKnowledgeShareToken.Role.Check", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
+	user := l.GetUserInfo()
+	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionView) {
+		return res, errors.New("ManageShareLogic.CreateKnowledgeShareToken.RBAC.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
 	}
 
 	link, err := l.core.Store().ShareTokenStore().Get(l.ctx, types.SHARE_TYPE_KNOWLEDGE, spaceID, knowledgeID)
@@ -101,13 +97,9 @@ type CreateSessionShareTokenResult struct {
 func (l *ManageShareLogic) CreateSessionShareToken(spaceID, sessionID, embeddingURL string) (CreateSessionShareTokenResult, error) {
 	res := CreateSessionShareTokenResult{}
 
-	userSpaceRole, err := l.core.Store().UserSpaceStore().GetUserSpaceRole(l.ctx, l.GetUserInfo().User, spaceID)
-	if err != nil && err != sql.ErrNoRows {
-		return res, errors.New("ManageShareLogic.CreateSessionShareToken.UserSpaceStore.GetUserSpaceRole", i18n.ERROR_INTERNAL, err)
-	}
-
-	if userSpaceRole == nil || userSpaceRole.Role != srv.RoleAdmin {
-		return res, errors.New("ManageShareLogic.CreateSessionShareToken.Role.Check", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
+	user := l.GetUserInfo()
+	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionMember) {
+		return res, errors.New("ManageShareLogic.CreateSessionShareToken.RBAC.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
 	}
 
 	link, err := l.core.Store().ShareTokenStore().Get(l.ctx, types.SHARE_TYPE_SESSION, spaceID, sessionID)
@@ -399,13 +391,9 @@ type CreateSpaceShareTokenResult struct {
 func (l *ManageShareLogic) CreateSpaceShareToken(spaceID, embeddingURL string) (CreateSpaceShareTokenResult, error) {
 	res := CreateSpaceShareTokenResult{}
 
-	userSpaceRole, err := l.core.Store().UserSpaceStore().GetUserSpaceRole(l.ctx, l.GetUserInfo().User, spaceID)
-	if err != nil && err != sql.ErrNoRows {
-		return res, errors.New("ManageShareLogic.CreateSpaceShareToken.UserSpaceStore.GetUserSpaceRole", i18n.ERROR_INTERNAL, err)
-	}
-
-	if userSpaceRole == nil || userSpaceRole.Role != srv.RoleAdmin {
-		return res, errors.New("ManageShareLogic.CreateSpaceShareToken.Role.Check", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
+	user := l.GetUserInfo()
+	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionEdit) {
+		return res, errors.New("ManageShareLogic.HandlerApplication.RBAC.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
 	}
 
 	link, err := l.core.Store().ShareTokenStore().Get(l.ctx, types.SHARE_TYPE_SPACE_INVITE, spaceID, "")
