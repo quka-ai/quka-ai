@@ -24,7 +24,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/mikespook/gorbac/v2 v2.3.3
-	github.com/nicksnyder/go-i18n/v2 v2.4.0
+	github.com/nicksnyder/go-i18n/v2 v2.5.1
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pgvector/pgvector-go v0.2.2
 	github.com/pkoukk/tiktoken-go v0.1.7
@@ -37,7 +37,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/text v0.16.0
+	golang.org/x/text v0.21.0
 	golang.org/x/time v0.5.0
 	google.golang.org/api v0.186.0
 	google.golang.org/grpc v1.64.1
@@ -130,7 +130,7 @@ require (
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/net v0.26.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
-	golang.org/x/sync v0.7.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.22.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240617180043-68d350f18fd4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240617180043-68d350f18fd4 // indirect
