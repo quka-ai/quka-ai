@@ -70,7 +70,7 @@ func (l *UserLogic) Register(appid, name, email, password, workspaceName string)
 		err = l.core.Store().UserSpaceStore().Create(ctx, types.UserSpace{
 			UserID:    userID,
 			SpaceID:   spaceID,
-			Role:      srv.RoleAdmin,
+			Role:      srv.RoleChief,
 			CreatedAt: time.Now().Unix(),
 		})
 		if err != nil {
