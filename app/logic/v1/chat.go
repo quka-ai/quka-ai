@@ -177,7 +177,7 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 			if err != nil {
 				return 0, errors.New("ChatLogic.NewUserMessageSend.FileStorage.GenGetObjectPreSignURL", i18n.ERROR_INTERNAL, err)
 			}
-			msg.Attach[i].URL = url
+			msg.Attach[i].SignURL = url
 		}
 	}
 

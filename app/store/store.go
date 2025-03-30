@@ -237,7 +237,7 @@ type ButlerTableStore interface {
 	Create(ctx context.Context, data types.ButlerTable) error
 	GetTableData(ctx context.Context, id string) (*types.ButlerTable, error)
 	Update(ctx context.Context, id string, data string) error
-	Delete(ctx context.Context, id int64) error
+	Delete(ctx context.Context, id string) error
 	ListButlerTables(ctx context.Context, userID string) ([]types.ButlerTable, error)
 }
 

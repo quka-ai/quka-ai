@@ -81,7 +81,7 @@ func (s *ButlerStore) Update(ctx context.Context, id string, data string) error 
 }
 
 // Delete 删除日常事项记录
-func (s *ButlerStore) Delete(ctx context.Context, id int64) error {
+func (s *ButlerStore) Delete(ctx context.Context, id string) error {
 	query := sq.Delete(s.GetTable()).Where(sq.Eq{"table_id": id})
 
 	queryString, args, err := query.ToSql()

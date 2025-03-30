@@ -1,8 +1,8 @@
 module github.com/quka-ai/quka-ai
 
-go 1.23
+go 1.23.1
 
-toolchain go1.23.1
+toolchain go1.24.0
 
 require (
 	github.com/BurntSushi/toml v1.4.0
@@ -29,6 +29,7 @@ require (
 	github.com/pgvector/pgvector-go v0.2.2
 	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/prometheus/client_golang v1.20.3
+	github.com/quka-ai/commercial v0.0.0-20250325121853-d4a8ebbd8dbb
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/samber/lo v1.47.0
 	github.com/sashabaranov/go-openai v1.36.1
@@ -51,6 +52,7 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/longrunning v0.5.7 // indirect
+	github.com/6tail/lunar-go v1.4.1 // indirect
 	github.com/avast/retry-go/v4 v4.6.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.13 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.11 // indirect
@@ -114,6 +116,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
+	github.com/resend/resend-go/v2 v2.13.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect

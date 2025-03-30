@@ -33,7 +33,7 @@ func (s ChatMessageAttach) ToMultiContent(text string) []openai.ChatMessagePart 
 			Type: openai.ChatMessagePartTypeImageURL,
 			Text: text,
 			ImageURL: &openai.ChatMessageImageURL{
-				URL: item.URL,
+				URL: lo.If(item.SignURL != "", item.SignURL).Else(item.URL),
 			},
 		}
 	})
@@ -101,6 +101,7 @@ type CreateChatMessageArgs struct {
 type ChatAttach struct {
 	Type          string `json:"type"`
 	URL           string `json:"url"`
+	SignURL       string `json:"-"`
 	AIDescription string `json:"ai_desc"`
 }
 
