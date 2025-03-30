@@ -29,7 +29,6 @@ require (
 	github.com/pgvector/pgvector-go v0.2.2
 	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/prometheus/client_golang v1.20.3
-	github.com/quka-ai/commercial v0.0.0-20250325121853-d4a8ebbd8dbb
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/samber/lo v1.47.0
 	github.com/sashabaranov/go-openai v1.36.1
