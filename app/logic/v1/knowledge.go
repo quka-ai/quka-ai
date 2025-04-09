@@ -149,7 +149,12 @@ func (l *KnowledgeLogic) Delete(spaceID, id string) error {
 
 	return l.core.Store().Transaction(l.ctx, func(ctx context.Context) error {
 		if knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			if err = UpdateFilesToDelete(ctx, l.core, spaceID, knowledge.Content); err != nil {
+			actData, err := l.core.DecryptData(knowledge.Content)
+			if err != nil {
+				slog.Error("Failed to decrypt knowledge data for mark file status to delete", slog.String("error", err.Error()))
+				actData = knowledge.Content
+			}
+			if err = UpdateFilesToDelete(ctx, l.core, spaceID, actData); err != nil {
 				slog.Error("Failed to remark knowledge files to delete status", slog.String("knowledge_id", id), slog.String("space_id", spaceID), slog.Any("error", err))
 			}
 		}

@@ -16,6 +16,7 @@ CREATE TABLE bw_share_token (
 
 -- 为 token 字段创建索引，加快查找速度
 CREATE INDEX idx_token ON bw_share_token(token);
+CREATE INDEX unique_space_id_object_id_type ON bw_share_token (space_id, object_id, token);
 
 -- 为每个字段添加注释
 COMMENT ON COLUMN bw_share_token.id IS '自增ID，主键';

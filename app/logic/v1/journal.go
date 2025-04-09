@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -119,23 +120,6 @@ func (l *JournalLogic) ListJournals(spaceID, startDate, endDate string) ([]types
 	return list, nil
 }
 
-func (l *JournalLogic) UpdateJournal(spaceID, date string, content types.KnowledgeContent) error {
-	journal, err := l.core.Store().JournalStore().Get(l.ctx, spaceID, l.GetUserInfo().User, date)
-	if err != nil && err != sql.ErrNoRows {
-		return errors.New("JournalLogic.UpdateJournal.JournalStore.Get", i18n.ERROR_INTERNAL, err)
-	}
-
-	if journal == nil {
-		return errors.New("JournalLogic.UpdateJournal.JournalStore.Get.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusForbidden)
-	}
-
-	err = l.core.Store().JournalStore().Update(l.ctx, journal.ID, content)
-	if err != nil {
-		return errors.New("JournalLogic.UpdateJournal.JournalStore.Update", i18n.ERROR_INTERNAL, err)
-	}
-	return nil
-}
-
 func (l *JournalLogic) DeleteJournal(spaceID, date string) error {
 	journal, err := l.core.Store().JournalStore().Get(l.ctx, spaceID, l.GetUserInfo().User, date)
 	if err != nil && err != sql.ErrNoRows {
@@ -144,6 +128,15 @@ func (l *JournalLogic) DeleteJournal(spaceID, date string) error {
 
 	if journal == nil {
 		return errors.New("JournalLogic.DeleteJournal.JournalStore.Get.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusForbidden)
+	}
+
+	actData, err := l.core.DecryptData(journal.Content)
+	if err != nil {
+		slog.Error("Failed to decrypt journal data for mark file status to delete", slog.String("error", err.Error()))
+		actData = journal.Content
+	}
+	if err = UpdateFilesToDelete(l.ctx, l.core, spaceID, actData); err != nil {
+		slog.Error("Failed to remark journal files to delete status", slog.Int64("journal_id", journal.ID), slog.String("space_id", spaceID), slog.Any("error", err))
 	}
 
 	err = l.core.Store().JournalStore().Delete(l.ctx, journal.ID)
