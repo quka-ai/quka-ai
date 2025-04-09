@@ -859,7 +859,7 @@ ReGen:
 		}
 
 		reqMsg = append(reqMsg, &types.MessageContext{
-			Role:    types.USER_ROLE_USER,
+			Role:    v.Role,
 			Content: v.Message,
 		})
 
