@@ -353,8 +353,29 @@ var (
 	ERROR_UNSUPPORTED_FEATURE = errors.New("Unsupported feature")
 )
 
+type ReaderProvider interface {
+	IsMe(endpoint string) bool
+	Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error)
+}
+
+type ReaderProviderRegistry struct {
+	providers []ReaderProvider
+}
+
+var rpr = &ReaderProviderRegistry{}
+
+func RegisterReaderProvider(provider ReaderProvider) {
+	rpr.providers = append(rpr.providers, provider)
+}
+
 // Option Feature
 func (s *AI) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error) {
+	for _, v := range rpr.providers {
+		if v.IsMe(endpoint) {
+			return v.Reader(ctx, endpoint)
+		}
+	}
+
 	if d := s.readerUsage["reader"]; d != nil {
 		return d.Reader(ctx, endpoint)
 	}
