@@ -97,6 +97,7 @@ func (l *ReaderLogic) Reader(endpoint string) (*ai.ReaderResult, error) {
 				return nil, errors.New("ReaderLogic.Reader.RedNote.SaveFile", i18n.ERROR_INTERNAL, err)
 			}
 		}
+		// 创建knowledge
 	}
 
 	res, err := l.core.Srv().AI().Reader(l.ctx, endpoint)
