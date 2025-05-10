@@ -2,11 +2,8 @@ package v1
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/sashabaranov/go-openai"
 
@@ -18,7 +15,6 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/reader/rednote"
 	"github.com/quka-ai/quka-ai/pkg/types"
-	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 type ReaderLogic struct {
@@ -37,67 +33,16 @@ func NewReaderLogic(ctx context.Context, core *core.Core) *ReaderLogic {
 	return l
 }
 
-var downloader = &http.Client{
-	Timeout: time.Minute,
-}
-
-func downloadFile(url string) ([]byte, error) {
-	resp, err := downloader.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	// 读取响应体
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
-}
-
 func (l *ReaderLogic) Reader(endpoint string) (*ai.ReaderResult, error) {
 	if rednote.Match(endpoint) {
 		detail, err := rednote.Read(endpoint)
+
 		if err != nil {
 			return nil, errors.New("ReaderLogic.Reader.RedNote.Read", i18n.ERROR_INTERNAL, err)
 		}
 
-		// create knowledge
-		images := make(map[string][]byte)
-		for _, v := range detail.Images {
-			// 下载图片
-			imageData, err := downloadFile(v)
-			if err != nil {
-				return nil, errors.New("ReaderLogic.Reader.RedNote.DownloadFile", i18n.ERROR_INTERNAL, err)
-			}
-			images[v] = imageData
-		}
-		date := time.Now().Format("20060102")
-		for url, data := range images {
-			fileName := utils.MD5(url)
-			filePath := fmt.Sprintf("/quka/%s/knowledge/%s", l.GetUserInfo().User, date)
-			if err = l.core.FileStorage().SaveFile(filePath, fileName, data); err != nil {
-				return nil, errors.New("ReaderLogic.Reader.RedNote.SaveFile", i18n.ERROR_INTERNAL, err)
-			}
-		}
+		rednote.ParseRedNote(l.ctx, detail, l.core.FileStorage())
 
-		videos := make(map[string][]byte)
-		for _, v := range detail.Videos {
-			// 下载图片
-			data, err := downloadFile(v)
-			if err != nil {
-				return nil, errors.New("ReaderLogic.Reader.RedNote.DownloadFile", i18n.ERROR_INTERNAL, err)
-			}
-			videos[v] = data
-		}
-		for url, data := range videos {
-			fileName := utils.MD5(url)
-			filePath := fmt.Sprintf("/quka/%s/knowledge/%s", l.GetUserInfo().User, date)
-			if err = l.core.FileStorage().SaveFile(filePath, fileName, data); err != nil {
-				return nil, errors.New("ReaderLogic.Reader.RedNote.SaveFile", i18n.ERROR_INTERNAL, err)
-			}
-		}
-		// 创建knowledge
 	}
 
 	res, err := l.core.Srv().AI().Reader(l.ctx, endpoint)

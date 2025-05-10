@@ -151,23 +151,23 @@ func (h *ListV2Handler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock)
 }
 
 // image represents image data from EditorJS
-type video struct {
-	File           videoFile `json:"file"`
-	Caption        string    `json:"caption"`
-	WithBorder     bool      `json:"withBorder"`
-	WithBackground bool      `json:"withBackground"`
-	Stretched      bool      `json:"stretched"`
+type EditorVideo struct {
+	File           EditorVideoFile `json:"file"`
+	Caption        string          `json:"caption"`
+	WithBorder     bool            `json:"withBorder"`
+	WithBackground bool            `json:"withBackground"`
+	Stretched      bool            `json:"stretched"`
 }
 
-type videoFile struct {
+type EditorVideoFile struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
 }
 
 type VideoHandler struct{}
 
-func (*VideoHandler) parse(editorJSBlock goeditorjs.EditorJSBlock) (*video, error) {
-	data := &video{}
+func (*VideoHandler) parse(editorJSBlock goeditorjs.EditorJSBlock) (*EditorVideo, error) {
+	data := &EditorVideo{}
 	return data, json.Unmarshal(editorJSBlock.Data, data)
 }
 
@@ -247,15 +247,15 @@ func (h *LineHandler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock) (
 	return renderLineMarkdown(list)
 }
 
-type editorImage struct {
-	File           file   `json:"file"`
-	Caption        string `json:"caption"`
-	WithBorder     bool   `json:"withBorder"`
-	WithBackground bool   `json:"withBackground"`
-	Stretched      bool   `json:"stretched"`
+type EditorImage struct {
+	File           EditorImageFile `json:"file"`
+	Caption        string          `json:"caption"`
+	WithBorder     bool            `json:"withBorder"`
+	WithBackground bool            `json:"withBackground"`
+	Stretched      bool            `json:"stretched"`
 }
 
-type file struct {
+type EditorImageFile struct {
 	URL string `json:"url"`
 }
 
@@ -278,8 +278,8 @@ var DefaultImageHandlerOptions = &ImageHandlerOptions{
 	BorderClass:     "image-tool--withBorder",
 	BackgroundClass: "image-tool--withBackground"}
 
-func (*ImageHandler) parse(editorJSBlock goeditorjs.EditorJSBlock) (*editorImage, error) {
-	image := &editorImage{}
+func (*ImageHandler) parse(editorJSBlock goeditorjs.EditorJSBlock) (*EditorImage, error) {
+	image := &EditorImage{}
 	return image, json.Unmarshal(editorJSBlock.Data, image)
 }
 
@@ -312,7 +312,7 @@ func (h *ImageHandler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock) 
 
 }
 
-func (h *ImageHandler) generateHTML(image *editorImage) (string, error) {
+func (h *ImageHandler) generateHTML(image *EditorImage) (string, error) {
 	if h.Options == nil {
 		h.Options = DefaultImageHandlerOptions
 	}
@@ -382,4 +382,9 @@ func (h *QuoteHandler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock) 
 	}
 
 	return renderQuoteMarkdown(data)
+}
+
+type EditorParagraph struct {
+	Text      string `json:"text"`
+	Alignment string `json:"alignment"`
 }

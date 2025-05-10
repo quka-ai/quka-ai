@@ -23,6 +23,11 @@ func init() {
 			homeDir = "~"
 		}
 		path = filepath.Join(homeDir, "/.quka/rednote/cookies.json")
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+				slog.Error("failed to create directory for rednote cookies", slog.String("error", err.Error()))
+			}
+		}
 	}
 	var err error
 	reader, err = NewReader(path)
@@ -109,7 +114,7 @@ func NewReader(cookiePath string) (*Reader, error) {
 		return nil, fmt.Errorf("could not start playwright: %w", err)
 	}
 	r.browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(false),
+		Headless: playwright.Bool(true),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("could not launch browser: %w", err)
@@ -132,6 +137,10 @@ func (r *Reader) ReadCookies() ([]playwright.OptionalCookie, error) {
 	raw, err := os.ReadFile(r.cookiePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read cookie file, %w", err)
+	}
+
+	if len(raw) == 0 {
+		return nil, nil
 	}
 
 	var cookies []playwright.OptionalCookie
@@ -229,7 +238,7 @@ func Read(endpoint string) (*NoteDetail, error) {
 
 RELOAD:
 	_, err = page.Goto(endpoint, playwright.PageGotoOptions{
-		Timeout: playwright.Float(3000),
+		Timeout: playwright.Float(10000),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("could not goto: %w", err)

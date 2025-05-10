@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidscottmills/goeditorjs"
 	"github.com/pgvector/pgvector-go"
 	"github.com/samber/lo"
 	"github.com/sashabaranov/go-openai"
@@ -545,14 +544,8 @@ type BlockFile struct {
 	} `json:"file"`
 }
 
-type BlockContent struct {
-	Blocks  []goeditorjs.EditorJSBlock `json:"blocks"`
-	Time    int64                      `json:"time"` // javascript time
-	Version string                     `json:"version"`
-}
-
 func filterKnowledgeFiles(content types.KnowledgeContent) ([]string, error) {
-	var parsedData BlockContent
+	var parsedData types.BlockContent
 	if err := json.Unmarshal(content, &parsedData); err != nil {
 		// TODO: support markdown
 		return nil, errors.New("updateFilesUploaded.ParseContentBlocks", i18n.ERROR_INTERNAL, err)

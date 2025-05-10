@@ -28,6 +28,7 @@ require (
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pgvector/pgvector-go v0.2.2
 	github.com/pkoukk/tiktoken-go v0.1.7
+	github.com/playwright-community/playwright-go v0.5101.0
 	github.com/prometheus/client_golang v1.20.3
 	github.com/quka-ai/commercial v0.0.0-20250325121853-d4a8ebbd8dbb
 	github.com/robfig/cron/v3 v3.0.1
@@ -115,7 +116,6 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
-	github.com/playwright-community/playwright-go v0.5101.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
