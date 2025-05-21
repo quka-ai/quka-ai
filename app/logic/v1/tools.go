@@ -34,15 +34,17 @@ func NewReaderLogic(ctx context.Context, core *core.Core) *ReaderLogic {
 }
 
 func (l *ReaderLogic) Reader(endpoint string) (*ai.ReaderResult, error) {
-	if rednote.Match(endpoint) {
+	switch true {
+	case rednote.Match(endpoint):
 		detail, err := rednote.Read(endpoint)
-
 		if err != nil {
 			return nil, errors.New("ReaderLogic.Reader.RedNote.Read", i18n.ERROR_INTERNAL, err)
 		}
 
-		rednote.ParseRedNote(l.ctx, detail, l.core.FileStorage())
-
+		knowledge, err := rednote.ParseRedNote(l.ctx, detail, l.core.FileStorage())
+		if err != nil {
+			return nil, errors.New("ReaderLogic.Reader.RedNote.Parse", i18n.ERROR_INTERNAL, err)
+		}
 	}
 
 	res, err := l.core.Srv().AI().Reader(l.ctx, endpoint)
