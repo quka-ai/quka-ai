@@ -354,7 +354,7 @@ var (
 )
 
 type ReaderProvider interface {
-	IsMe(endpoint string) bool
+	Match(endpoint string) bool
 	Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error)
 }
 
@@ -371,7 +371,7 @@ func RegisterReaderProvider(provider ReaderProvider) {
 // Option Feature
 func (s *AI) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error) {
 	for _, v := range rpr.providers {
-		if v.IsMe(endpoint) {
+		if v.Match(endpoint) {
 			return v.Reader(ctx, endpoint)
 		}
 	}

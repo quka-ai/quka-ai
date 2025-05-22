@@ -33,7 +33,13 @@ func NewReaderLogic(ctx context.Context, core *core.Core) *ReaderLogic {
 	return l
 }
 
-func (l *ReaderLogic) Reader(endpoint string) (*ai.ReaderResult, error) {
+type ReaderResult struct {
+	Type          string             `json:"type"`
+	AIResut       *ai.ReaderResult   `json:"ai_result,omitempty"`
+	RednoteResult *rednote.Knowledge `json:"rednote_result,omitempty"`
+}
+
+func (l *ReaderLogic) Reader(endpoint string) (*ReaderResult, error) {
 	switch true {
 	case rednote.Match(endpoint):
 		detail, err := rednote.Read(endpoint)
@@ -45,6 +51,12 @@ func (l *ReaderLogic) Reader(endpoint string) (*ai.ReaderResult, error) {
 		if err != nil {
 			return nil, errors.New("ReaderLogic.Reader.RedNote.Parse", i18n.ERROR_INTERNAL, err)
 		}
+
+		return &ReaderResult{
+			Type:          "rednote",
+			RednoteResult: knowledge,
+		}, nil
+	default:
 	}
 
 	res, err := l.core.Srv().AI().Reader(l.ctx, endpoint)
@@ -63,7 +75,10 @@ func (l *ReaderLogic) Reader(endpoint string) (*ai.ReaderResult, error) {
 		CompletionTokens: res.Usage.Tokens,
 	})
 
-	return res, nil
+	return &ReaderResult{
+		Type:    "ai",
+		AIResut: res,
+	}, nil
 }
 
 func (l *ReaderLogic) DescribeImage(imageURL string) (string, error) {
