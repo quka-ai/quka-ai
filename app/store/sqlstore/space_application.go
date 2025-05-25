@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -108,8 +107,6 @@ func (s *SpaceApplicationImpl) List(ctx context.Context, spaceID string, opts ty
 	if err != nil {
 		return nil, ErrorSqlBuild(err)
 	}
-
-	fmt.Println(sql, args)
 
 	var data []types.SpaceApplication
 	err = s.GetReplica(ctx).Select(&data, sql, args...)

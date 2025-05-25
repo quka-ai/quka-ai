@@ -98,12 +98,12 @@ type SpaceApplicationUser struct {
 func (l *SpaceApplicationLogic) WaitingList(spaceID string, opts types.ListSpaceApplicationOptions, page, pagesize uint64) ([]SpaceApplicationWaitingItem, int64, error) {
 	list, err := l.core.Store().SpaceApplicationStore().List(l.ctx, spaceID, opts, page, pagesize)
 	if err != nil && err != sql.ErrNoRows {
-		return nil, 0, errors.New("SpaceApplicationLogic.WaitingList.SpaceApplicationStore.List", i18n.ERROR_NOT_FOUND, err)
+		return nil, 0, errors.New("SpaceApplicationLogic.WaitingList.SpaceApplicationStore.List", i18n.ERROR_INTERNAL, err)
 	}
 
 	total, err := l.core.Store().SpaceApplicationStore().Total(l.ctx, spaceID, opts)
 	if err != nil {
-		return nil, 0, errors.New("SpaceApplicationLogic.WaitingList.SpaceApplicationStore.Total", i18n.ERROR_NOT_FOUND, err)
+		return nil, 0, errors.New("SpaceApplicationLogic.WaitingList.SpaceApplicationStore.Total", i18n.ERROR_INTERNAL, err)
 	}
 
 	userIDs := lo.Map(list, func(item types.SpaceApplication, _ int) string {
