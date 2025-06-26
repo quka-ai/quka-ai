@@ -100,9 +100,9 @@ func NewReader(cookiePath string) (*Reader, error) {
 	}
 
 	var err error
-	if r.cookies, err = r.ReadCookies(); err != nil {
-		return nil, fmt.Errorf("failed to read cookies, %w", err)
-	}
+	// if r.cookies, err = r.ReadCookies(); err != nil {
+	// 	return nil, fmt.Errorf("failed to read cookies, %w", err)
+	// }
 	r.latestSetCookieTime = time.Now()
 
 	if err := playwright.Install(); err != nil {
@@ -114,7 +114,7 @@ func NewReader(cookiePath string) (*Reader, error) {
 		return nil, fmt.Errorf("could not start playwright: %w", err)
 	}
 	r.browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(true),
+		Headless: playwright.Bool(false),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("could not launch browser: %w", err)
@@ -236,7 +236,7 @@ func Read(endpoint string) (*NoteDetail, error) {
 		return nil, fmt.Errorf("failed to create new page, %w", err)
 	}
 
-RELOAD:
+	// RELOAD:
 	_, err = page.Goto(endpoint, playwright.PageGotoOptions{
 		Timeout: playwright.Float(10000),
 	})
@@ -244,22 +244,32 @@ RELOAD:
 		return nil, fmt.Errorf("could not goto: %w", err)
 	}
 
-	userChannel, err := page.Locator(".user.side-bar-component .channel").TextContent(playwright.LocatorTextContentOptions{
-		Timeout: playwright.Float(1000),
+	loginModalCloseButon := page.Locator(".login-modal .close-button")
+	err = loginModalCloseButon.WaitFor(playwright.LocatorWaitForOptions{
+		Timeout: playwright.Float(10000),
 	})
-	if errors.Is(err, playwright.ErrTimeout) || userChannel != "我" {
-		newCookies, err := reader.Login(page)
-		if err != nil {
-			return nil, err
-		}
-
-		ctx.ClearCookies()
-		ctx.AddCookies(cookiesToOptionalCookies(newCookies))
-		page, _ = ctx.NewPage()
-
-		reader.SaveCookies(newCookies)
-		goto RELOAD
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for login-modal, %w", err)
 	}
+
+	loginModalCloseButon.Click()
+
+	// userChannel, err := page.Locator(".user.side-bar-component .channel").TextContent(playwright.LocatorTextContentOptions{
+	// 	Timeout: playwright.Float(1000),
+	// })
+	// if errors.Is(err, playwright.ErrTimeout) || userChannel != "我" {
+	// 	newCookies, err := reader.Login(page)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	ctx.ClearCookies()
+	// 	ctx.AddCookies(cookiesToOptionalCookies(newCookies))
+	// 	page, _ = ctx.NewPage()
+
+	// 	reader.SaveCookies(newCookies)
+	// 	goto RELOAD
+	// }
 
 	l := page.Locator(".note-container")
 	err = l.WaitFor(playwright.LocatorWaitForOptions{
