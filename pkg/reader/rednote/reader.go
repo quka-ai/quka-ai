@@ -352,7 +352,7 @@ func Read(endpoint string) (*NoteDetail, error) {
 		}
 	}
 
-	reader.UpdateCookies(page)
+	// reader.UpdateCookies(page)
 	page.Close()
 
 	return &NoteDetail{
