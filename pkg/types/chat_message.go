@@ -112,6 +112,7 @@ const (
 	USER_ROLE_USER      MessageUserRole = 1 // 用户
 	USER_ROLE_ASSISTANT MessageUserRole = 2 // bot
 	USER_ROLE_SYSTEM    MessageUserRole = 3
+	USER_ROLE_TOOL      MessageUserRole = 4 // 工具
 )
 
 func (s MessageUserRole) String() string {
@@ -126,6 +127,8 @@ func GetMessageUserRoleStr(r MessageUserRole) string {
 		return "user"
 	case USER_ROLE_SYSTEM:
 		return "system"
+	case USER_ROLE_TOOL:
+		return "tool"
 	default:
 		return "unknown"
 	}
@@ -219,7 +222,7 @@ type StreamMessage struct {
 	MessageID string      `json:"message_id"`
 	SessionID string      `json:"session_id"`
 	Message   string      `json:"message"`
-	StartAt   int32       `json:"start_at"`
+	StartAt   int         `json:"start_at"`
 	Complete  int32       `json:"complete"`
 	MsgType   MessageType `json:"msg_type"`
 }

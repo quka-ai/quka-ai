@@ -59,7 +59,7 @@ var _ core.Plugins = (*SelfHostPlugin)(nil)
 
 func newSelfHostMode() *SelfHostPlugin {
 	return &SelfHostPlugin{
-		Appid:      "brew-selfhost",
+		Appid:      "quka-selfhost",
 		singleLock: NewSingleLock(),
 	}
 }
@@ -201,6 +201,11 @@ func (s *SelfHostPlugin) AIChatLogic(agentType string, receiver types.Receiver) 
 		return &AIChatLogic{
 			core:      s.core,
 			Assistant: v1.NewBulterAssistant(s.core, agentType, receiver),
+		}
+	case types.AGENT_TYPE_JOURNAL:
+		return &AIChatLogic{
+			core:      s.core,
+			Assistant: v1.NewJournalAssistant(s.core, agentType, receiver),
 		}
 	default:
 		return &AIChatLogic{

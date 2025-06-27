@@ -13,18 +13,21 @@ import (
 	"github.com/sashabaranov/go-openai/jsonschema"
 
 	"github.com/quka-ai/quka-ai/app/core"
+	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 type JournalAgent struct {
-	core   *core.Core
-	client *openai.Client
-	Model  string
+	core        *core.Core
+	client      *openai.Client
+	Model       string
+	receiveFunc types.ReceiveFunc
+	doneFunc    types.DoneFunc
 }
 
-func NewJournalAgent(core *core.Core, client *openai.Client, model string) *JournalAgent {
-	return &JournalAgent{core: core, client: client, Model: model}
+func NewJournalAgent(core *core.Core, client *openai.Client, model string, receiveFunc types.ReceiveFunc, doneFunc types.DoneFunc) *JournalAgent {
+	return &JournalAgent{core: core, client: client, Model: model, receiveFunc: receiveFunc, doneFunc: doneFunc}
 }
 
 var FunctionDefine = lo.Map([]*openai.FunctionDefinition{
@@ -64,6 +67,81 @@ func (b *JournalAgent) Query(spaceID, userID, startDate, endDate string) ([]type
 	return journals, nil
 }
 
+// ToolContext包含执行工具所需的所有上下文信息
+type ToolContext struct {
+	Agent    *JournalAgent
+	SpaceID  string
+	UserID   string
+	Messages []openai.ChatCompletionMessage
+}
+
+func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) error {
+	var params struct {
+		StartDate string `json:"startDate"`
+		EndDate   string `json:"endDate"`
+	}
+
+	if err := json.Unmarshal([]byte(funcCall.Arguments), &params); err != nil {
+		return err
+	}
+
+	st, err := time.ParseInLocation("2006-01-02", params.StartDate, time.Local)
+	if err != nil {
+		return err
+	}
+
+	et, err := time.ParseInLocation("2006-01-02", params.EndDate, time.Local)
+	if err != nil {
+		return err
+	}
+
+	if et.Sub(st).Hours() > 24*31 {
+		ctx.Messages = append(ctx.Messages, openai.ChatCompletionMessage{
+			Role:    types.USER_ROLE_TOOL.String(),
+			Content: "Failed to load user journal list, the max range is 31 days",
+		})
+		return nil
+	}
+
+	res, err := ctx.Agent.Query(ctx.SpaceID, ctx.UserID, params.StartDate, params.EndDate)
+	if err != nil {
+		return err
+	}
+
+	sb := strings.Builder{}
+
+	if len(res) == 0 {
+		sb.WriteString("用户在这段时间内没有任何日记")
+	} else {
+		sb.WriteString("我需要告诉用户我查询了 ")
+		sb.WriteString(params.StartDate)
+		sb.WriteString(" 至 ")
+		sb.WriteString(params.EndDate)
+		sb.WriteString(" 日期的日记信息  \n")
+		sb.WriteString("以下是查询到的用户日记内容，格式为：\n------  \n{Date}  \n{Journal Content}  \n------\n")
+
+		for _, v := range res {
+			content, err := ctx.Agent.core.DecryptData(v.Content)
+			if err != nil {
+				return err
+			}
+			md, err := utils.ConvertEditorJSBlocksToMarkdown(content)
+			if err != nil {
+				return err
+			}
+			sb.WriteString(v.Date)
+			sb.WriteString("  \n")
+			sb.WriteString(md)
+			sb.WriteString("  \n------  \n")
+		}
+	}
+	ctx.Messages = append(ctx.Messages, openai.ChatCompletionMessage{
+		Role:    types.USER_ROLE_TOOL.String(),
+		Content: sb.String(),
+	})
+	return nil
+}
+
 func (b *JournalAgent) HandleUserRequest(spaceID, userID string, messages []openai.ChatCompletionMessage) ([]openai.ChatCompletionMessage, *openai.Usage, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -80,87 +158,18 @@ func (b *JournalAgent) HandleUserRequest(spaceID, userID string, messages []open
 		return nil, nil, fmt.Errorf("Failed to request ai: %w", err)
 	}
 
-	// 解析OpenAI的响应
-	message := resp.Choices[0].Message
-	if message.ToolCalls != nil {
-		for _, v := range message.ToolCalls {
-			switch v.Function.Name {
-			case "searchJournal":
-				var params struct {
-					StartDate string `json:"startDate"`
-					EndDate   string `json:"endDate"`
-				}
-
-				if err = json.Unmarshal([]byte(v.Function.Arguments), &params); err != nil {
-					return nil, nil, err
-				}
-
-				st, err := time.ParseInLocation("2006-01-02", params.StartDate, time.Local)
-				if err != nil {
-					return nil, nil, err
-				}
-
-				et, err := time.ParseInLocation("2006-01-02", params.EndDate, time.Local)
-				if err != nil {
-					return nil, nil, err
-				}
-
-				if et.Sub(st).Hours() > 24*31 {
-					messages = append(messages, openai.ChatCompletionMessage{
-						Role:    types.USER_ROLE_ASSISTANT.String(),
-						Content: "Failed to load user journal list, the max range is 31 days",
-					})
-					return messages, nil, nil
-				}
-
-				res, err := b.Query(spaceID, userID, params.StartDate, params.EndDate)
-				if err != nil {
-					return nil, nil, err
-				}
-
-				sb := strings.Builder{}
-
-				if len(res) == 0 {
-					sb.WriteString("用户在这段时间内没有任何日记")
-				} else {
-					sb.WriteString("我需要告诉用户我查询了 ")
-					sb.WriteString(params.StartDate)
-					sb.WriteString(" 至 ")
-					sb.WriteString(params.EndDate)
-					sb.WriteString(" 日期的日记信息  \n")
-					sb.WriteString("以下是查询到的用户日记内容，格式为：\n------  \n{Date}  \n{Journal Content}  \n------\n")
-
-					for _, v := range res {
-						content, err := b.core.DecryptData(v.Content)
-						if err != nil {
-							return nil, nil, err
-						}
-						md, err := utils.ConvertEditorJSBlocksToMarkdown(content)
-						if err != nil {
-							return nil, nil, err
-						}
-						sb.WriteString(v.Date)
-						sb.WriteString("  \n")
-						sb.WriteString(md)
-						sb.WriteString("  \n------  \n")
-					}
-				}
-				messages = append(messages, openai.ChatCompletionMessage{
-					Role:    types.USER_ROLE_ASSISTANT.String(),
-					Content: sb.String(),
-				})
-
-				return messages, &resp.Usage, nil
-			default:
-
-			}
-		}
-	} else {
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    types.USER_ROLE_ASSISTANT.String(),
-			Content: resp.Choices[0].Message.Content,
-		})
+	err = ai.HandleToolCall(resp, messages, b.GetToolsHandler(spaceID, userID, messages), b.receiveFunc)
+	if err != nil {
+		return nil, &resp.Usage, err
 	}
 
-	return messages, nil, nil
+	return messages, &resp.Usage, nil
+}
+
+func (b *JournalAgent) GetToolsHandler(spaceID, userID string, messages []openai.ChatCompletionMessage) map[string]ai.ToolHandlerFunc {
+	return map[string]ai.ToolHandlerFunc{
+		"searchJournal": ai.WrapToolHandler(func() ToolContext {
+			return ToolContext{Agent: b, SpaceID: spaceID, UserID: userID, Messages: messages}
+		}, searchJournal),
+	}
 }
