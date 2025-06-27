@@ -1,7 +1,7 @@
 package types
 
-type ReceiveFunc func(startAt int32, msg MessageContent, progressStatus MessageProgress) error
-type DoneFunc func(startAt int32) error
+type ReceiveFunc func(msg MessageContent, progressStatus MessageProgress) error
+type DoneFunc func() error
 
 // websocket 推送实现
 type Messager interface {

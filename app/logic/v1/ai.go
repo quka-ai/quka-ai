@@ -28,9 +28,9 @@ import (
 )
 
 // handleAssistantMessage 通过ws通知前端开始响应用户请求
-func getStreamReceiveFunc(ctx context.Context, core *core.Core, msg *types.ChatMessage) types.ReceiveFunc {
+func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter SendedCounter, msg *types.ChatMessage) types.ReceiveFunc {
 	imTopic := protocol.GenIMTopic(msg.SessionID)
-	return func(startAt int32, message types.MessageContent, progressStatus types.MessageProgress) error {
+	return func(message types.MessageContent, progressStatus types.MessageProgress) error {
 		if msg.Message == "" {
 			msg.Message = string(message.Bytes())
 		}
@@ -59,11 +59,13 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, msg *types.ChatM
 			}
 		}
 
+		sendedCounter.Add(message.Bytes())
+
 		if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
 			MessageID: msg.ID,
 			SessionID: msg.SessionID,
 			Message:   string(message.Bytes()),
-			StartAt:   startAt,
+			StartAt:   sendedCounter.Get(),
 			MsgType:   msg.MsgType,
 			Complete:  int32(progressStatus),
 		}); err != nil {
@@ -76,14 +78,14 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, msg *types.ChatM
 }
 
 // handleAssistantMessage 通过ws通知前端智能助理完成用户请求
-func getStreamDoneFunc(ctx context.Context, core *core.Core, msg *types.ChatMessage, callback func(msg *types.ChatMessage)) types.DoneFunc {
+func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCounter, msg *types.ChatMessage, callback func(msg *types.ChatMessage)) types.DoneFunc {
 	imTopic := protocol.GenIMTopic(msg.SessionID)
-	return func(startAt int32) error {
+	return func() error {
 		// todo retry
 		assistantStatus := types.WS_EVENT_ASSISTANT_DONE
 		completeStatus := types.MESSAGE_PROGRESS_COMPLETE
 		message := ""
-		if startAt == 0 {
+		if strCounter.Get() == 0 {
 			message = types.AssistantFailedMessage
 			assistantStatus = types.WS_EVENT_ASSISTANT_FAILED
 			completeStatus = types.MESSAGE_PROGRESS_FAILED
@@ -112,7 +114,7 @@ func getStreamDoneFunc(ctx context.Context, core *core.Core, msg *types.ChatMess
 			Complete:  int32(completeStatus),
 			MsgType:   msg.MsgType,
 			Message:   message,
-			StartAt:   startAt,
+			StartAt:   strCounter.Get(),
 		}); err != nil {
 			slog.Error("failed to publish AI answer", slog.String("imtopic", imTopic), slog.String("error", err.Error()))
 			return err
@@ -161,7 +163,7 @@ func handleAndNotifyAssistantFailed(core *core.Core, receiver types.Receiver, re
 	}
 
 	receiveFunc := receiver.GetReceiveFunc()
-	return receiveFunc(0, &types.TextMessage{Text: content}, completeStatus)
+	return receiveFunc(&types.TextMessage{Text: content}, completeStatus)
 	// if err := core.Srv().Tower().PublishStreamMessage(imTopic, types.WS_EVENT_ASSISTANT_FAILED, &types.StreamMessage{
 	// 	MessageID: aiMessage.ID,
 	// 	SessionID: aiMessage.SessionID,
@@ -199,8 +201,8 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 		}
 		content := msg.Message()
 
-		defer done(int32(len([]rune(content))))
-		return receiveFunc(0, &types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
+		defer done()
+		return receiveFunc(&types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
 	}
 
 	resp, err := tool.QueryStream()
@@ -214,7 +216,6 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 	}
 
 	// 3. handle response
-	var sended []rune
 	for {
 		select {
 		case <-ctx.Done():
@@ -228,15 +229,14 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 			}
 
 			if msg.Message != "" {
-				if err := receiveFunc(int32(len(sended)), &types.TextMessage{Text: msg.Message}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
+				if err := receiveFunc(&types.TextMessage{Text: msg.Message}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
 					return errors.New("ChatGPTLogic.RequestChatGPT.for.respChan.receive", i18n.ERROR_INTERNAL, err)
 				}
-				sended = append(sended, []rune(msg.Message)...)
 			}
 
 			// slog.Debug("got ai response", slog.Any("msg", msg), slog.Bool("status", ok))
 			if msg.FinishReason != "" {
-				if err = done(int32(len(sended))); err != nil {
+				if err = done(); err != nil {
 					slog.Error("Failed to set message done", slog.String("error", err.Error()), slog.String("msg_id", msg.ID))
 				}
 				if msg.FinishReason != "" && msg.FinishReason != "stop" {
@@ -281,17 +281,36 @@ func (s *NormalAssistant) GenSessionContext(ctx context.Context, prompt string, 
 
 func NewChatReceiver(ctx context.Context, core *core.Core, msger types.Messager) types.Receiver {
 	return &ChatReceiveHandler{
-		ctx:      ctx,
-		core:     core,
-		Messager: msger,
+		ctx:           ctx,
+		core:          core,
+		Messager:      msger,
+		sendedCounter: &sendedCounter{},
 	}
+}
+
+type SendedCounter interface {
+	Add(n []byte)
+	Get() int
+}
+
+type sendedCounter struct {
+	counter int
+}
+
+func (s *sendedCounter) Add(n []byte) {
+	s.counter += len([]rune(string(n)))
+}
+
+func (s *sendedCounter) Get() int {
+	return s.counter
 }
 
 type ChatReceiveHandler struct {
 	ctx  context.Context
 	core *core.Core
 	types.Messager
-	receiveMsg *types.ChatMessage
+	receiveMsg    *types.ChatMessage
+	sendedCounter *sendedCounter
 }
 
 func (s *ChatReceiveHandler) IsStream() bool {
@@ -310,25 +329,27 @@ func (s *ChatReceiveHandler) RecvMessageInit(userReqMsg *types.ChatMessage, msgI
 }
 
 func (s *ChatReceiveHandler) GetReceiveFunc() types.ReceiveFunc {
-	return getStreamReceiveFunc(s.ctx, s.core, s.receiveMsg)
+	return getStreamReceiveFunc(s.ctx, s.core, s.sendedCounter, s.receiveMsg)
 }
 
 func (s *ChatReceiveHandler) GetDoneFunc(callback func(msg *types.ChatMessage)) types.DoneFunc {
-	return getStreamDoneFunc(s.ctx, s.core, s.receiveMsg, callback)
+	return getStreamDoneFunc(s.ctx, s.core, s.sendedCounter, s.receiveMsg, callback)
 }
 
 func NewQueryReceiver(ctx context.Context, core *core.Core, responseChan chan types.MessageContent) types.Receiver {
 	return &QueryReceiveHandler{
-		ctx:  ctx,
-		core: core,
-		resp: responseChan,
+		ctx:          ctx,
+		core:         core,
+		resp:         responseChan,
+		sendedLength: 0,
 	}
 }
 
 type QueryReceiveHandler struct {
-	ctx  context.Context
-	core *core.Core
-	resp chan types.MessageContent
+	ctx          context.Context
+	core         *core.Core
+	resp         chan types.MessageContent
+	sendedLength int64
 }
 
 func (s *QueryReceiveHandler) IsStream() bool {
@@ -340,7 +361,7 @@ func (s *QueryReceiveHandler) RecvMessageInit(userReqMsg *types.ChatMessage, msg
 }
 
 func (s *QueryReceiveHandler) GetReceiveFunc() types.ReceiveFunc {
-	return func(startAt int32, message types.MessageContent, _ types.MessageProgress) error {
+	return func(message types.MessageContent, _ types.MessageProgress) error {
 		select {
 		case <-s.ctx.Done():
 			return s.ctx.Err()
@@ -351,7 +372,7 @@ func (s *QueryReceiveHandler) GetReceiveFunc() types.ReceiveFunc {
 }
 
 func (s *QueryReceiveHandler) GetDoneFunc(callback func(receiveMsg *types.ChatMessage)) types.DoneFunc {
-	return func(startAt int32) error {
+	return func() error {
 		if callback != nil {
 			callback(nil)
 		}
@@ -511,8 +532,8 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 	doneFunc := s.receiver.GetDoneFunc(nil)
 
 	if len(nextReq) == 1 {
-		defer doneFunc(int32(len(nextReq[0].Content)))
-		return receiveFunc(0, &types.TextMessage{Text: nextReq[0].Content}, types.MESSAGE_PROGRESS_COMPLETE)
+		defer doneFunc()
+		return receiveFunc(&types.TextMessage{Text: nextReq[0].Content}, types.MESSAGE_PROGRESS_COMPLETE)
 	}
 
 	chatSessionContext := &SessionContext{
@@ -555,7 +576,7 @@ func NewJournalAssistant(core *core.Core, agentType string, receiver types.Recei
 	return &JournalAssistant{
 		core:      core,
 		agentType: agentType,
-		agent:     journal.NewJournalAgent(core, cli, core.Cfg().AI.Agent.Model),
+		agent:     journal.NewJournalAgent(core, cli, core.Cfg().AI.Agent.Model, receiver.GetReceiveFunc(), receiver.GetDoneFunc(nil)),
 		receiver:  receiver,
 	}
 }
@@ -598,6 +619,12 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGD
 		},
 		userChatMessage,
 	}
+
+	receiveFunc := s.receiver.GetReceiveFunc()
+	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
+	doneFunc := s.receiver.GetDoneFunc(nil)
+	// doneFunc := getStreamDoneFunc(ctx, s.core, recvMsgInfo, nil)
+
 	nextReq, usage, err := s.agent.HandleUserRequest(reqMsg.SpaceID, reqMsg.UserID, baseReq)
 	if err != nil {
 		return handleAndNotifyAssistantFailed(s.core, s.receiver, reqMsg, err)
@@ -631,10 +658,6 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGD
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
 	defer cancel()
-	receiveFunc := s.receiver.GetReceiveFunc()
-	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
-	doneFunc := s.receiver.GetDoneFunc(nil)
-	// doneFunc := getStreamDoneFunc(ctx, s.core, recvMsgInfo, nil)
 
 	marks := make(map[string]string)
 	for _, v := range docs.Docs {
