@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/samber/lo"
@@ -31,46 +32,66 @@ import (
 func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter SendedCounter, msg *types.ChatMessage) types.ReceiveFunc {
 	imTopic := protocol.GenIMTopic(msg.SessionID)
 	return func(message types.MessageContent, progressStatus types.MessageProgress) error {
-		if msg.Message == "" {
-			msg.Message = string(message.Bytes())
-		}
-
 		assistantStatus := types.WS_EVENT_ASSISTANT_CONTINUE
-		switch progressStatus {
-		case types.MESSAGE_PROGRESS_CANCELED:
-			assistantStatus = types.WS_EVENT_ASSISTANT_DONE
-			if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, int32(progressStatus)); err != nil {
-				slog.Error("failed to finished ai answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-					slog.String("error", err.Error()))
+		switch message.Type() {
+		case types.MESSAGE_TYPE_TEXT:
+			if msg.Message == "" {
+				msg.Message = string(message.Bytes())
 			}
-		case types.MESSAGE_PROGRESS_FAILED:
-			assistantStatus = types.WS_EVENT_ASSISTANT_FAILED
-			if err := core.Store().ChatMessageStore().RewriteMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), int32(progressStatus)); err != nil {
-				slog.Error("failed to rewrite ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-					slog.String("error", err.Error()))
+
+			defer sendedCounter.Add(message.Bytes())
+
+			switch progressStatus {
+			case types.MESSAGE_PROGRESS_CANCELED:
+				assistantStatus = types.WS_EVENT_ASSISTANT_DONE
+				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, int32(progressStatus)); err != nil {
+					slog.Error("failed to finished ai answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+				}
+			case types.MESSAGE_PROGRESS_FAILED:
+				assistantStatus = types.WS_EVENT_ASSISTANT_FAILED
+				if err := core.Store().ChatMessageStore().RewriteMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), int32(progressStatus)); err != nil {
+					slog.Error("failed to rewrite ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
+			default:
+				// todo retry
+				if err := core.Store().ChatMessageStore().AppendMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), int32(progressStatus)); err != nil {
+					slog.Error("failed to append ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
+			}
+
+			if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
+				MessageID: msg.ID,
+				SessionID: msg.SessionID,
+				Message:   string(message.Bytes()),
+				StartAt:   sendedCounter.Get(),
+				MsgType:   msg.MsgType,
+				Complete:  int32(progressStatus),
+			}); err != nil {
+				slog.Error("failed to publish ai answer", slog.String("imtopic", imTopic), slog.String("error", err.Error()))
 				return err
 			}
+
+		case types.MESSAGE_TYPE_TOOL_TIPS:
+			if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
+				MessageID: msg.ID,
+				SessionID: msg.SessionID,
+				ToolTips:  message.Bytes(),
+				StartAt:   sendedCounter.Get(),
+				MsgType:   types.MESSAGE_TYPE_TOOL_TIPS,
+				Complete:  int32(progressStatus),
+			}); err != nil {
+				slog.Error("failed to publish ai answer", slog.String("imtopic", imTopic), slog.String("error", err.Error()))
+				return err
+			}
+
 		default:
-			// todo retry
-			if err := core.Store().ChatMessageStore().AppendMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), int32(progressStatus)); err != nil {
-				slog.Error("failed to append ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-					slog.String("error", err.Error()))
-				return err
-			}
-		}
-
-		sendedCounter.Add(message.Bytes())
-
-		if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
-			MessageID: msg.ID,
-			SessionID: msg.SessionID,
-			Message:   string(message.Bytes()),
-			StartAt:   sendedCounter.Get(),
-			MsgType:   msg.MsgType,
-			Complete:  int32(progressStatus),
-		}); err != nil {
-			slog.Error("failed to publish ai answer", slog.String("imtopic", imTopic), slog.String("error", err.Error()))
-			return err
+			slog.Error("unknown message type", slog.Int("message_type", int(message.Type())))
+			return errors.New("unknown message type", i18n.ERROR_INTERNAL, fmt.Errorf("unknown message type: %d", message.Type()))
 		}
 
 		return nil
@@ -253,18 +274,16 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 	}
 }
 
-func NewNormalAssistant(core *core.Core, agentType string, receiver types.Receiver) *NormalAssistant {
+func NewNormalAssistant(core *core.Core, agentType string) *NormalAssistant {
 	return &NormalAssistant{
 		core:      core,
 		agentType: agentType,
-		receiver:  receiver,
 	}
 }
 
 type NormalAssistant struct {
 	core      *core.Core
 	agentType string
-	receiver  types.Receiver
 }
 
 func (s *NormalAssistant) InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error) {
@@ -383,7 +402,7 @@ func (s *QueryReceiveHandler) GetDoneFunc(callback func(receiveMsg *types.ChatMe
 // RequestAssistant 向智能助理发起请求
 // reqMsgInfo 用户请求的内容
 // recvMsgInfo 用于承载ai回复的内容，会预先在数据库中为ai响应的数据创建出对应的记录
-func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage) error {
+func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage, receiver types.Receiver) error {
 	space, err := s.core.Store().SpaceStore().GetSpace(ctx, reqMsg.SpaceID)
 	if err != nil {
 		return err
@@ -444,9 +463,9 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
 	defer cancel()
 
-	receiveFunc := s.receiver.GetReceiveFunc()
+	receiveFunc := receiver.GetReceiveFunc()
 	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
-	doneFunc := s.receiver.GetDoneFunc(func(recvMsgInfo *types.ChatMessage) {
+	doneFunc := receiver.GetDoneFunc(func(recvMsgInfo *types.ChatMessage) {
 		if recvMsgInfo == nil {
 			return
 		}
@@ -475,14 +494,14 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 		}
 	}
 
-	if err = requestAI(ctx, s.core, s.receiver.IsStream(), sessionContext, marks, receiveFunc, doneFunc); err != nil {
+	if err = requestAI(ctx, s.core, receiver.IsStream(), sessionContext, marks, receiveFunc, doneFunc); err != nil {
 		slog.Error("NormalAssistant: failed to request AI", slog.String("error", err.Error()))
-		return handleAndNotifyAssistantFailed(s.core, s.receiver, reqMsg, err)
+		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
 	return nil
 }
 
-func NewBulterAssistant(core *core.Core, agentType string, receiver types.Receiver) *ButlerAssistant {
+func NewBulterAssistant(core *core.Core, agentType string) *ButlerAssistant {
 	cfg := openai.DefaultConfig(core.Cfg().AI.Agent.Token)
 	cfg.BaseURL = core.Cfg().AI.Agent.Endpoint
 
@@ -491,7 +510,6 @@ func NewBulterAssistant(core *core.Core, agentType string, receiver types.Receiv
 		core:      core,
 		agentType: agentType,
 		client:    butler.NewButlerAgent(core, cli, core.Cfg().AI.Agent.Model, core.Cfg().AI.Agent.VlModel),
-		receiver:  receiver,
 	}
 }
 
@@ -499,7 +517,6 @@ type ButlerAssistant struct {
 	core      *core.Core
 	agentType string
 	client    *butler.ButlerAgent
-	receiver  types.Receiver
 }
 
 func (s *ButlerAssistant) InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error) {
@@ -517,10 +534,10 @@ func (s *ButlerAssistant) GenSessionContext(ctx context.Context, prompt string, 
 // RequestAssistant 向智能助理发起请求
 // reqMsgInfo 用户请求的内容
 // recvMsgInfo 用于承载ai回复的内容，会预先在数据库中为ai响应的数据创建出对应的记录
-func (s *ButlerAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage) error {
+func (s *ButlerAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage, receiver types.Receiver) error {
 	nextReq, usages, err := s.client.Query(reqMsg.UserID, reqMsg)
 	if err != nil {
-		return handleAndNotifyAssistantFailed(s.core, s.receiver, reqMsg, err)
+		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
 
 	for _, v := range usages {
@@ -528,8 +545,8 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 	}
 
 	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
-	receiveFunc := s.receiver.GetReceiveFunc()
-	doneFunc := s.receiver.GetDoneFunc(nil)
+	receiveFunc := receiver.GetReceiveFunc()
+	doneFunc := receiver.GetDoneFunc(nil)
 
 	if len(nextReq) == 1 {
 		defer doneFunc()
@@ -561,14 +578,14 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 		}
 	}
 
-	if err = requestAI(ctx, s.core, s.receiver.IsStream(), chatSessionContext, marks, receiveFunc, doneFunc); err != nil {
+	if err = requestAI(ctx, s.core, receiver.IsStream(), chatSessionContext, marks, receiveFunc, doneFunc); err != nil {
 		slog.Error("failed to request AI", slog.String("error", err.Error()))
-		return handleAndNotifyAssistantFailed(s.core, s.receiver, reqMsg, err)
+		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
 	return nil
 }
 
-func NewJournalAssistant(core *core.Core, agentType string, receiver types.Receiver) *JournalAssistant {
+func NewJournalAssistant(core *core.Core, agentType string) *JournalAssistant {
 	cfg := openai.DefaultConfig(core.Cfg().AI.Agent.Token)
 	cfg.BaseURL = core.Cfg().AI.Agent.Endpoint
 
@@ -576,8 +593,7 @@ func NewJournalAssistant(core *core.Core, agentType string, receiver types.Recei
 	return &JournalAssistant{
 		core:      core,
 		agentType: agentType,
-		agent:     journal.NewJournalAgent(core, cli, core.Cfg().AI.Agent.Model, receiver.GetReceiveFunc(), receiver.GetDoneFunc(nil)),
-		receiver:  receiver,
+		agent:     journal.NewJournalAgent(core, cli, core.Cfg().AI.Agent.Model),
 	}
 }
 
@@ -585,7 +601,6 @@ type JournalAssistant struct {
 	core      *core.Core
 	agentType string
 	agent     *journal.JournalAgent
-	receiver  types.Receiver
 }
 
 func (s *JournalAssistant) InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error) {
@@ -603,7 +618,13 @@ func (s *JournalAssistant) GenSessionContext(ctx context.Context, prompt string,
 // RequestAssistant 向智能助理发起请求
 // reqMsgInfo 用户请求的内容
 // recvMsgInfo 用于承载ai回复的内容，会预先在数据库中为ai响应的数据创建出对应的记录
-func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage) error {
+// 添加全局递归深度计数器
+var (
+	recursionCounter  = make(map[string]int)
+	maxRecursionDepth = 5 // 最大递归深度
+)
+
+func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage, receiver types.Receiver) error {
 	userChatMessage := openai.ChatCompletionMessage{
 		Role: types.USER_ROLE_USER.String(),
 	}
@@ -620,14 +641,35 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGD
 		userChatMessage,
 	}
 
-	receiveFunc := s.receiver.GetReceiveFunc()
+	receiveFunc := receiver.GetReceiveFunc()
 	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
-	doneFunc := s.receiver.GetDoneFunc(nil)
+	doneFunc := receiver.GetDoneFunc(nil)
 	// doneFunc := getStreamDoneFunc(ctx, s.core, recvMsgInfo, nil)
 
-	nextReq, usage, err := s.agent.HandleUserRequest(reqMsg.SpaceID, reqMsg.UserID, baseReq)
+	toolID := utils.GenUniqIDStr()
+	receiveFunc(&types.ToolTips{
+		ID:       toolID,
+		ToolName: "SearchJournal",
+		Status:   types.TOOL_STATUS_RUNNING,
+		Content:  "Searching your journals...",
+	}, types.MESSAGE_PROGRESS_GENERATING)
+
+	once := sync.Once{}
+	actualReceiveFunc := func(message types.MessageContent, progressStatus types.MessageProgress) error {
+		once.Do(func() {
+			receiveFunc(&types.ToolTips{
+				ID:       toolID,
+				ToolName: "SearchJournal",
+				Status:   types.TOOL_STATUS_SUCCESS,
+				Content:  "Searching your journals done",
+			}, types.MESSAGE_PROGRESS_GENERATING)
+		})
+		return receiveFunc(message, progressStatus)
+	}
+
+	nextReq, usage, err := s.agent.HandleUserRequest(ctx, reqMsg.SpaceID, reqMsg.UserID, baseReq, receiveFunc)
 	if err != nil {
-		return handleAndNotifyAssistantFailed(s.core, s.receiver, reqMsg, err)
+		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
 
 	if len(nextReq) == 0 {
@@ -637,12 +679,6 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGD
 	if usage != nil {
 		process.NewRecordUsageRequest(s.agent.Model, "Agents", "Journal", reqMsg.SpaceID, reqMsg.UserID, usage)
 	}
-	// type SessionContext struct {
-	// 	MessageID      string
-	// 	SessionID      string
-	// 	MessageContext []*types.MessageContext
-	// 	Prompt         string
-	// }
 
 	chatSessionContext := &SessionContext{
 		MessageID: reqMsg.ID,
@@ -666,9 +702,9 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGD
 		}
 	}
 
-	if err = requestAI(ctx, s.core, s.receiver.IsStream(), chatSessionContext, marks, receiveFunc, doneFunc); err != nil {
-		slog.Error("failed to request AI", slog.String("error", err.Error()))
-		return handleAndNotifyAssistantFailed(s.core, s.receiver, reqMsg, err)
+	if err = requestAI(ctx, s.core, receiver.IsStream(), chatSessionContext, marks, actualReceiveFunc, doneFunc); err != nil {
+		slog.Error("Journal: failed to request AI", slog.String("error", err.Error()))
+		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
 	return nil
 }

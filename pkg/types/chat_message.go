@@ -142,6 +142,8 @@ func GetMessageUserRole(r string) MessageUserRole {
 		return USER_ROLE_USER
 	case "system":
 		return USER_ROLE_SYSTEM
+	case "tool":
+		return USER_ROLE_TOOL
 	default:
 		return USER_ROLE_UNKNOWN
 	}
@@ -163,8 +165,9 @@ const (
 type MessageType int8
 
 const (
-	MESSAGE_TYPE_UNKNOWN MessageType = 0
-	MESSAGE_TYPE_TEXT    MessageType = 1
+	MESSAGE_TYPE_UNKNOWN   MessageType = 0
+	MESSAGE_TYPE_TEXT      MessageType = 1
+	MESSAGE_TYPE_TOOL_TIPS MessageType = 2
 )
 
 type EvaluateType int8
@@ -219,10 +222,11 @@ type MessageExt struct {
 }
 
 type StreamMessage struct {
-	MessageID string      `json:"message_id"`
-	SessionID string      `json:"session_id"`
-	Message   string      `json:"message"`
-	StartAt   int         `json:"start_at"`
-	Complete  int32       `json:"complete"`
-	MsgType   MessageType `json:"msg_type"`
+	MessageID string          `json:"message_id"`
+	SessionID string          `json:"session_id"`
+	Message   string          `json:"message,omitempty"`
+	ToolTips  json.RawMessage `json:"tool_tips,omitempty"`
+	StartAt   int             `json:"start_at"`
+	Complete  int32           `json:"complete"`
+	MsgType   MessageType     `json:"msg_type"`
 }

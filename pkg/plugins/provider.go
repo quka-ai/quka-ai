@@ -225,5 +225,5 @@ func (fs *S3FileStorage) GenGetObjectPreSignURL(_url string) (string, error) {
 
 type Assistant interface {
 	InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error)
-	RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsgInfo *types.ChatMessage) error
+	RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsgInfo *types.ChatMessage, receiver types.Receiver) error
 }

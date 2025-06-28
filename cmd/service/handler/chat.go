@@ -16,7 +16,7 @@ import (
 )
 
 func (s *HttpSrv) GenMessageID(c *gin.Context) {
-	response.APISuccess(c, s.Core.Plugins.AIChatLogic("", nil).GenMessageID())
+	response.APISuccess(c, s.Core.Plugins.AIChatLogic("").GenMessageID())
 }
 
 type ListChatSessionRequest struct {

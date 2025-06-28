@@ -19,7 +19,7 @@ type Plugins interface {
 	UseLimiter(c *gin.Context, key string, method string, opts ...LimitOption) Limiter
 	FileStorage() FileStorage
 	CreateUserDefaultPlan(ctx context.Context, appid, userID string) (string, error)
-	AIChatLogic(agentType string, receiver types.Receiver) AIChatLogic
+	AIChatLogic(agentType string) AIChatLogic
 	EncryptData(data []byte) ([]byte, error)
 	DecryptData(data []byte) ([]byte, error)
 	DeleteSpace(ctx context.Context, spaceID string) error
@@ -55,7 +55,7 @@ type Cache interface {
 
 type AIChatLogic interface {
 	InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error)
-	RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsgInfo *types.ChatMessage) error
+	RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsgInfo *types.ChatMessage, receiver types.Receiver) error
 	GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error)
 	GenMessageID() string
 }

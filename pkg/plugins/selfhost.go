@@ -195,22 +195,22 @@ func (s *AIChatLogic) GenMessageID() string {
 	return utils.GenRandomID()
 }
 
-func (s *SelfHostPlugin) AIChatLogic(agentType string, receiver types.Receiver) core.AIChatLogic {
+func (s *SelfHostPlugin) AIChatLogic(agentType string) core.AIChatLogic {
 	switch agentType {
 	case types.AGENT_TYPE_BUTLER:
 		return &AIChatLogic{
 			core:      s.core,
-			Assistant: v1.NewBulterAssistant(s.core, agentType, receiver),
+			Assistant: v1.NewBulterAssistant(s.core, agentType),
 		}
 	case types.AGENT_TYPE_JOURNAL:
 		return &AIChatLogic{
 			core:      s.core,
-			Assistant: v1.NewJournalAssistant(s.core, agentType, receiver),
+			Assistant: v1.NewJournalAssistant(s.core, agentType),
 		}
 	default:
 		return &AIChatLogic{
 			core:      s.core,
-			Assistant: v1.NewNormalAssistant(s.core, agentType, receiver),
+			Assistant: v1.NewNormalAssistant(s.core, agentType),
 		}
 	}
 }
