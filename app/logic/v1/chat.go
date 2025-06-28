@@ -419,7 +419,9 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 
 	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
 
+	answerMessageID := logic.GenMessageID()
 	ext := types.ChatMessageExt{
+		MessageID: answerMessageID,
 		SpaceID:   userMessage.SpaceID,
 		SessionID: userMessage.SessionID,
 		CreatedAt: time.Now().Unix(),
@@ -433,7 +435,6 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 		return err
 	}
 
-	answerMessageID := logic.GenMessageID()
 	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
 		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
 			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))

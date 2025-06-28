@@ -81,7 +81,7 @@ func (s *ChatMessageExtStore) Update(ctx context.Context, messageID string, data
 		Set("generation_status", data.GenerationStatus).
 		Set("rel_docs", data.RelDocs).
 		Set("updated_at", time.Now().Unix()).
-		Where(sq.Eq{"message_id": data.MessageID})
+		Where(sq.Eq{"message_id": messageID})
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
