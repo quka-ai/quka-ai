@@ -101,31 +101,49 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 // handleAssistantMessage 通过ws通知前端智能助理完成用户请求
 func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCounter, msg *types.ChatMessage, callback func(msg *types.ChatMessage)) types.DoneFunc {
 	imTopic := protocol.GenIMTopic(msg.SessionID)
-	return func() error {
+	return func(err error) error {
 		// todo retry
 		assistantStatus := types.WS_EVENT_ASSISTANT_DONE
 		completeStatus := types.MESSAGE_PROGRESS_COMPLETE
 		message := ""
-		if strCounter.Get() == 0 {
-			message = types.AssistantFailedMessage
-			assistantStatus = types.WS_EVENT_ASSISTANT_FAILED
-			completeStatus = types.MESSAGE_PROGRESS_FAILED
-			slog.Error("assistant response is empty, will delete assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID))
-			// 返回了0个字符就完成的情况一般是assistant服务异常，无响应，服务端删除该消息，避免数据库存在空记录
-			if err := core.Store().ChatMessageStore().DeleteMessage(ctx, msg.ID); err != nil {
-				slog.Error("failed to delete assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-					slog.String("error", err.Error()))
-				return err
+
+		if err != nil {
+			if err == context.Canceled {
+				assistantStatus = types.WS_EVENT_ASSISTANT_DONE
+				completeStatus = types.MESSAGE_PROGRESS_CANCELED
+
+				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, int32(completeStatus)); err != nil {
+					slog.Error("failed to finished assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
+
+				if callback != nil {
+					callback(msg)
+				}
 			}
 		} else {
-			if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, int32(types.MESSAGE_PROGRESS_COMPLETE)); err != nil {
-				slog.Error("failed to finished assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-					slog.String("error", err.Error()))
-				return err
-			}
+			if strCounter.Get() == 0 {
+				message = types.AssistantFailedMessage
+				assistantStatus = types.WS_EVENT_ASSISTANT_FAILED
+				completeStatus = types.MESSAGE_PROGRESS_FAILED
+				slog.Error("assistant response is empty, will delete assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID))
+				// 返回了0个字符就完成的情况一般是assistant服务异常，无响应，服务端删除该消息，避免数据库存在空记录
+				// if err := core.Store().ChatMessageStore().DeleteMessage(ctx, msg.ID); err != nil {
+				// 	slog.Error("failed to delete assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+				// 		slog.String("error", err.Error()))
+				// 	return err
+				// }
+			} else {
+				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, int32(types.MESSAGE_PROGRESS_COMPLETE)); err != nil {
+					slog.Error("failed to finished assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
 
-			if callback != nil {
-				callback(msg)
+				if callback != nil {
+					callback(msg)
+				}
 			}
 		}
 
@@ -222,7 +240,7 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 		}
 		content := msg.Message()
 
-		defer done()
+		defer done(nil)
 		return receiveFunc(&types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
 	}
 
@@ -240,6 +258,9 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 	for {
 		select {
 		case <-ctx.Done():
+			if done != nil {
+				done(ctx.Err())
+			}
 			return ctx.Err()
 		case msg, ok := <-respChan:
 			if !ok {
@@ -257,7 +278,7 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 
 			// slog.Debug("got ai response", slog.Any("msg", msg), slog.Bool("status", ok))
 			if msg.FinishReason != "" {
-				if err = done(); err != nil {
+				if err = done(nil); err != nil {
 					slog.Error("Failed to set message done", slog.String("error", err.Error()), slog.String("msg_id", msg.ID))
 				}
 				if msg.FinishReason != "" && msg.FinishReason != "stop" {
@@ -391,7 +412,7 @@ func (s *QueryReceiveHandler) GetReceiveFunc() types.ReceiveFunc {
 }
 
 func (s *QueryReceiveHandler) GetDoneFunc(callback func(receiveMsg *types.ChatMessage)) types.DoneFunc {
-	return func() error {
+	return func(err error) error {
 		if callback != nil {
 			callback(nil)
 		}
@@ -549,7 +570,7 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 	doneFunc := receiver.GetDoneFunc(nil)
 
 	if len(nextReq) == 1 {
-		defer doneFunc()
+		defer doneFunc(nil)
 		return receiveFunc(&types.TextMessage{Text: nextReq[0].Content}, types.MESSAGE_PROGRESS_COMPLETE)
 	}
 

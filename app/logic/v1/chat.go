@@ -19,6 +19,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/types/protocol"
+	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 type ChatLogic struct {
@@ -207,34 +208,37 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 	case types.AGENT_TYPE_NORMAL:
 		// else rag handler
 		go safe.Run(func() {
-			enhanceResult, _ := EnhanceChatQuery(l.ctx, l.core, msg.Message, msg.SpaceID, msg.SessionID, msg.ID)
+			getDocsFunc := func() (types.RAGDocs, error) {
+				enhanceResult, _ := EnhanceChatQuery(l.ctx, l.core, msg.Message, msg.SpaceID, msg.SessionID, msg.ID)
 
-			if enhanceResult.Usage != nil {
-				process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msg.ID, enhanceResult.Usage)
-			}
-
-			docs, usages, err := NewKnowledgeLogic(l.ctx, l.core).GetQueryRelevanceKnowledges(chatSession.SpaceID, l.GetUserInfo().User, enhanceResult.ResultQuery(), resourceQuery)
-			if len(usages) > 0 {
-				for _, v := range usages {
-					process.NewRecordChatUsageRequest(v.Usage.Model, v.Subject, msgArgs.ID, v.Usage.Usage)
+				if enhanceResult.Usage != nil {
+					process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msg.ID, enhanceResult.Usage)
 				}
-			}
-			if err != nil {
-				err = errors.Trace("ChatLogic.getRelevanceKnowledges", err)
-				return
+
+				docs, usages, err := NewKnowledgeLogic(l.ctx, l.core).GetQueryRelevanceKnowledges(chatSession.SpaceID, l.GetUserInfo().User, enhanceResult.ResultQuery(), resourceQuery)
+				if len(usages) > 0 {
+					for _, v := range usages {
+						process.NewRecordChatUsageRequest(v.Usage.Model, v.Subject, msgArgs.ID, v.Usage.Usage)
+					}
+				}
+				if err != nil {
+					err = errors.Trace("ChatLogic.getRelevanceKnowledges", err)
+					return types.RAGDocs{}, err
+				}
+
+				// Supplement associated document content.
+				SupplementSessionChatDocs(l.core, chatSession, docs)
+				return docs, nil
 			}
 
-			// Supplement associated document content.
-			SupplementSessionChatDocs(l.core, chatSession, docs)
-
-			if err := RAGSessionHandle(l.core, receiver, msg, docs, types.GEN_MODE_NORMAL); err != nil {
+			if err := RAGSessionHandle(l.core, receiver, msg, getDocsFunc, types.GEN_MODE_NORMAL); err != nil {
 				slog.Error("Failed to handle rag message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
 		})
 	default:
 		// else rag handler
 		go safe.Run(func() {
-			if err := RAGSessionHandle(l.core, receiver, msg, types.RAGDocs{}, types.GEN_MODE_NORMAL); err != nil {
+			if err := ChatSessionHandle(l.core, receiver, msg, types.GEN_MODE_NORMAL); err != nil {
 				slog.Error("Failed to handle message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
 		})
@@ -337,7 +341,11 @@ func JournalSessionHandle(core *core.Core, receiver types.Receiver, userMessage 
 	defer reqCancel()
 
 	// listen to stop chat stream
-	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(answerMessageID, reqCancel)
+	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(userMessage.SessionID, func() {
+		slog.Debug("close chat stream", slog.String("session_id", userMessage.SessionID))
+		reqCancel()
+		receiver.GetDoneFunc(nil)(context.Canceled)
+	})
 	defer removeSignalFunc()
 
 	return logic.RequestAssistant(reqCtx,
@@ -384,7 +392,11 @@ func ButlerSessionHandle(core *core.Core, receiver types.Receiver, userMessage *
 	defer reqCancel()
 
 	// listen to stop chat stream
-	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(answerMessageID, reqCancel)
+	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(userMessage.SessionID, func() {
+		slog.Debug("close chat stream", slog.String("session_id", userMessage.SessionID))
+		reqCancel()
+		receiver.GetDoneFunc(nil)(context.Canceled)
+	})
 	defer removeSignalFunc()
 
 	return logic.RequestAssistant(reqCtx,
@@ -403,8 +415,46 @@ func RAGHandle(core *core.Core, receiver types.Receiver, userMessage *types.Chat
 }
 
 // genMode new request or re-request
-func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, docs types.RAGDocs, genMode types.RequestAssistantMode) error {
+func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, getDocsFunc func() (types.RAGDocs, error), genMode types.RequestAssistantMode) error {
+
 	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
+
+	ext := types.ChatMessageExt{
+		SpaceID:   userMessage.SpaceID,
+		SessionID: userMessage.SessionID,
+		CreatedAt: time.Now().Unix(),
+		UpdatedAt: time.Now().Unix(),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+	seqID, err := logic.GetChatSessionSeqID(ctx, userMessage.SpaceID, userMessage.SessionID)
+	if err != nil {
+		return err
+	}
+
+	answerMessageID := logic.GenMessageID()
+	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
+		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
+			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
+		return err
+	}
+	// rag docs merge to user request message
+
+	toolID := utils.GenUniqIDStr()
+
+	receiveFunc := receiver.GetReceiveFunc()
+	receiveFunc(&types.ToolTips{
+		ID:       toolID,
+		ToolName: "ReviewingKnowledges",
+		Status:   types.TOOL_STATUS_RUNNING,
+		Content:  "Reviewing your knowledges...",
+	}, types.MESSAGE_PROGRESS_GENERATING)
+
+	docs, err := getDocsFunc()
+	if err != nil {
+		return err
+	}
 
 	var relDocs []string
 	if len(docs.Docs) > 0 {
@@ -413,10 +463,56 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 		})
 	}
 
+	// update message ext rel docs
+	ext.RelDocs = relDocs
+	if err := core.Store().ChatMessageExtStore().Update(ctx, ext.MessageID, ext); err != nil {
+		slog.Error("Failed to update message ext", slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
+	}
+
+	go func() {
+		time.Sleep(time.Second)
+		receiveFunc(&types.ToolTips{
+			ID:       toolID,
+			ToolName: "ReviewingKnowledges",
+			Status:   types.TOOL_STATUS_SUCCESS,
+			Content:  fmt.Sprintf("%d knowledges reviewed", len(relDocs)),
+		}, types.MESSAGE_PROGRESS_GENERATING)
+	}()
+
+	// 使用新的变量名避免资源泄露
+	reqCtx, reqCancel := context.WithTimeout(context.Background(), time.Minute*5)
+	defer reqCancel()
+
+	// listen to stop chat stream
+	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(userMessage.SessionID, func() {
+		slog.Debug("close chat stream", slog.String("session_id", userMessage.SessionID))
+		reqCancel()
+		receiver.GetDoneFunc(nil)(context.Canceled)
+	})
+	defer removeSignalFunc()
+
+	return logic.RequestAssistant(reqCtx,
+		docs,
+		userMessage, receiver)
+}
+
+func ChatHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, genMode types.RequestAssistantMode) error {
+	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	return logic.RequestAssistant(ctx,
+		types.RAGDocs{},
+		userMessage, receiver)
+}
+
+// genMode new request or re-request
+func ChatSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, genMode types.RequestAssistantMode) error {
+	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
+
 	ext := types.ChatMessageExt{
 		SpaceID:   userMessage.SpaceID,
 		SessionID: userMessage.SessionID,
-		RelDocs:   relDocs,
 		CreatedAt: time.Now().Unix(),
 		UpdatedAt: time.Now().Unix(),
 	}
@@ -441,11 +537,15 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 	defer reqCancel()
 
 	// listen to stop chat stream
-	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(answerMessageID, reqCancel)
+	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(userMessage.SessionID, func() {
+		slog.Debug("close chat stream", slog.String("session_id", userMessage.SessionID))
+		reqCancel()
+		receiver.GetDoneFunc(nil)(context.Canceled)
+	})
 	defer removeSignalFunc()
 
 	return logic.RequestAssistant(reqCtx,
-		docs,
+		types.RAGDocs{},
 		userMessage, receiver)
 }
 
@@ -467,8 +567,8 @@ func chatMsgToTextMsg(msg *types.ChatMessage) *types.MessageMeta {
 	}
 }
 
-func (l *ChatLogic) StopStream(answerMessageID string) error {
-	err := l.core.Srv().Tower().NewCloseChatStreamSignal(answerMessageID)
+func (l *ChatLogic) StopStream(sessionID string) error {
+	err := l.core.Srv().Tower().NewCloseChatStreamSignal(sessionID)
 	if err != nil {
 		return errors.New("ChatLogic.StopStream.Srv.Tower.NewCloseChatStreamSignal", i18n.ERROR_INTERNAL, err)
 	}

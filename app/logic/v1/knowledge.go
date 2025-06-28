@@ -519,8 +519,7 @@ func (l *KnowledgeLogic) Query(spaceID, agent string, resource *types.ResourceQu
 			}
 		}
 	default:
-		// else rag handler
-		err = RAGHandle(l.core, receiver, msgArgs, types.RAGDocs{}, types.GEN_MODE_NORMAL)
+		err = ChatHandle(l.core, receiver, msgArgs, types.GEN_MODE_NORMAL)
 		if err != nil {
 			slog.Error("Failed to handle message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 		}

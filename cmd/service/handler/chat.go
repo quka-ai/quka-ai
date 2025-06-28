@@ -258,7 +258,6 @@ func (s *HttpSrv) GetChatMessageExt(c *gin.Context) {
 func (s *HttpSrv) StopChatStream(c *gin.Context) {
 	spaceID, _ := c.Params.Get("spaceid")
 	sessionID, _ := c.Params.Get("session")
-	messageID, _ := c.Params.Get("messageid")
 
 	sessionLogic := v1.NewChatSessionLogic(c, s.Core)
 	_, err := sessionLogic.CheckUserChatSession(spaceID, sessionID)
@@ -267,7 +266,7 @@ func (s *HttpSrv) StopChatStream(c *gin.Context) {
 		return
 	}
 
-	if err := v1.NewChatLogic(c, s.Core).StopStream(messageID); err != nil {
+	if err := v1.NewChatLogic(c, s.Core).StopStream(sessionID); err != nil {
 		response.APIError(c, err)
 		return
 	}

@@ -1,7 +1,7 @@
 package types
 
 type ReceiveFunc func(msg MessageContent, progressStatus MessageProgress) error
-type DoneFunc func() error
+type DoneFunc func(err error) error
 
 // websocket 推送实现
 type Messager interface {
