@@ -18,7 +18,7 @@ func newClient() *S3 {
 func Test_UploadKey(t *testing.T) {
 	s3 := newClient()
 
-	resp, err := s3.GenClientUploadKey("test", "aaa.png", 1)
+	resp, err := s3.GenClientUploadKey("test/aaa.png", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

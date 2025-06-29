@@ -44,7 +44,7 @@ func TestReader(t *testing.T) {
 			SecretKey: os.Getenv("TEST_BREW_S3_SECRET_KEY"),
 		},
 	})
-	res, err := rednote.ParseRedNote(context.Background(), result, objectDriver)
+	res, err := rednote.ParseRedNote(context.Background(), "123", result, objectDriver)
 	if err != nil {
 		t.Fatal(err)
 	}

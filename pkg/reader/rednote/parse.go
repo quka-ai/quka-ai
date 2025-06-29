@@ -31,7 +31,7 @@ type FileWithContentType struct {
 	ContentType string
 }
 
-func ParseRedNote(ctx context.Context, detail *NoteDetail, objectStorage core.FileStorage) (*Knowledge, error) {
+func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objectStorage core.FileStorage) (*Knowledge, error) {
 	var knowledgeContent types.BlockContent
 	// create knowledge
 	images := make(map[string]*FileWithContentType)
@@ -48,12 +48,11 @@ func ParseRedNote(ctx context.Context, detail *NoteDetail, objectStorage core.Fi
 	}
 
 	var imageBlocks []utils.EditorImage
-	date := time.Now().Format("20060102")
 	for url, data := range images {
 		ct := strings.Split(data.ContentType, "/")
 		fileName := fmt.Sprintf("%s.%s", utils.MD5(url), ct[len(ct)-1])
-		filePath := fmt.Sprintf("/quka/knowledge/%s", date)
-		if err := objectStorage.SaveFile(filePath, fileName, data.Content); err != nil {
+		filePath := types.GenS3FilePath(spaceID, "rednote", fileName)
+		if err := objectStorage.SaveFile(filePath, data.Content); err != nil {
 			return nil, fmt.Errorf("Failed to save image, %w", err)
 		}
 
@@ -82,8 +81,8 @@ func ParseRedNote(ctx context.Context, detail *NoteDetail, objectStorage core.Fi
 	for url, data := range videos {
 		ct := strings.Split(data.ContentType, "/")
 		fileName := fmt.Sprintf("%s.%s", utils.MD5(url), ct[len(ct)-1])
-		filePath := fmt.Sprintf("/quka/knowledge/%s", date)
-		if err := objectStorage.SaveFile(filePath, fileName, data.Content); err != nil {
+		filePath := types.GenS3FilePath(spaceID, "rednote", fileName)
+		if err := objectStorage.SaveFile(filePath, data.Content); err != nil {
 			return nil, fmt.Errorf("Failed to save video, %w", err)
 		}
 
