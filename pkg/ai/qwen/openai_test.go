@@ -24,8 +24,8 @@ func init() {
 }
 
 func new() *qwen.Driver {
-	fmt.Println(os.Getenv("BREW_API_AI_ALI_TOKEN"), os.Getenv("BREW_API_AI_ALI_ENDPOINT"))
-	return qwen.New(os.Getenv("BREW_API_AI_ALI_TOKEN"), os.Getenv("BREW_API_AI_ALI_ENDPOINT"), ai.ModelName{
+	fmt.Println(os.Getenv("QUKA_API_AI_ALI_TOKEN"), os.Getenv("QUKA_API_AI_ALI_ENDPOINT"))
+	return qwen.New(os.Getenv("QUKA_API_AI_ALI_TOKEN"), os.Getenv("QUKA_API_AI_ALI_ENDPOINT"), ai.ModelName{
 		ChatModel:      "qwen-plus",
 		EmbeddingModel: "text-embedding-v3",
 	})

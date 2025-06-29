@@ -38,7 +38,7 @@ func RegisterProvider(key string, p core.Plugins) {
 
 type ObjectStorageDriver struct {
 	StaticDomain string    `toml:"static_domain"`
-	Driver       string    `toml:"driver"` // default: none
+	Driver       string    `toml:"driver"`
 	S3           *S3Config `toml:"s3"`
 }
 
@@ -81,11 +81,11 @@ func (lfs *NoneFileStorage) GenGetObjectPreSignURL(url string) (string, error) {
 	return "", fmt.Errorf("Unsupported")
 }
 
-func (lfs *NoneFileStorage) GenUploadFileMeta(filePath, fileName string, _ int64) (core.UploadFileMeta, error) {
+func (lfs *NoneFileStorage) GenUploadFileMeta(fullPath string, _ int64) (core.UploadFileMeta, error) {
 	return core.UploadFileMeta{}, fmt.Errorf("Unsupported")
 }
 
-func (lfs *NoneFileStorage) SaveFile(filePath, fileName string, content []byte) error {
+func (lfs *NoneFileStorage) SaveFile(fullPath string, content []byte) error {
 	return fmt.Errorf("Unsupported")
 }
 
@@ -105,16 +105,17 @@ func (lfs *LocalFileStorage) GetStaticDomain() string {
 	return lfs.StaticDomain
 }
 
-func (lfs *LocalFileStorage) GenUploadFileMeta(filePath, fileName string, _ int64) (core.UploadFileMeta, error) {
+func (lfs *LocalFileStorage) GenUploadFileMeta(fullPath string, _ int64) (core.UploadFileMeta, error) {
 	return core.UploadFileMeta{
-		FullPath: filepath.Join(filePath, fileName),
+		FullPath: fullPath,
 		Domain:   lfs.StaticDomain,
 	}, nil
 }
 
 // SaveFile stores a file on the local file system.
-func (lfs *LocalFileStorage) SaveFile(filePath, fileName string, content []byte) error {
+func (lfs *LocalFileStorage) SaveFile(fullPath string, content []byte) error {
 	// Check if the directory exists
+	filePath := filepath.Dir(fullPath)
 	_, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
 		// If the directory doesn't exist, create it
@@ -128,7 +129,6 @@ func (lfs *LocalFileStorage) SaveFile(filePath, fileName string, content []byte)
 	}
 
 	// Save the file
-	fullPath := filepath.Join(filePath, fileName)
 	err = os.WriteFile(fullPath, content, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to save file: %v", err)
@@ -188,20 +188,20 @@ func (fs *S3FileStorage) GetStaticDomain() string {
 	return fs.StaticDomain
 }
 
-func (fs *S3FileStorage) GenUploadFileMeta(filePath, fileName string, contentLength int64) (core.UploadFileMeta, error) {
-	key, err := fs.S3.GenClientUploadKey(filePath, fileName, contentLength)
+func (fs *S3FileStorage) GenUploadFileMeta(fullPath string, contentLength int64) (core.UploadFileMeta, error) {
+	key, err := fs.S3.GenClientUploadKey(fullPath, contentLength)
 	if err != nil {
 		return core.UploadFileMeta{}, err
 	}
 	return core.UploadFileMeta{
-		FullPath:       filepath.Join(filePath, fileName),
+		FullPath:       fullPath,
 		UploadEndpoint: key,
 	}, nil
 }
 
 // SaveFile stores a file
-func (fs *S3FileStorage) SaveFile(filePath, fileName string, content []byte) error {
-	return fs.Upload(filePath, fileName, bytes.NewReader(content))
+func (fs *S3FileStorage) SaveFile(fullPath string, content []byte) error {
+	return fs.Upload(fullPath, bytes.NewReader(content))
 }
 
 func (fs *S3FileStorage) DownloadFile(ctx context.Context, filePath string) (*s3.GetObjectResult, error) {

@@ -15,6 +15,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -29,6 +30,10 @@ import (
 
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
+
+	"encoding/base64"
+	"mime"
+	"path/filepath"
 )
 
 var (
@@ -291,4 +296,325 @@ func ConvertSVGToPNG(in []byte) ([]byte, error) {
 	}
 
 	return f.Bytes(), nil
+}
+
+// cleanContentType 清理Content-Type，去除参数部分
+func cleanContentType(contentType string) string {
+	if contentType == "" {
+		return ""
+	}
+
+	// 分离主要的MIME类型和参数（如charset）
+	parts := strings.Split(contentType, ";")
+	if len(parts) > 0 {
+		return strings.TrimSpace(parts[0])
+	}
+
+	return contentType
+}
+
+// ImageResponseToBase64 将HTTP图片响应转换为base64格式
+// 支持常见的图片格式：jpg, jpeg, png, webp, bmp, gif
+func ImageResponseToBase64(imageResponse *http.Response) (string, error) {
+	if imageResponse == nil {
+		return "", fmt.Errorf("imageResponse is nil")
+	}
+
+	defer imageResponse.Body.Close()
+
+	// 检查HTTP状态码
+	if imageResponse.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP request failed with status: %d", imageResponse.StatusCode)
+	}
+
+	// 读取响应体
+	imageData, err := io.ReadAll(imageResponse.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read image data: %w", err)
+	}
+
+	// 获取Content-Type
+	contentType := cleanContentType(imageResponse.Header.Get("Content-Type"))
+
+	// 如果Content-Type为空，尝试从URL路径推断
+	if contentType == "" {
+		if imageResponse.Request != nil && imageResponse.Request.URL != nil {
+			ext := filepath.Ext(imageResponse.Request.URL.Path)
+			contentType = cleanContentType(mime.TypeByExtension(ext))
+		}
+	}
+
+	// 如果仍然无法确定Content-Type，使用默认值
+	if contentType == "" {
+		contentType = "image/jpeg" // 默认为jpeg
+	}
+
+	// 验证是否为支持的图片类型
+	if !isValidImageType(contentType) {
+		return "", fmt.Errorf("unsupported image type: %s", contentType)
+	}
+
+	// 编码为base64
+	base64Data := base64.StdEncoding.EncodeToString(imageData)
+
+	// 返回完整的data URL格式
+	return fmt.Sprintf("data:%s;base64,%s", contentType, base64Data), nil
+}
+
+// ImageBytesToBase64 将图片字节数据转换为base64格式
+func ImageBytesToBase64(imageData []byte, contentType string) (string, error) {
+	if len(imageData) == 0 {
+		return "", fmt.Errorf("image data is empty")
+	}
+
+	// 验证是否为支持的图片类型
+	if !isValidImageType(contentType) {
+		return "", fmt.Errorf("unsupported image type: %s", contentType)
+	}
+
+	// 编码为base64
+	base64Data := base64.StdEncoding.EncodeToString(imageData)
+
+	// 返回完整的data URL格式
+	return fmt.Sprintf("data:%s;base64,%s", contentType, base64Data), nil
+}
+
+// isValidImageType 检查是否为支持的图片类型
+func isValidImageType(contentType string) bool {
+	supportedTypes := []string{
+		"image/jpeg",
+		"image/jpg",
+		"image/png",
+		"image/webp",
+		"image/bmp",
+		"image/gif",
+	}
+
+	for _, t := range supportedTypes {
+		if strings.EqualFold(contentType, t) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetImageBase64FromURL 从URL直接获取图片并转换为base64
+func GetImageBase64FromURL(imageURL string) (string, error) {
+	if imageURL == "" {
+		return "", fmt.Errorf("image URL is empty")
+	}
+
+	// 发起HTTP请求
+	resp, err := http.Get(imageURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch image from URL: %w", err)
+	}
+
+	// 转换为base64
+	return ImageResponseToBase64(resp)
+}
+
+// FileToBase64 将任意文件转换为base64格式
+// 支持本地文件路径或URL
+func FileToBase64(filePath string) (string, error) {
+	if filePath == "" {
+		return "", fmt.Errorf("file path is empty")
+	}
+
+	// 判断是本地文件还是网络文件
+	if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
+		return GetFileBase64FromURL(filePath)
+	}
+
+	// 处理本地文件
+	return GetFileBase64FromPath(filePath)
+}
+
+// GetFileBase64FromPath 从本地文件路径读取文件并转换为base64
+func GetFileBase64FromPath(filePath string) (string, error) {
+	if filePath == "" {
+		return "", fmt.Errorf("file path is empty")
+	}
+
+	// 读取文件内容
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// 根据文件扩展名确定MIME类型
+	contentType := cleanContentType(mime.TypeByExtension(filepath.Ext(filePath)))
+	if contentType == "" {
+		// 如果无法确定类型，使用通用的二进制类型
+		contentType = "application/octet-stream"
+	}
+
+	// 转换为base64
+	return FileBytesToBase64(fileData, contentType)
+}
+
+// GetFileBase64FromURL 从URL获取任意文件并转换为base64
+func GetFileBase64FromURL(fileURL string) (string, error) {
+	if fileURL == "" {
+		return "", fmt.Errorf("file URL is empty")
+	}
+
+	// 发起HTTP请求
+	resp, err := http.Get(fileURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch file from URL: %w", err)
+	}
+
+	// 转换为base64
+	return FileResponseToBase64(resp)
+}
+
+// FileResponseToBase64 将HTTP文件响应转换为base64格式
+func FileResponseToBase64(fileResponse *http.Response) (string, error) {
+	if fileResponse == nil {
+		return "", fmt.Errorf("fileResponse is nil")
+	}
+
+	defer fileResponse.Body.Close()
+
+	// 检查HTTP状态码
+	if fileResponse.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP request failed with status: %d", fileResponse.StatusCode)
+	}
+
+	// 读取响应体
+	fileData, err := io.ReadAll(fileResponse.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file data: %w", err)
+	}
+
+	// 获取Content-Type
+	contentType := cleanContentType(fileResponse.Header.Get("Content-Type"))
+
+	// 如果Content-Type为空，尝试从URL路径推断
+	if contentType == "" {
+		if fileResponse.Request != nil && fileResponse.Request.URL != nil {
+			ext := filepath.Ext(fileResponse.Request.URL.Path)
+			contentType = cleanContentType(mime.TypeByExtension(ext))
+		}
+	}
+
+	// 如果仍然无法确定Content-Type，使用默认值
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// 转换为base64
+	return FileBytesToBase64(fileData, contentType)
+}
+
+// FileBytesToBase64 将任意文件字节数据转换为base64格式
+func FileBytesToBase64(fileData []byte, contentType string) (string, error) {
+	if len(fileData) == 0 {
+		return "", fmt.Errorf("file data is empty")
+	}
+
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// 编码为base64
+	base64Data := base64.StdEncoding.EncodeToString(fileData)
+
+	// 返回完整的data URL格式
+	return fmt.Sprintf("data:%s;base64,%s", contentType, base64Data), nil
+}
+
+// IsValidFileTypeForLLM 检查文件类型是否适合发送给LLM
+func IsValidFileTypeForLLM(contentType string) bool {
+	// 图片类型
+	imageTypes := []string{
+		"image/jpeg", "image/jpg", "image/png", "image/webp",
+		"image/bmp", "image/gif", "image/svg+xml",
+	}
+
+	// 文档类型
+	documentTypes := []string{
+		"text/plain", "text/html", "text/markdown", "text/csv",
+		"application/json", "application/xml", "text/xml",
+		"application/pdf", // 部分LLM支持
+	}
+
+	// 音频类型（某些LLM支持）
+	audioTypes := []string{
+		"audio/mpeg", "audio/wav", "audio/ogg", "audio/mp4",
+	}
+
+	// 视频类型（某些LLM支持）
+	videoTypes := []string{
+		"video/mp4", "video/webm", "video/ogg",
+	}
+
+	allSupportedTypes := append(append(append(imageTypes, documentTypes...), audioTypes...), videoTypes...)
+
+	for _, t := range allSupportedTypes {
+		if strings.EqualFold(contentType, t) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetFileInfo 获取文件的基本信息
+func GetFileInfo(filePath string) (FileInfo, error) {
+	info := FileInfo{}
+
+	// 判断是本地文件还是网络文件
+	if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
+		info.IsURL = true
+		info.Path = filePath
+
+		// 从URL获取文件信息
+		resp, err := http.Head(filePath)
+		if err != nil {
+			return info, fmt.Errorf("failed to get file info from URL: %w", err)
+		}
+		defer resp.Body.Close()
+
+		info.ContentType = cleanContentType(resp.Header.Get("Content-Type"))
+		info.Size = resp.ContentLength
+		info.Name = filepath.Base(resp.Request.URL.Path)
+	} else {
+		info.IsURL = false
+		info.Path = filePath
+
+		// 获取本地文件信息
+		stat, err := os.Stat(filePath)
+		if err != nil {
+			return info, fmt.Errorf("failed to get file info: %w", err)
+		}
+
+		info.Name = stat.Name()
+		info.Size = stat.Size()
+		info.ContentType = cleanContentType(mime.TypeByExtension(filepath.Ext(filePath)))
+		info.ModTime = stat.ModTime()
+	}
+
+	info.SupportedByLLM = IsValidFileTypeForLLM(info.ContentType)
+
+	return info, nil
+}
+
+// GetMimeTypeByExtension 根据文件扩展名获取MIME类型
+func GetMimeTypeByExtension(ext string) string {
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		return "application/octet-stream"
+	}
+	return cleanContentType(contentType)
+}
+
+type FileInfo struct {
+	Name           string    `json:"name"`
+	Path           string    `json:"path"`
+	Size           int64     `json:"size"`
+	ContentType    string    `json:"content_type"`
+	IsURL          bool      `json:"is_url"`
+	SupportedByLLM bool      `json:"supported_by_llm"`
+	ModTime        time.Time `json:"mod_time,omitempty"`
 }

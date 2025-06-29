@@ -122,5 +122,5 @@ func (l *UploadLogic) GenClientUploadKey(objectType, kind, fileName string, size
 }
 
 func genUserFilePath(userID, _type string) string {
-	return filepath.Join("/brew/", userID, _type, time.Now().Format("20060102"))
+	return filepath.Join(types.FIXED_S3_UPLOAD_PATH_PREFIX, userID, _type, time.Now().Format("20060102"))
 }

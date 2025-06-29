@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,6 +14,10 @@ type CustomizedError struct {
 	wrap    error
 	code    int
 	data    map[string]interface{}
+}
+
+func Is(err error, target error) bool {
+	return errors.Is(err, target)
 }
 
 func (e *CustomizedError) WithData(data map[string]interface{}) *CustomizedError {

@@ -16,6 +16,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core"
 	v1 "github.com/quka-ai/quka-ai/app/logic/v1"
 	"github.com/quka-ai/quka-ai/pkg/ai"
+	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/mark"
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
@@ -309,5 +310,45 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 }
 
 func (s *SelfHostPlugin) Rerank(query string, knowledges []*types.Knowledge) ([]*types.Knowledge, *ai.Usage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	if len(knowledges) > 10 {
+		res, usage, err := s.core.Srv().AI().Rerank(ctx, query, lo.Map(knowledges, func(item *types.Knowledge, _ int) *ai.RerankDoc {
+			sw := mark.NewSensitiveWork()
+			content := sw.Do(lo.If(item.ContentType == types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN, string(item.Content)).Else(item.Content.String()))
+			return &ai.RerankDoc{
+				ID:      item.ID,
+				Content: content,
+			}
+		}))
+
+		if err != nil {
+			if errors.Is(err, errors.ERROR_UNSUPPORTED_FEATURE) {
+				return knowledges, nil, nil
+			}
+			return nil, usage, err
+		}
+
+		firstScore := res[0].Score
+		latestScore := firstScore - 0.2
+		if firstScore < 0.5 {
+			latestScore = firstScore - 0.1
+		}
+
+		docsMap := lo.SliceToMap(knowledges, func(item *types.Knowledge) (string, *types.Knowledge) {
+			return item.ID, item
+		})
+
+		var result []*types.Knowledge
+		for _, v := range res {
+			if v.Score < latestScore {
+				break
+			}
+			result = append(result, docsMap[v.ID])
+		}
+		return result, usage, nil
+	}
+
 	return knowledges, nil, nil
 }

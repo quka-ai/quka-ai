@@ -51,7 +51,7 @@ func SetupFiretower[T any]() (tower.Manager[T], *SelfPusher[T], error) {
 			Num:              4,
 			CentralChanCount: 1000,
 			BuffChanCount:    1000,
-			ConsumerNum:      2,
+			ConsumerNum:      1, // 为了保证消费顺序，需要将consumerNum设置为1
 		},
 	}, tower.BuildWithPusher[T](pusher))
 	if err != nil {

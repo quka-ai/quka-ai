@@ -64,6 +64,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	s.Engine.GET("/s/k/:token", s.BuildKnowledgeSharePage)
 	s.Engine.GET("/s/s/:token", s.BuildSessionSharePage)
 	s.Engine.GET("/s/sp/:token", s.BuildSessionSharePage)
+
 	// auth
 	s.Engine.Use(middleware.I18n(), response.NewResponse())
 	s.Engine.Use(middleware.Cors)

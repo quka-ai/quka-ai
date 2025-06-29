@@ -2,7 +2,6 @@ package srv
 
 import (
 	"context"
-	"errors"
 	"os"
 	"strings"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai/ollama"
 	"github.com/quka-ai/quka-ai/pkg/ai/openai"
 	"github.com/quka-ai/quka-ai/pkg/ai/qwen"
+	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
@@ -140,8 +140,8 @@ func (c *AzureOpenai) FromENV() {
 }
 
 func (c *QWen) FromENV() {
-	c.Token = os.Getenv("BREW_API_AI_ALI_TOKEN")
-	c.Endpoint = os.Getenv("BREW_API_AI_ALI_ENDPOINT")
+	c.Token = os.Getenv("QUKA_API_AI_ALI_TOKEN")
+	c.Endpoint = os.Getenv("QUKA_API_AI_ALI_ENDPOINT")
 }
 
 type Gemini struct {
@@ -299,6 +299,10 @@ func (s *AI) Rerank(ctx context.Context, query string, docs []*ai.RerankDoc) ([]
 	if d := s.rerankUsage["rerank"]; d != nil {
 		return d.Rerank(ctx, query, docs)
 	}
+
+	if s.rerankDefault == nil {
+		return nil, nil, errors.ERROR_UNSUPPORTED_FEATURE
+	}
 	return s.rerankDefault.Rerank(ctx, query, docs)
 }
 
@@ -349,10 +353,6 @@ func (s *AI) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 	return false
 }
 
-var (
-	ERROR_UNSUPPORTED_FEATURE = errors.New("Unsupported feature")
-)
-
 type ReaderProvider interface {
 	Match(endpoint string) bool
 	Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error)
@@ -381,7 +381,7 @@ func (s *AI) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, err
 	}
 
 	if s.readerDefault == nil {
-		return nil, ERROR_UNSUPPORTED_FEATURE
+		return nil, errors.ERROR_UNSUPPORTED_FEATURE
 	}
 	return s.readerDefault.Reader(ctx, endpoint)
 }
