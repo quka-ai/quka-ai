@@ -16,11 +16,17 @@ var (
 	HiddenRegexp = regexp.MustCompile(`\$hidden\[(.*?)\]`)
 )
 
-func ResolveHidden(text string, getValueFunc func(fakeValue string) string) (string, bool) {
+func ResolveHidden(text string, getValueFunc func(fakeValue string) string, trimVar bool) (string, bool) {
 	matches := HiddenRegexp.FindAllStringSubmatch(text, -1)
 	for _, match := range matches {
-		text = strings.Replace(text, match[0], getValueFunc(match[0]), 1)
+		actualValue := getValueFunc(match[0])
+		if trimVar {
+			actualValue = strings.TrimPrefix(actualValue, "$hidden[")
+			actualValue = strings.TrimSuffix(actualValue, "]")
+		}
+		text = strings.Replace(text, match[0], actualValue, 1)
 	}
+
 	return text, len(matches) > 0
 }
 

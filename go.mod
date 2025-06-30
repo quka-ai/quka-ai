@@ -32,7 +32,7 @@ require (
 	github.com/prometheus/client_golang v1.20.3
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/samber/lo v1.47.0
-	github.com/sashabaranov/go-openai v1.36.1
+	github.com/sashabaranov/go-openai v1.40.3
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c

@@ -168,6 +168,9 @@ func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext)
 	req := openai.ChatCompletionRequest{
 		Model:  s.model.ChatModel,
 		Stream: true,
+		ChatTemplateKwargs: map[string]any{
+			"enable_thinking": true,
+		},
 		Messages: lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 			return openai.ChatCompletionMessage{
 				Role:    item.Role.String(),

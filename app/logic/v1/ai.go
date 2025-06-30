@@ -254,14 +254,20 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 		return errors.New("requestAI.HandleAIStream", i18n.ERROR_INTERNAL, err)
 	}
 
+	var (
+		usage     openai.Usage
+		usedModel string
+		setModel  sync.Once
+	)
+	defer process.NewRecordChatUsageRequest(usedModel, types.USAGE_SUB_TYPE_CHAT, sessionContext.MessageID, &usage)
 	// 3. handle response
 	for {
 		select {
-		case <-ctx.Done():
+		case <-requestCtx.Done():
 			if done != nil {
-				done(ctx.Err())
+				done(requestCtx.Err())
 			}
-			return ctx.Err()
+			return requestCtx.Err()
 		case msg, ok := <-respChan:
 			if !ok {
 				return nil
@@ -272,6 +278,7 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 
 			if msg.Message != "" {
 				if err := receiveFunc(&types.TextMessage{Text: msg.Message}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
+					fmt.Println("receiveFunc error", err)
 					return errors.New("ChatGPTLogic.RequestChatGPT.for.respChan.receive", i18n.ERROR_INTERNAL, err)
 				}
 			}
@@ -288,8 +295,13 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 			}
 
 			if msg.Usage != nil {
-				process.NewRecordChatUsageRequest(msg.Model, types.USAGE_SUB_TYPE_CHAT, sessionContext.MessageID, msg.Usage)
-				return nil
+				setModel.Do(func() {
+					usedModel = msg.Model
+				})
+
+				usage.CompletionTokens += msg.Usage.CompletionTokens
+				usage.PromptTokens += msg.Usage.PromptTokens
+				usage.TotalTokens += msg.Usage.TotalTokens
 			}
 		}
 	}

@@ -60,7 +60,7 @@ var _ core.Plugins = (*SelfHostPlugin)(nil)
 
 func newSelfHostMode() *SelfHostPlugin {
 	return &SelfHostPlugin{
-		Appid:      "quka-selfhost",
+		Appid:      types.DEFAULT_APPID,
 		singleLock: NewSingleLock(),
 	}
 }

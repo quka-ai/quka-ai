@@ -189,7 +189,7 @@ func (s *ChatMessageStore) ListSessionMessageUpToGivenID(ctx context.Context, sp
 }
 
 func (s *ChatMessageStore) ListSessionMessage(ctx context.Context, spaceID, sessionID, msgID string, page, pageSize uint64) ([]*types.ChatMessage, error) {
-	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID}).OrderBy("send_time DESC, id DESC")
+	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID}).OrderBy("sequence DESC, send_time DESC")
 	if msgID != "" {
 		query = query.Where(sq.Gt{"id": msgID})
 	}

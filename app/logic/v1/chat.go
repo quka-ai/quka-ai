@@ -466,9 +466,13 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 
 	// update message ext rel docs
 	ext.RelDocs = relDocs
-	if err := core.Store().ChatMessageExtStore().Update(ctx, ext.MessageID, ext); err != nil {
-		slog.Error("Failed to update message ext", slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
-	}
+	func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+		defer cancel()
+		if err := core.Store().ChatMessageExtStore().Update(ctx, ext.MessageID, ext); err != nil {
+			slog.Error("Failed to update message ext", slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
+		}
+	}()
 
 	go func() {
 		time.Sleep(time.Second)

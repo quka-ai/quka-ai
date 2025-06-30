@@ -483,10 +483,10 @@ func (s *QueryOptions) QueryStream() (*openai.ChatCompletionStream, error) {
 }
 
 func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, marks map[string]string) (chan ResponseChoice, error) {
-	ctx, cancel := context.WithCancel(ctx)
 	respChan := make(chan ResponseChoice, 10)
 	ticker := time.NewTicker(time.Millisecond * 500)
 	go safe.Run(func() {
+		ctx, cancel := context.WithCancel(ctx)
 		defer func() {
 			close(respChan)
 			resp.Close()
@@ -503,6 +503,9 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 			maybeMarks  bool
 			machedMarks bool
 			needToMarks = len(marks) > 0
+
+			startThinking    = sync.Once{}
+			finishedThinking = sync.Once{}
 		)
 
 		flushResponse := func() {
@@ -577,8 +580,8 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 					}
 				}
 
-				if v.Delta.Content == "" {
-					break
+				if v.Delta.Content == "" && v.Delta.ReasoningContent == "" {
+					continue
 				}
 				if needToMarks {
 					if !maybeMarks {
@@ -593,14 +596,28 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 					}
 				}
 
-				strs.WriteString(v.Delta.Content)
+				if len(v.Delta.ReasoningContent) > 0 {
+					startThinking.Do(func() {
+						if strings.Contains(v.Delta.ReasoningContent, "\n") {
+							v.Delta.ReasoningContent = ""
+						}
+						strs.WriteString("<think>")
+					})
+					strs.WriteString(strings.ReplaceAll(v.Delta.ReasoningContent, "\n", "</br>"))
+				}
+
+				if len(v.Delta.Content) > 0 {
+					finishedThinking.Do(func() {
+						strs.WriteString("</think>")
+					})
+					strs.WriteString(v.Delta.Content)
+				}
+
 				if machedMarks && strings.Contains(v.Delta.Content, "]") {
 					text, replaced := mark.ResolveHidden(strs.String(), func(fakeValue string) string {
 						real := marks[fakeValue]
-						delete(marks, fakeValue)
-						needToMarks = len(marks) > 0
 						return real
-					})
+					}, true)
 					if replaced {
 						strs.Reset()
 						strs.WriteString(text)

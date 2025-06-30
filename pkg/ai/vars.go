@@ -12,11 +12,11 @@ const (
 	PROMPT_VAR_QUERY            = "${query}"
 )
 
-var CurrentSymbols = strings.Join([]string{"$hidden[]"}, ",")
+var CurrentSymbols = strings.Join([]string{"$hidden[xxxx]"}, ",")
 
 var (
-	SITE_TITLE       = "极核"
-	SITE_DESCRIPTION = "极核，快速构建个人第二大脑"
+	SITE_TITLE       = "Quka"
+	SITE_DESCRIPTION = "QukaAI，快速构建个人第二大脑"
 )
 
 func RegisterConstants(siteTitle, siteDescription string) {
@@ -30,4 +30,5 @@ $$
 {math}
 $$
 包住表示block。
+系统内置了脱敏语法"$hidden[xxxx]"，当你发现参考内容中出现了。
 `
