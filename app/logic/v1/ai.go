@@ -217,7 +217,7 @@ func handleAndNotifyAssistantFailed(core *core.Core, receiver types.Receiver, re
 }
 
 // requestAI
-func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionContext *SessionContext, marks map[string]string, receiveFunc types.ReceiveFunc, done types.DoneFunc) error {
+func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinking bool, sessionContext *SessionContext, marks map[string]string, receiveFunc types.ReceiveFunc, done types.DoneFunc) error {
 	// slog.Debug("request to ai", slog.Any("context", sessionContext.MessageContext), slog.String("prompt", sessionContext.Prompt))
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -244,7 +244,7 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, sessionConte
 		return receiveFunc(&types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
 	}
 
-	resp, err := tool.QueryStream()
+	resp, err := tool.QueryStream(enableThinking)
 	if err != nil {
 		return err
 	}
