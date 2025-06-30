@@ -65,7 +65,7 @@ func Test_Generate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
-	opts := d.NewQuery(ctx, []*types.MessageContext{
+	opts := d.NewQuery(ctx, "qwen-plus", []*types.MessageContext{
 		{
 			Role:    types.USER_ROLE_USER,
 			Content: "我的车现在停在哪里？",
@@ -181,7 +181,7 @@ pgvector/pgvector:pg16`
 
 func Test_DescribeImage(t *testing.T) {
 	d := new()
-	opts := d.NewQuery(context.Background(), []*types.MessageContext{
+	opts := d.NewQuery(context.Background(), "qwen-plus", []*types.MessageContext{
 		{
 			Role: types.USER_ROLE_USER,
 			MultiContent: []openai.ChatMessagePart{

@@ -101,8 +101,8 @@ func (s *Driver) EmbeddingForDocument(ctx context.Context, title string, content
 	return s.embedding(ctx, title, content)
 }
 
-func (s *Driver) NewQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	return ai.NewQueryOptions(ctx, s, query)
+func (s *Driver) NewQuery(ctx context.Context, model string, query []*types.MessageContext) *ai.QueryOptions {
+	return ai.NewQueryOptions(ctx, s, model, query)
 }
 
 func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
@@ -155,21 +155,7 @@ func (s *Driver) EnhanceQuery(ctx context.Context, messages []openai.ChatComplet
 	return result, nil
 }
 
-func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionStream, error) {
-
-	req := openai.ChatCompletionRequest{
-		Model:  s.model.ChatModel,
-		Stream: true,
-		Messages: lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
-			return openai.ChatCompletionMessage{
-				Role:    item.Role.String(),
-				Content: item.Content,
-			}
-		}),
-		StreamOptions: &openai.StreamOptions{
-			IncludeUsage: true,
-		},
-	}
+func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
 
 	resp, err := s.client.CreateChatCompletionStream(ctx, req)
 	if err != nil {

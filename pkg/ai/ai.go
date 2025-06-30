@@ -26,7 +26,7 @@ type ModelName struct {
 
 type Query interface {
 	Query(ctx context.Context, query []*types.MessageContext) (GenerateResponse, error)
-	QueryStream(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionStream, error)
+	QueryStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error)
 	Lang
 }
 
@@ -39,10 +39,11 @@ type Enhance interface {
 	Lang() string
 }
 
-func NewQueryOptions(ctx context.Context, driver Query, query []*types.MessageContext) *QueryOptions {
+func NewQueryOptions(ctx context.Context, driver Query, model string, query []*types.MessageContext) *QueryOptions {
 	return &QueryOptions{
 		ctx:     ctx,
 		_driver: driver,
+		model:   model,
 		query:   query,
 	}
 }
@@ -57,6 +58,7 @@ type QueryOptions struct {
 	prompt       string
 	docsSoltName string
 	vars         map[string]string
+	model        string
 }
 
 func (s *QueryOptions) WithPrompt(prompt string) *QueryOptions {
@@ -444,7 +446,7 @@ func (s *QueryOptions) Query() (GenerateResponse, error) {
 	return s._driver.Query(s.ctx, s.query)
 }
 
-func (s *QueryOptions) QueryStream() (*openai.ChatCompletionStream, error) {
+func (s *QueryOptions) QueryStream(enableThinking bool) (*openai.ChatCompletionStream, error) {
 	if s.prompt == "" {
 		switch s._driver.Lang() {
 		case MODEL_BASE_LANGUAGE_CN:
@@ -479,7 +481,24 @@ func (s *QueryOptions) QueryStream() (*openai.ChatCompletionStream, error) {
 		}
 	}
 
-	return s._driver.QueryStream(s.ctx, s.query)
+	req := openai.ChatCompletionRequest{
+		Model:  s.model,
+		Stream: true,
+		ChatTemplateKwargs: map[string]any{
+			"enable_thinking": enableThinking,
+		},
+		Messages: lo.Map(s.query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
+			return openai.ChatCompletionMessage{
+				Role:    item.Role.String(),
+				Content: item.Content,
+			}
+		}),
+		StreamOptions: &openai.StreamOptions{
+			IncludeUsage: true,
+		},
+	}
+
+	return s._driver.QueryStream(s.ctx, req)
 }
 
 func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, marks map[string]string) (chan ResponseChoice, error) {
@@ -591,8 +610,12 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 								flushResponse()
 							}
 						}
-					} else if !machedMarks && strs.Len() >= 8 && strings.Contains(strs.String(), "$hidden[") {
-						machedMarks = true
+					} else if !machedMarks && strs.Len() >= 8 {
+						if strings.Contains(strs.String(), "$hidden[") {
+							machedMarks = true
+						} else {
+							maybeMarks = false
+						}
 					}
 				}
 

@@ -61,7 +61,7 @@ func Test_Generate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
-	opts := d.NewQuery(ctx, []*types.MessageContext{
+	opts := d.NewQuery(ctx, "gpt-4o-mini", []*types.MessageContext{
 		{
 			Role:    types.USER_ROLE_USER,
 			Content: "我的车现在停在哪里？",

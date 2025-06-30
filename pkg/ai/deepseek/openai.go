@@ -73,34 +73,12 @@ func convertPassageToPrompt(docs []*types.PassageInfo) string {
 	return b.String()
 }
 
-func (s *Driver) NewQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	opts := ai.NewQueryOptions(ctx, s, query)
+func (s *Driver) NewQuery(ctx context.Context, model string, query []*types.MessageContext) *ai.QueryOptions {
+	opts := ai.NewQueryOptions(ctx, s, model, query)
 	return opts
 }
 
-func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionStream, error) {
-	messages := lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
-		return openai.ChatCompletionMessage{
-			Role:    item.Role.String(),
-			Content: item.Content,
-		}
-	})
-
-	req := openai.ChatCompletionRequest{
-		Model:    s.model.ChatModel,
-		Messages: messages,
-		Stream:   true,
-		StreamOptions: &openai.StreamOptions{
-			IncludeUsage: true,
-		},
-	}
-
-	for _, v := range query {
-		req.Messages = append(req.Messages, openai.ChatCompletionMessage{
-			Role:    v.Role.String(),
-			Content: v.Content,
-		})
-	}
+func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
 
 	resp, err := s.client.CreateChatCompletionStream(ctx, req)
 	if err != nil {
