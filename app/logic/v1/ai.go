@@ -228,6 +228,7 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinki
 		sessionContext.Prompt = core.Cfg().Prompt.Base
 	}
 	tool.WithPrompt(sessionContext.Prompt)
+	tool.EnableThinking(enableThinking)
 
 	if !isStream {
 		msg, err := tool.Query()
@@ -244,7 +245,7 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinki
 		return receiveFunc(&types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
 	}
 
-	resp, err := tool.QueryStream(enableThinking)
+	resp, err := tool.QueryStream()
 	if err != nil {
 		return err
 	}
@@ -435,19 +436,19 @@ func (s *QueryReceiveHandler) GetDoneFunc(callback func(receiveMsg *types.ChatMe
 // RequestAssistant 向智能助理发起请求
 // reqMsgInfo 用户请求的内容
 // recvMsgInfo 用于承载ai回复的内容，会预先在数据库中为ai响应的数据创建出对应的记录
-func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage, receiver types.Receiver) error {
+func (s *NormalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error {
 	space, err := s.core.Store().SpaceStore().GetSpace(ctx, reqMsg.SpaceID)
 	if err != nil {
 		return err
 	}
 
 	var prompt string
-	if len(docs.Refs) == 0 {
+	if len(aiCallOptions.Docs.Refs) == 0 {
 		prompt = lo.If(space.BasePrompt != "", space.BasePrompt).Else(s.core.Prompt().Base)
 	} else {
 		prompt = lo.If(space.ChatPrompt != "", space.ChatPrompt).Else(s.core.Prompt().Query)
 	}
-	prompt = ai.BuildRAGPrompt(prompt, ai.NewDocs(docs.Docs), s.core.Srv().AI())
+	prompt = ai.BuildRAGPrompt(prompt, ai.NewDocs(aiCallOptions.Docs.Docs), s.core.Srv().AI())
 
 	var (
 		sessionContext *SessionContext
@@ -493,9 +494,6 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
-	defer cancel()
-
 	receiveFunc := receiver.GetReceiveFunc()
 	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
 	doneFunc := receiver.GetDoneFunc(func(recvMsgInfo *types.ChatMessage) {
@@ -506,10 +504,10 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 		go safe.Run(func() {
 			switch s.agentType {
 			case types.AGENT_TYPE_NORMAL:
-				if len(docs.Refs) == 0 {
+				if len(aiCallOptions.Docs.Refs) == 0 {
 					return
 				}
-				if err := createChatSessionKnowledgePin(s.core, recvMsgInfo, &docs); err != nil {
+				if err := createChatSessionKnowledgePin(s.core, recvMsgInfo, aiCallOptions.Docs); err != nil {
 					slog.Error("Failed to create chat session knowledge pins", slog.String("session_id", recvMsgInfo.SessionID), slog.String("error", err.Error()))
 				}
 			default:
@@ -518,7 +516,7 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 	})
 
 	marks := make(map[string]string)
-	for _, v := range docs.Docs {
+	for _, v := range aiCallOptions.Docs.Docs {
 		if v.SW == nil {
 			continue
 		}
@@ -527,7 +525,7 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 		}
 	}
 
-	if err = requestAI(ctx, s.core, receiver.IsStream(), sessionContext, marks, receiveFunc, doneFunc); err != nil {
+	if err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, sessionContext, marks, receiveFunc, doneFunc); err != nil {
 		slog.Error("NormalAssistant: failed to request AI", slog.String("error", err.Error()))
 		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
@@ -567,7 +565,7 @@ func (s *ButlerAssistant) GenSessionContext(ctx context.Context, prompt string, 
 // RequestAssistant 向智能助理发起请求
 // reqMsgInfo 用户请求的内容
 // recvMsgInfo 用于承载ai回复的内容，会预先在数据库中为ai响应的数据创建出对应的记录
-func (s *ButlerAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage, receiver types.Receiver) error {
+func (s *ButlerAssistant) RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error {
 	nextReq, usages, err := s.client.Query(reqMsg.UserID, reqMsg)
 	if err != nil {
 		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
@@ -605,13 +603,13 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, docs types.RAGDo
 	// doneFunc := getStreamDoneFunc(ctx, s.core, recvMsgInfo, nil)
 
 	marks := make(map[string]string)
-	for _, v := range docs.Docs {
+	for _, v := range aiCallOptions.Docs.Docs {
 		for fake, real := range v.SW.Map() {
 			marks[fake] = real
 		}
 	}
 
-	if err = requestAI(ctx, s.core, receiver.IsStream(), chatSessionContext, marks, receiveFunc, doneFunc); err != nil {
+	if err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, chatSessionContext, marks, receiveFunc, doneFunc); err != nil {
 		slog.Error("failed to request AI", slog.String("error", err.Error()))
 		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
@@ -657,7 +655,7 @@ var (
 	maxRecursionDepth = 5 // 最大递归深度
 )
 
-func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsg *types.ChatMessage, receiver types.Receiver) error {
+func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error {
 	userChatMessage := openai.ChatCompletionMessage{
 		Role: types.USER_ROLE_USER.String(),
 	}
@@ -729,13 +727,13 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, docs types.RAGD
 	defer cancel()
 
 	marks := make(map[string]string)
-	for _, v := range docs.Docs {
+	for _, v := range aiCallOptions.Docs.Docs {
 		for fake, real := range v.SW.Map() {
 			marks[fake] = real
 		}
 	}
 
-	if err = requestAI(ctx, s.core, receiver.IsStream(), chatSessionContext, marks, actualReceiveFunc, doneFunc); err != nil {
+	if err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, chatSessionContext, marks, actualReceiveFunc, doneFunc); err != nil {
 		slog.Error("Journal: failed to request AI", slog.String("error", err.Error()))
 		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}

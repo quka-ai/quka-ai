@@ -21,6 +21,14 @@ var registeredAgents = map[string][]string{
 	AGENT_TYPE_NONE:    {},
 }
 
+type AICallOptions struct {
+	GenMode        RequestAssistantMode
+	Docs           *RAGDocs
+	GetDocsFunc    func() (RAGDocs, error)
+	Model          string
+	EnableThinking bool
+}
+
 func FilterAgent(userQuery string) string {
 	for agentType, keywords := range registeredAgents {
 		for _, keyword := range keywords {

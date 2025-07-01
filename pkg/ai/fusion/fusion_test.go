@@ -1,45 +1,46 @@
-package jina_test
+package fusion_test
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/quka-ai/quka-ai/pkg/ai"
-	"github.com/quka-ai/quka-ai/pkg/ai/jina"
+	"github.com/quka-ai/quka-ai/pkg/ai/fusion"
 )
 
-func init() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})))
-}
-
-func new() *jina.Driver {
-	return jina.New(os.Getenv("QUKA_API_AI_JINA_TOKEN"), map[string]string{
-		"rerank": "jina-reranker-v2-base-multilingual",
+func new() *fusion.Driver {
+	fmt.Println(os.Getenv("QUKA_API_AI_FUSION_TOKEN"), os.Getenv("QUKA_API_AI_FUSION_ENDPOINT"))
+	return fusion.New(os.Getenv("QUKA_API_AI_FUSION_TOKEN"), os.Getenv("QUKA_API_AI_FUSION_ENDPOINT"), ai.ModelName{
+		RerankModel: "Qwen/Qwen3-Reranker-8B",
 	})
 }
 
-func Test_Reader(t *testing.T) {
-	d := new()
-
-	resp, err := d.Reader(context.Background(), "https://brew.re")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(*resp)
-}
+// curl --request POST \
+//   --url https://api.siliconflow.cn/v1/rerank \
+//   --header 'Authorization: Bearer sk-obokodgetwpvzxkgkekezvivecbtejiixuwycwvijqsmzlvs' \
+//   --header 'Content-Type: application/json' \
+//   --data '{
+//   "model": "BAAI/bge-reranker-v2-m3",
+//   "query": "Apple",
+//   "documents": [
+//     "apple",
+//     "banana",
+//     "fruit",
+//     "vegetable"
+//   ]
+// }'
 
 func TestRerank(t *testing.T) {
 	d := new()
 
-	query := ""
-	docs := []*ai.RerankDoc{{
-		ID:      "1",
-		Content: "Organic skincare for sensitive skin with aloe vera and chamomile: Imagine the soothing embrace of nature with our organic skincare range, crafted specifically for sensitive skin. Infused with the calming properties of aloe vera and chamomile, each product provides gentle nourishment and protection. Say goodbye to irritation and hello to a glowing, healthy complexion.",
-	},
+	query := "新的化妆趋势是什么"
+	docs := []*ai.RerankDoc{
+		{
+			ID:      "1",
+			Content: "Organic skincare for sensitive skin with aloe vera and chamomile: Imagine the soothing embrace of nature with our organic skincare range, crafted specifically for sensitive skin. Infused with the calming properties of aloe vera and chamomile, each product provides gentle nourishment and protection. Say goodbye to irritation and hello to a glowing, healthy complexion.",
+		},
 		{
 			ID:      "2",
 			Content: "Bio-Hautpflege für empfindliche Haut mit Aloe Vera und Kamille: Erleben Sie die wohltuende Wirkung unserer Bio-Hautpflege, speziell für empfindliche Haut entwickelt. Mit den beruhigenden Eigenschaften von Aloe Vera und Kamille pflegen und schützen unsere Produkte Ihre Haut auf natürliche Weise. Verabschieden Sie sich von Hautirritationen und genießen Sie einen strahlenden Teint.",

@@ -96,7 +96,7 @@ type Security struct {
 }
 
 func (c *CoreConfig) FromENV() {
-	c.Addr = os.Getenv("BREW_API_SERVICE_ADDRESS")
+	c.Addr = os.Getenv("QUKA_API_SERVICE_ADDRESS")
 	c.Log.FromENV()
 	c.Postgres.FromENV()
 	c.AI.FromENV()
@@ -107,7 +107,7 @@ type PGConfig struct {
 }
 
 func (m *PGConfig) FromENV() {
-	m.DSN = os.Getenv("BREW_API_POSTGRESQL_DSN")
+	m.DSN = os.Getenv("QUKA_API_POSTGRESQL_DSN")
 }
 
 func (c PGConfig) FormatDSN() string {
@@ -120,8 +120,8 @@ type Log struct {
 }
 
 func (l *Log) FromENV() {
-	l.Level = os.Getenv("BREW_API_LOG_LEVEL")
-	l.Path = os.Getenv("BREW_API_LOG_PATH")
+	l.Level = os.Getenv("QUKA_API_LOG_LEVEL")
+	l.Path = os.Getenv("QUKA_API_LOG_PATH")
 }
 
 func (l *Log) SlogLevel() slog.Level {

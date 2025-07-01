@@ -488,12 +488,20 @@ func (l *KnowledgeLogic) Query(spaceID, agent string, resource *types.ResourceQu
 	// check agents call
 	switch containsAgent {
 	case types.AGENT_TYPE_BUTLER:
-		err = ButlerHandle(l.core, receiver, msgArgs)
+		err = ButlerHandle(l.core, receiver, msgArgs, &types.AICallOptions{
+			GenMode:        types.GEN_MODE_NORMAL,
+			GetDocsFunc:    nil,
+			EnableThinking: false,
+		})
 		if err != nil {
 			slog.Error("Failed to handle butler message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 		}
 	case types.AGENT_TYPE_JOURNAL:
-		err = JournalHandle(l.core, receiver, msgArgs)
+		err = JournalHandle(l.core, receiver, msgArgs, &types.AICallOptions{
+			GenMode:        types.GEN_MODE_NORMAL,
+			GetDocsFunc:    nil,
+			EnableThinking: false,
+		})
 		if err != nil {
 			slog.Error("Failed to handle journal message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 		}
@@ -514,12 +522,20 @@ func (l *KnowledgeLogic) Query(spaceID, agent string, resource *types.ResourceQu
 		} else {
 			result.Refs = docs.Refs
 
-			if err = RAGHandle(l.core, receiver, msgArgs, docs, types.GEN_MODE_NORMAL); err != nil {
+			if err = RAGHandle(l.core, receiver, msgArgs, &types.AICallOptions{
+				GenMode:        types.GEN_MODE_NORMAL,
+				Docs:           &docs,
+				EnableThinking: false,
+			}); err != nil {
 				slog.Error("Failed to handle rag message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 			}
 		}
 	default:
-		err = ChatHandle(l.core, receiver, msgArgs, types.GEN_MODE_NORMAL)
+		err = ChatHandle(l.core, receiver, msgArgs, &types.AICallOptions{
+			GenMode:        types.GEN_MODE_NORMAL,
+			GetDocsFunc:    nil,
+			EnableThinking: false,
+		})
 		if err != nil {
 			slog.Error("Failed to handle message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 		}

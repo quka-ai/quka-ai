@@ -10,7 +10,7 @@ import (
 
 func TestSetupConfigFromEnv(t *testing.T) {
 	addr := "localhost:11111"
-	os.Setenv("BREW_API_SERVICE_ADDRESS", addr)
+	os.Setenv("QUKA_API_SERVICE_ADDRESS", addr)
 
 	cfg := LoadBaseConfigFromENV()
 

@@ -1,11 +1,15 @@
-package openai
+package fusion
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/samber/lo"
 	openai "github.com/sashabaranov/go-openai"
@@ -16,28 +20,30 @@ import (
 )
 
 const (
-	NAME = "openai"
+	NAME = "fusion"
 )
 
 type Driver struct {
-	client *openai.Client
-	model  ai.ModelName
+	client     *openai.Client
+	httpClient *http.Client
+	endpoint   string
+	model      ai.ModelName
+	token      string
 }
 
-func NewClient(token, proxy string) *openai.Client {
+func NewClient(token, endpoint string) *openai.Client {
 	cfg := openai.DefaultConfig(token)
-	if proxy != "" {
-		cfg.BaseURL = proxy
+
+	if endpoint != "" {
+		cfg.BaseURL = endpoint
 	}
 
 	return openai.NewClientWithConfig(cfg)
 }
 
-func New(token, proxy string, model ai.ModelName) *Driver {
+func New(token, endpoint string, model ai.ModelName) *Driver {
+	fmt.Println("New", token, endpoint, model)
 	cfg := openai.DefaultConfig(token)
-	if proxy != "" {
-		cfg.BaseURL = proxy
-	}
 
 	if model.ChatModel == "" {
 		model.ChatModel = openai.GPT4oMini
@@ -45,10 +51,18 @@ func New(token, proxy string, model ai.ModelName) *Driver {
 	if model.EmbeddingModel == "" {
 		model.EmbeddingModel = string(openai.LargeEmbedding3)
 	}
+	if endpoint != "" {
+		cfg.BaseURL = endpoint
+	}
 
 	return &Driver{
-		client: openai.NewClientWithConfig(cfg),
-		model:  model,
+		client:   openai.NewClientWithConfig(cfg),
+		model:    model,
+		endpoint: endpoint,
+		token:    token,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -101,6 +115,12 @@ func (s *Driver) embedding(ctx context.Context, title string, content []string) 
 	return r, nil
 }
 
+func (s *Driver) applyBaseHeader(req *http.Request) {
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Authorization", "Bearer "+s.token)
+}
+
 func (s *Driver) EmbeddingForQuery(ctx context.Context, content []string) (ai.EmbeddingResult, error) {
 	return s.embedding(ctx, "", content)
 }
@@ -109,8 +129,8 @@ func (s *Driver) EmbeddingForDocument(ctx context.Context, title string, content
 	return s.embedding(ctx, title, content)
 }
 
-func (s *Driver) NewQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	return ai.NewQueryOptions(ctx, s, s.model.ChatModel, query)
+func (s *Driver) NewQuery(ctx context.Context, model string, query []*types.MessageContext) *ai.QueryOptions {
+	return ai.NewQueryOptions(ctx, s, model, query)
 }
 
 func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
@@ -368,4 +388,80 @@ func (s *Driver) Chunk(ctx context.Context, doc *string) (ai.ChunkResult, error)
 
 	result.Usage = &resp.Usage
 	return result, nil
+}
+
+type RerankResponse struct {
+	Model string `json:"model"`
+	Usage struct {
+		TotalTokens int `json:"total_tokens"`
+	} `json:"usage"`
+	Results []RerankResponseItem `json:"results"`
+}
+
+type RerankResponseItem struct {
+	Index    int `json:"index"`
+	Document struct {
+		Text string `json:"text"`
+	} `json:"document"`
+	RelevanceScore float64 `json:"relevance_score"`
+}
+
+type RerankRequestBody struct {
+	Model     string   `json:"model"`
+	Query     string   `json:"query"`
+	TopN      int      `json:"top_n"`
+	Documents []string `json:"documents"`
+}
+
+func (s *Driver) Rerank(ctx context.Context, query string, docs []*ai.RerankDoc) ([]ai.RankDocItem, *ai.Usage, error) {
+	slog.Debug("Rerank", slog.String("driver", NAME))
+	model := s.model.RerankModel
+	request := RerankRequestBody{
+		Model: model,
+		Query: query,
+		TopN:  len(docs),
+		Documents: lo.Map(docs, func(item *ai.RerankDoc, _ int) string {
+			return item.Content
+		}),
+	}
+
+	raw, _ := json.Marshal(request)
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint+"/rerank", bytes.NewReader(raw))
+	s.applyBaseHeader(req)
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Failed to request fusion reader: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("Failed to request rerank api, %s", string(body))
+	}
+
+	var result RerankResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, nil, err
+	}
+
+	var rank []ai.RankDocItem
+
+	for _, v := range result.Results {
+		item := docs[v.Index]
+		rank = append(rank, ai.RankDocItem{
+			ID:    item.ID,
+			Score: v.RelevanceScore,
+		})
+	}
+
+	return rank, &ai.Usage{
+		Model: model,
+		Usage: &openai.Usage{
+			PromptTokens: result.Usage.TotalTokens,
+		},
+	}, nil
 }

@@ -2,6 +2,7 @@ package srv
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/ai/azure_openai"
 	"github.com/quka-ai/quka-ai/pkg/ai/deepseek"
+	"github.com/quka-ai/quka-ai/pkg/ai/fusion"
 	"github.com/quka-ai/quka-ai/pkg/ai/jina"
 	"github.com/quka-ai/quka-ai/pkg/ai/ollama"
 	"github.com/quka-ai/quka-ai/pkg/ai/openai"
@@ -59,6 +61,7 @@ type AIDriver interface {
 }
 
 type AIConfig struct {
+	Fusion   FusionAI    `toml:"fusion"`
 	Gemini   Gemini      `toml:"gemini"`
 	Openai   Openai      `toml:"openai"`
 	QWen     QWen        `toml:"qwen"`
@@ -84,9 +87,23 @@ type AgentDriver struct {
 	VlModel  string `toml:"vl_model"`
 }
 
+type FusionAI struct {
+	Token    string       `toml:"token"`
+	Endpoint string       `toml:"endpoint"`
+	Model    ai.ModelName `toml:"models"`
+}
+
+func (cfg *FusionAI) Install(root *AI) {
+	var oai any
+	oai = fusion.New(cfg.Token, cfg.Endpoint, cfg.Model)
+
+	installAI(root, strings.ToLower(fusion.NAME), oai)
+}
+
 type Jina struct {
 	Token          string            `toml:"token"`
 	ReaderEndpoint string            `toml:"reader_endpoint"`
+	RerankEndpoint string            `toml:"rerank_endpoint"`
 	ApiEndpoint    string            `toml:"api_endpoint"`
 	Models         map[string]string `toml:"models"`
 }
@@ -99,18 +116,18 @@ func (cfg *Jina) Install(root *AI) {
 }
 
 func (c *Jina) FromENV() {
-	c.Token = os.Getenv("BREW_API_AI_JINA_TOKEN")
-	c.ReaderEndpoint = os.Getenv("BREW_API_AI_JINA_READER_ENDPOINT")
+	c.Token = os.Getenv("QUKA_API_AI_JINA_TOKEN")
+	c.ReaderEndpoint = os.Getenv("QUKA_API_AI_JINA_READER_ENDPOINT")
 }
 
 func (c *AIConfig) FromENV() {
 	c.Usage = make(map[string]string)
-	c.Usage["embedding.query"] = os.Getenv("BREW_API_AI_USAGE_E_QUERY")
-	c.Usage["embedding.document"] = os.Getenv("BREW_API_AI_USAGE_E_DOCUMENT")
-	c.Usage["query"] = os.Getenv("BREW_API_AI_USAGE_QUERY")
-	c.Usage["summarize"] = os.Getenv("BREW_API_AI_USAGE_SUMMARIZE")
-	c.Usage["enhance_query"] = os.Getenv("BREW_API_AI_USAGE_ENHANCE_QUERY")
-	c.Usage["reader"] = os.Getenv("BREW_API_AI_USAGE_READER")
+	c.Usage["embedding.query"] = os.Getenv("QUKA_API_AI_USAGE_E_QUERY")
+	c.Usage["embedding.document"] = os.Getenv("QUKA_API_AI_USAGE_E_DOCUMENT")
+	c.Usage["query"] = os.Getenv("QUKA_API_AI_USAGE_QUERY")
+	c.Usage["summarize"] = os.Getenv("QUKA_API_AI_USAGE_SUMMARIZE")
+	c.Usage["enhance_query"] = os.Getenv("QUKA_API_AI_USAGE_ENHANCE_QUERY")
+	c.Usage["reader"] = os.Getenv("QUKA_API_AI_USAGE_READER")
 
 	c.Gemini.FromENV()
 	c.Openai.FromENV()
@@ -121,22 +138,22 @@ func (c *AIConfig) FromENV() {
 }
 
 func (c *DeepSeek) FromENV() {
-	c.Token = os.Getenv("BREW_API_AI_DEEPSEEK_TOKEN")
-	c.Endpoint = os.Getenv("BREW_API_AI_DEEPSEEK_ENDPOINT")
+	c.Token = os.Getenv("QUKA_API_AI_DEEPSEEK_TOKEN")
+	c.Endpoint = os.Getenv("QUKA_API_AI_DEEPSEEK_ENDPOINT")
 }
 
 func (c *Gemini) FromENV() {
-	c.Token = os.Getenv("BREW_API_AI_GEMINI_TOKEN")
+	c.Token = os.Getenv("QUKA_API_AI_GEMINI_TOKEN")
 }
 
 func (c *Openai) FromENV() {
-	c.Token = os.Getenv("BREW_API_AI_OPENAI_TOKEN")
-	c.Endpoint = os.Getenv("BREW_API_AI_OPENAI_ENDPOINT")
+	c.Token = os.Getenv("QUKA_API_AI_OPENAI_TOKEN")
+	c.Endpoint = os.Getenv("QUKA_API_AI_OPENAI_ENDPOINT")
 }
 
 func (c *AzureOpenai) FromENV() {
-	c.Token = os.Getenv("BREW_API_AI_AZURE_OPENAI_TOKEN")
-	c.Endpoint = os.Getenv("BREW_API_AI_AZURE_OPENAI_ENDPOINT")
+	c.Token = os.Getenv("QUKA_API_AI_AZURE_OPENAI_TOKEN")
+	c.Endpoint = os.Getenv("QUKA_API_AI_AZURE_OPENAI_ENDPOINT")
 }
 
 func (c *QWen) FromENV() {
@@ -432,6 +449,7 @@ func SetupAI(cfg AIConfig) (*AI, error) {
 	cfg.Azure.Install(a)
 	cfg.QWen.Install(a)
 	cfg.Jina.Install(a)
+	cfg.Fusion.Install(a)
 	cfg.DeepSeek.Install(a)
 	cfg.Ollama.Install(a)
 	// TODO: Gemini install
@@ -485,6 +503,7 @@ func SetupAI(cfg AIConfig) (*AI, error) {
 	}
 
 	if a.chatDefault == nil || a.embedDefault == nil {
+		fmt.Println("chat", a.chatDefault, "embedding", a.embedDefault)
 		panic("AI driver of chat and embedding must be set")
 	}
 

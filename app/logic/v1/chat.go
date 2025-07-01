@@ -195,13 +195,21 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 	switch containsAgent {
 	case types.AGENT_TYPE_BUTLER:
 		go safe.Run(func() {
-			if err := ButlerSessionHandle(l.core, receiver, msg); err != nil {
+			if err := ButlerSessionHandle(l.core, receiver, msg, &types.AICallOptions{
+				GenMode:        types.GEN_MODE_NORMAL,
+				GetDocsFunc:    nil,
+				EnableThinking: msgArgs.EnableThinking,
+			}); err != nil {
 				slog.Error("Failed to handle butler message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
 		})
 	case types.AGENT_TYPE_JOURNAL:
 		go safe.Run(func() {
-			if err := JournalSessionHandle(l.core, receiver, msg); err != nil {
+			if err := JournalSessionHandle(l.core, receiver, msg, &types.AICallOptions{
+				GenMode:        types.GEN_MODE_NORMAL,
+				GetDocsFunc:    nil,
+				EnableThinking: msgArgs.EnableThinking,
+			}); err != nil {
 				slog.Error("Failed to handle journal message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
 		})
@@ -231,14 +239,22 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 				return docs, nil
 			}
 
-			if err := RAGSessionHandle(l.core, receiver, msg, getDocsFunc, types.GEN_MODE_NORMAL); err != nil {
+			if err := RAGSessionHandle(l.core, receiver, msg, getDocsFunc, &types.AICallOptions{
+				GenMode:        types.GEN_MODE_NORMAL,
+				GetDocsFunc:    getDocsFunc,
+				EnableThinking: msgArgs.EnableThinking,
+			}); err != nil {
 				slog.Error("Failed to handle rag message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
 		})
 	default:
 		// else rag handler
 		go safe.Run(func() {
-			if err := ChatSessionHandle(l.core, receiver, msg, types.GEN_MODE_NORMAL); err != nil {
+			if err := ChatSessionHandle(l.core, receiver, msg, &types.AICallOptions{
+				GenMode:        types.GEN_MODE_NORMAL,
+				GetDocsFunc:    nil,
+				EnableThinking: msgArgs.EnableThinking,
+			}); err != nil {
 				slog.Error("Failed to handle message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
 		})
@@ -302,18 +318,17 @@ func SupplementSessionChatDocs(core *core.Core, chatSession *types.ChatSession, 
 	}
 }
 
-func JournalHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage) error {
+func JournalHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_JOURNAL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
 	return logic.RequestAssistant(ctx,
-		types.RAGDocs{},
-		userMessage, receiver)
+		userMessage, receiver, aiCallOptions)
 }
 
-func JournalSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage) error {
+func JournalSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_JOURNAL)
 
 	ext := types.ChatMessageExt{
@@ -349,22 +364,20 @@ func JournalSessionHandle(core *core.Core, receiver types.Receiver, userMessage 
 	defer removeSignalFunc()
 
 	return logic.RequestAssistant(reqCtx,
-		types.RAGDocs{},
-		userMessage, receiver)
+		userMessage, receiver, aiCallOptions)
 }
 
-func ButlerHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage) error {
+func ButlerHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_BUTLER)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
 	return logic.RequestAssistant(ctx,
-		types.RAGDocs{},
-		userMessage, receiver)
+		userMessage, receiver, aiCallOptions)
 }
 
-func ButlerSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage) error {
+func ButlerSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_BUTLER)
 
 	ext := types.ChatMessageExt{
@@ -400,22 +413,20 @@ func ButlerSessionHandle(core *core.Core, receiver types.Receiver, userMessage *
 	defer removeSignalFunc()
 
 	return logic.RequestAssistant(reqCtx,
-		types.RAGDocs{},
-		userMessage, receiver)
+		userMessage, receiver, aiCallOptions)
 }
 
-func RAGHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, docs types.RAGDocs, genMode types.RequestAssistantMode) error {
+func RAGHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	return logic.RequestAssistant(ctx,
-		docs,
-		userMessage, receiver)
+		userMessage, receiver, aiCallOptions)
 }
 
 // genMode new request or re-request
-func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, getDocsFunc func() (types.RAGDocs, error), genMode types.RequestAssistantMode) error {
+func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, getDocsFunc func() (types.RAGDocs, error), aiCallOptions *types.AICallOptions) error {
 
 	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
 
@@ -457,6 +468,7 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 		return err
 	}
 
+	aiCallOptions.Docs = &docs
 	var relDocs []string
 	if len(docs.Docs) > 0 {
 		relDocs = lo.Map(docs.Docs, func(item *types.PassageInfo, _ int) string {
@@ -497,22 +509,20 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 	defer removeSignalFunc()
 
 	return logic.RequestAssistant(reqCtx,
-		docs,
-		userMessage, receiver)
+		userMessage, receiver, aiCallOptions)
 }
 
-func ChatHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, genMode types.RequestAssistantMode) error {
+func ChatHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	return logic.RequestAssistant(ctx,
-		types.RAGDocs{},
-		userMessage, receiver)
+		userMessage, receiver, aiCallOptions)
 }
 
 // genMode new request or re-request
-func ChatSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, genMode types.RequestAssistantMode) error {
+func ChatSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
 
 	ext := types.ChatMessageExt{
@@ -550,8 +560,7 @@ func ChatSessionHandle(core *core.Core, receiver types.Receiver, userMessage *ty
 	defer removeSignalFunc()
 
 	return logic.RequestAssistant(reqCtx,
-		types.RAGDocs{},
-		userMessage, receiver)
+		userMessage, receiver, aiCallOptions)
 }
 
 func chatMsgToTextMsg(msg *types.ChatMessage) *types.MessageMeta {

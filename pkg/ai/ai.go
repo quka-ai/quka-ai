@@ -20,8 +20,9 @@ import (
 )
 
 type ModelName struct {
-	ChatModel      string
-	EmbeddingModel string
+	ChatModel      string `toml:"chat_model"`
+	EmbeddingModel string `toml:"embedding_model"`
+	RerankModel    string `toml:"rerank_model"`
 }
 
 type Query interface {
@@ -51,14 +52,20 @@ func NewQueryOptions(ctx context.Context, driver Query, model string, query []*t
 type OptionFunc func(opts *QueryOptions)
 
 type QueryOptions struct {
-	ctx          context.Context
-	_driver      Query
-	query        []*types.MessageContext
-	docs         []*types.PassageInfo
-	prompt       string
-	docsSoltName string
-	vars         map[string]string
-	model        string
+	ctx            context.Context
+	_driver        Query
+	query          []*types.MessageContext
+	docs           []*types.PassageInfo
+	prompt         string
+	docsSoltName   string
+	vars           map[string]string
+	model          string
+	enableThinking bool
+}
+
+func (s *QueryOptions) EnableThinking(enable bool) *QueryOptions {
+	s.enableThinking = enable
+	return s
 }
 
 func (s *QueryOptions) WithPrompt(prompt string) *QueryOptions {
@@ -446,7 +453,7 @@ func (s *QueryOptions) Query() (GenerateResponse, error) {
 	return s._driver.Query(s.ctx, s.query)
 }
 
-func (s *QueryOptions) QueryStream(enableThinking bool) (*openai.ChatCompletionStream, error) {
+func (s *QueryOptions) QueryStream() (*openai.ChatCompletionStream, error) {
 	if s.prompt == "" {
 		switch s._driver.Lang() {
 		case MODEL_BASE_LANGUAGE_CN:
@@ -485,7 +492,7 @@ func (s *QueryOptions) QueryStream(enableThinking bool) (*openai.ChatCompletionS
 		Model:  s.model,
 		Stream: true,
 		ChatTemplateKwargs: map[string]any{
-			"enable_thinking": enableThinking,
+			"enable_thinking": s.enableThinking,
 		},
 		Messages: lo.Map(s.query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 			return openai.ChatCompletionMessage{
@@ -524,6 +531,7 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 			needToMarks = len(marks) > 0
 
 			startThinking    = sync.Once{}
+			hasThinking      = false
 			finishedThinking = sync.Once{}
 		)
 
@@ -610,7 +618,7 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 								flushResponse()
 							}
 						}
-					} else if !machedMarks && strs.Len() >= 8 {
+					} else if maybeMarks && strs.Len() >= 10 {
 						if strings.Contains(strs.String(), "$hidden[") {
 							machedMarks = true
 						} else {
@@ -621,6 +629,7 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 
 				if len(v.Delta.ReasoningContent) > 0 {
 					startThinking.Do(func() {
+						hasThinking = true
 						if strings.Contains(v.Delta.ReasoningContent, "\n") {
 							v.Delta.ReasoningContent = ""
 						}
@@ -631,6 +640,9 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 
 				if len(v.Delta.Content) > 0 {
 					finishedThinking.Do(func() {
+						if !hasThinking {
+							return
+						}
 						strs.WriteString("</think>")
 					})
 					strs.WriteString(v.Delta.Content)
@@ -640,7 +652,7 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 					text, replaced := mark.ResolveHidden(strs.String(), func(fakeValue string) string {
 						real := marks[fakeValue]
 						return real
-					}, true)
+					}, false)
 					if replaced {
 						strs.Reset()
 						strs.WriteString(text)

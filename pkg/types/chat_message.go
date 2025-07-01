@@ -90,12 +90,13 @@ type Undo interface {
 }
 
 type CreateChatMessageArgs struct {
-	ID         string
-	Message    string
-	MsgType    MessageType
-	SendTime   int64
-	Agent      string
-	ChatAttach []ChatAttach
+	ID             string
+	Message        string
+	MsgType        MessageType
+	SendTime       int64
+	Agent          string
+	ChatAttach     []ChatAttach
+	EnableThinking bool
 }
 
 type ChatAttach struct {
