@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/quka-ai/quka-ai/app/core"
@@ -131,9 +132,17 @@ func (l *ChatSessionLogic) NamedSession(sessionID, firstQuery string) (NamedSess
 	}
 
 	spaceID, _ := InjectSpaceID(l.ctx)
-	process.NewRecordSessionUsageRequest(resp.Model, types.USAGE_SUB_TYPE_NAMED_CHAT, spaceID, sessionID, resp.Usage)
+	process.NewRecordSessionUsageRequest(resp.Model, types.USAGE_SUB_TYPE_NAMED_CHAT, spaceID, sessionID, &resp.Usage)
 
-	title := resp.Message()
+	var titleBuilder strings.Builder
+	for _, choice := range resp.Choices {
+		if choice.Message.Content != "" {
+			titleBuilder.WriteString(choice.Message.Content)
+			break
+		}
+	}
+
+	title := titleBuilder.String()
 	if len([]rune(title)) > 30 {
 		title = string([]rune(title)[:30])
 	}

@@ -97,6 +97,7 @@ type CreateChatMessageArgs struct {
 	Agent          string
 	ChatAttach     []ChatAttach
 	EnableThinking bool
+	EnableSearch   bool
 }
 
 type ChatAttach struct {

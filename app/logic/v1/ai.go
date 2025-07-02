@@ -20,6 +20,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/butler"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/journal"
+	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/safe"
@@ -217,7 +218,7 @@ func handleAndNotifyAssistantFailed(core *core.Core, receiver types.Receiver, re
 }
 
 // requestAI
-func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinking bool, sessionContext *SessionContext, marks map[string]string, receiveFunc types.ReceiveFunc, done types.DoneFunc) error {
+func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinking bool, sessionContext *SessionContext, marks map[string]string, receiveFunc types.ReceiveFunc, done types.DoneFunc) ([]*openai.ToolCall, error) {
 	// slog.Debug("request to ai", slog.Any("context", sessionContext.MessageContext), slog.String("prompt", sessionContext.Prompt))
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -233,26 +234,29 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinki
 	if !isStream {
 		msg, err := tool.Query()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		if msg.Usage != nil {
-			process.NewRecordChatUsageRequest(msg.Model, types.USAGE_SUB_TYPE_CHAT, sessionContext.MessageID, msg.Usage)
+		process.NewRecordChatUsageRequest(msg.Model, types.USAGE_SUB_TYPE_CHAT, sessionContext.MessageID, &msg.Usage)
+
+		var contentBuilder strings.Builder
+		for _, choice := range msg.Choices {
+			contentBuilder.WriteString(choice.Message.Content)
 		}
-		content := msg.Message()
+		content := contentBuilder.String()
 
 		defer done(nil)
-		return receiveFunc(&types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
+		return nil, receiveFunc(&types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
 	}
 
 	resp, err := tool.QueryStream()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	respChan, err := ai.HandleAIStream(requestCtx, resp, marks)
 	if err != nil {
-		return errors.New("requestAI.HandleAIStream", i18n.ERROR_INTERNAL, err)
+		return nil, errors.New("requestAI.HandleAIStream", i18n.ERROR_INTERNAL, err)
 	}
 
 	var (
@@ -268,19 +272,19 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinki
 			if done != nil {
 				done(requestCtx.Err())
 			}
-			return requestCtx.Err()
+			return nil, requestCtx.Err()
 		case msg, ok := <-respChan:
 			if !ok {
-				return nil
+				return nil, nil
 			}
 			if msg.Error != nil {
-				return err
+				return nil, err
 			}
 
 			if msg.Message != "" {
 				if err := receiveFunc(&types.TextMessage{Text: msg.Message}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
 					fmt.Println("receiveFunc error", err)
-					return errors.New("ChatGPTLogic.RequestChatGPT.for.respChan.receive", i18n.ERROR_INTERNAL, err)
+					return nil, errors.New("ChatGPTLogic.RequestChatGPT.for.respChan.receive", i18n.ERROR_INTERNAL, err)
 				}
 			}
 
@@ -291,7 +295,7 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinki
 				}
 				if msg.FinishReason != "" && msg.FinishReason != "stop" {
 					slog.Error("AI srv unexpected exit", slog.String("error", msg.FinishReason), slog.String("id", msg.ID))
-					return errors.New("requestAI.Srv.AI.Query", i18n.ERROR_INTERNAL, fmt.Errorf("%s", msg.FinishReason))
+					return nil, errors.New("requestAI.Srv.AI.Query", i18n.ERROR_INTERNAL, fmt.Errorf("%s", msg.FinishReason))
 				}
 			}
 
@@ -303,6 +307,117 @@ func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinki
 				usage.CompletionTokens += msg.Usage.CompletionTokens
 				usage.PromptTokens += msg.Usage.PromptTokens
 				usage.TotalTokens += msg.Usage.TotalTokens
+			}
+
+			if msg.DeepContinue != nil {
+				return msg.DeepContinue, nil
+			}
+		}
+	}
+}
+
+type AIRequestOptions struct {
+	IsStream       bool
+	EnableThinking bool
+	SessionContext *SessionContext
+	Marks          map[string]string
+	Tools          []openai.Tool
+}
+
+func requestAIWithTools(ctx context.Context, core *core.Core, opts AIRequestOptions, receiveFunc types.ReceiveFunc, done types.DoneFunc) ([]*openai.ToolCall, error) {
+	// slog.Debug("request to ai", slog.Any("context", sessionContext.MessageContext), slog.String("prompt", sessionContext.Prompt))
+	tool := core.Srv().AI().NewQuery(ctx, opts.SessionContext.MessageContext)
+
+	if opts.SessionContext.Prompt == "" {
+		opts.SessionContext.Prompt = core.Cfg().Prompt.Base
+	}
+	tool.WithPrompt(opts.SessionContext.Prompt)
+	tool.EnableThinking(opts.EnableThinking)
+	tool.WithTools(opts.Tools)
+
+	if !opts.IsStream {
+		msg, err := tool.Query()
+		if err != nil {
+			return nil, err
+		}
+
+		process.NewRecordChatUsageRequest(msg.Model, types.USAGE_SUB_TYPE_CHAT, opts.SessionContext.MessageID, &msg.Usage)
+
+		var contentBuilder strings.Builder
+		for _, choice := range msg.Choices {
+			contentBuilder.WriteString(choice.Message.Content)
+		}
+		content := contentBuilder.String()
+
+		defer done(nil)
+		return nil, receiveFunc(&types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
+	}
+
+	resp, err := tool.QueryStream()
+	if err != nil {
+		return nil, err
+	}
+
+	respChan, err := ai.HandleAIStream(ctx, resp, opts.Marks)
+	if err != nil {
+		return nil, errors.New("requestAI.HandleAIStream", i18n.ERROR_INTERNAL, err)
+	}
+
+	var (
+		usage     openai.Usage
+		usedModel string
+		setModel  sync.Once
+	)
+	defer process.NewRecordChatUsageRequest(usedModel, types.USAGE_SUB_TYPE_CHAT, opts.SessionContext.MessageID, &usage)
+	// 3. handle response
+	for {
+		select {
+		case <-ctx.Done():
+			if done != nil {
+				done(ctx.Err())
+			}
+			return nil, ctx.Err()
+		case msg, ok := <-respChan:
+			if !ok {
+				return nil, nil
+			}
+			if msg.Error != nil {
+				return nil, err
+			}
+
+			raw, _ := json.Marshal(msg)
+			fmt.Println("msg", string(raw))
+
+			if msg.Message != "" {
+				if err := receiveFunc(&types.TextMessage{Text: msg.Message}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
+					fmt.Println("receiveFunc error", err)
+					return nil, errors.New("ChatGPTLogic.RequestChatGPT.for.respChan.receive", i18n.ERROR_INTERNAL, err)
+				}
+			}
+
+			// slog.Debug("got ai response", slog.Any("msg", msg), slog.Bool("status", ok))
+			if msg.FinishReason != "" {
+				if err = done(nil); err != nil {
+					slog.Error("Failed to set message done", slog.String("error", err.Error()), slog.String("msg_id", msg.ID))
+				}
+				if msg.FinishReason != "" && msg.FinishReason != "stop" && msg.FinishReason != "tool_calls" {
+					slog.Error("AI srv unexpected exit", slog.String("error", msg.FinishReason), slog.String("id", msg.ID))
+					return nil, errors.New("requestAI.Srv.AI.Query", i18n.ERROR_INTERNAL, fmt.Errorf("%s", msg.FinishReason))
+				}
+			}
+
+			if msg.Usage != nil {
+				setModel.Do(func() {
+					usedModel = msg.Model
+				})
+
+				usage.CompletionTokens += msg.Usage.CompletionTokens
+				usage.PromptTokens += msg.Usage.PromptTokens
+				usage.TotalTokens += msg.Usage.TotalTokens
+			}
+
+			if msg.DeepContinue != nil {
+				return msg.DeepContinue, nil
 			}
 		}
 	}
@@ -443,7 +558,8 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 	}
 
 	var prompt string
-	if len(aiCallOptions.Docs.Refs) == 0 {
+	if aiCallOptions.Docs == nil || len(aiCallOptions.Docs.Refs) == 0 {
+		aiCallOptions.Docs = &types.RAGDocs{}
 		prompt = lo.If(space.BasePrompt != "", space.BasePrompt).Else(s.core.Prompt().Base)
 	} else {
 		prompt = lo.If(space.ChatPrompt != "", space.ChatPrompt).Else(s.core.Prompt().Query)
@@ -525,10 +641,40 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 		}
 	}
 
-	if err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, sessionContext, marks, receiveFunc, doneFunc); err != nil {
-		slog.Error("NormalAssistant: failed to request AI", slog.String("error", err.Error()))
-		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		toolCalls, err := requestAIWithTools(ctx, s.core, AIRequestOptions{
+			IsStream:       receiver.IsStream(),
+			EnableThinking: aiCallOptions.EnableThinking,
+			SessionContext: sessionContext,
+			Marks:          marks,
+			Tools:          rag.FunctionDefine,
+		}, receiveFunc, doneFunc)
+		if err != nil {
+			slog.Error("NormalAssistant: failed to request AI", slog.String("error", err.Error()))
+			return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
+		}
+
+		if len(toolCalls) == 0 {
+			break
+		}
+
+		if marks == nil {
+			marks = make(map[string]string)
+		}
+		appendMessages, err := ai.HandleToolCallOnly(toolCalls, rag.GetToolsHandler(s.core, reqMsg.SessionID, reqMsg.SpaceID, reqMsg.UserID, marks, receiveFunc))
+		if err != nil {
+			slog.Error("NormalAssistant: failed to handle tool call", slog.String("error", err.Error()))
+			return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
+		}
+
+		sessionContext.MessageContext = append(sessionContext.MessageContext, appendMessages...)
 	}
+
 	return nil
 }
 
@@ -609,7 +755,7 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 		}
 	}
 
-	if err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, chatSessionContext, marks, receiveFunc, doneFunc); err != nil {
+	if _, err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, chatSessionContext, marks, receiveFunc, doneFunc); err != nil {
 		slog.Error("failed to request AI", slog.String("error", err.Error()))
 		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
@@ -733,7 +879,7 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.C
 		}
 	}
 
-	if err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, chatSessionContext, marks, actualReceiveFunc, doneFunc); err != nil {
+	if _, err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, chatSessionContext, marks, actualReceiveFunc, doneFunc); err != nil {
 		slog.Error("Journal: failed to request AI", slog.String("error", err.Error()))
 		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
 	}
@@ -1040,12 +1186,12 @@ func genChatSessionContextSummary(ctx context.Context, core *core.Core, sessionI
 
 	// 总结仍然使用v3来生成
 	resp, err := queryOpts.Query()
-	if err != nil || len(resp.Received) == 0 {
+	if err != nil || len(resp.Choices) == 0 {
 		slog.Error("failed to generate dialog context summary", slog.String("error", err.Error()), slog.Any("response", resp))
 		return errors.New("genDialogContextSummary.gptSrv.Chat", i18n.ERROR_INTERNAL, err)
 	}
 
-	if len(resp.Received) > 1 {
+	if len(resp.Choices) > 1 {
 		slog.Warn("chat method response multi line content", slog.Any("response", resp))
 	}
 
@@ -1053,7 +1199,7 @@ func genChatSessionContextSummary(ctx context.Context, core *core.Core, sessionI
 		ID:        utils.GenSpecIDStr(),
 		SessionID: sessionID,
 		MessageID: summaryMessageID,
-		Content:   resp.Received[0],
+		Content:   resp.Choices[0].Message.Content,
 	}); err != nil {
 		return errors.New("genDialogContextSummary.ChatSummaryStore.Create", i18n.ERROR_INTERNAL, err)
 	}

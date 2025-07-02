@@ -26,7 +26,7 @@ type ModelName struct {
 }
 
 type Query interface {
-	Query(ctx context.Context, query []*types.MessageContext) (GenerateResponse, error)
+	Query(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionResponse, error)
 	QueryStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error)
 	Lang
 }
@@ -61,6 +61,12 @@ type QueryOptions struct {
 	vars           map[string]string
 	model          string
 	enableThinking bool
+	tools          []openai.Tool
+}
+
+func (s *QueryOptions) WithTools(tools []openai.Tool) *QueryOptions {
+	s.tools = tools
+	return s
 }
 
 func (s *QueryOptions) EnableThinking(enable bool) *QueryOptions {
@@ -417,7 +423,7 @@ func (s *EnhanceOptions) EnhanceQuery(query string) (EnhanceQueryResult, error) 
 	return res, nil
 }
 
-func (s *QueryOptions) Query() (GenerateResponse, error) {
+func (s *QueryOptions) Query() (*openai.ChatCompletionResponse, error) {
 	if s.prompt == "" {
 		switch s._driver.Lang() {
 		case MODEL_BASE_LANGUAGE_CN:
@@ -503,6 +509,7 @@ func (s *QueryOptions) QueryStream() (*openai.ChatCompletionStream, error) {
 		StreamOptions: &openai.StreamOptions{
 			IncludeUsage: true,
 		},
+		Tools: s.tools,
 	}
 
 	return s._driver.QueryStream(s.ctx, req)
@@ -533,6 +540,8 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 			startThinking    = sync.Once{}
 			hasThinking      = false
 			finishedThinking = sync.Once{}
+
+			toolCalls []*openai.ToolCall
 		)
 
 		flushResponse := func() {
@@ -579,6 +588,9 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 				return
 			}
 
+			// raw, _ := json.Marshal(msg)
+			// fmt.Println("inner msg", string(raw))
+
 			// slog.Debug("ai stream response", slog.Any("msg", msg))
 			if err == io.EOF {
 				flushResponse()
@@ -601,9 +613,25 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 					if strs.Len() > 0 {
 						flushResponse()
 					}
+					if v.FinishReason == "tool_calls" {
+						respChan <- ResponseChoice{
+							DeepContinue: toolCalls,
+						}
+					}
 					respChan <- ResponseChoice{
 						Message:      v.Delta.Content,
 						FinishReason: string(v.FinishReason),
+					}
+				}
+
+				if len(v.Delta.ToolCalls) > 0 {
+					for _, toolCall := range v.Delta.ToolCalls {
+						if len(toolCalls) == 0 || len(toolCalls) < *toolCall.Index+1 {
+							toolCalls = append(toolCalls, &toolCall)
+							continue
+						}
+						toolCalls[*toolCall.Index].Function.Name += toolCall.Function.Name
+						toolCalls[*toolCall.Index].Function.Arguments += toolCall.Function.Arguments
 					}
 				}
 
@@ -646,20 +674,21 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 						strs.WriteString("</think>")
 					})
 					strs.WriteString(v.Delta.Content)
-				}
 
-				if machedMarks && strings.Contains(v.Delta.Content, "]") {
-					text, replaced := mark.ResolveHidden(strs.String(), func(fakeValue string) string {
-						real := marks[fakeValue]
-						return real
-					}, false)
-					if replaced {
-						strs.Reset()
-						strs.WriteString(text)
-						maybeMarks = false
-						machedMarks = false
+					if machedMarks && strings.Contains(v.Delta.Content, "]") {
+						text, replaced := mark.ResolveHidden(strs.String(), func(fakeValue string) string {
+							real := marks[fakeValue]
+							return real
+						}, false)
+						if replaced {
+							strs.Reset()
+							strs.WriteString(text)
+							maybeMarks = false
+							machedMarks = false
+						}
 					}
 				}
+
 				once.Do(func() {
 					messageID = msg.ID
 					// flushResponse() // 快速响应出去
@@ -865,6 +894,11 @@ func (e EnhanceQueryResult) ResultQuery() string {
 	}
 
 	return b.String()
+}
+
+type UsageItem struct {
+	Subject string
+	Usage   Usage
 }
 
 type Usage struct {
@@ -1077,6 +1111,7 @@ type ResponseChoice struct {
 	Error        error
 	Usage        *openai.Usage
 	Model        string
+	DeepContinue []*openai.ToolCall
 }
 
 type ReaderResult struct {

@@ -72,7 +72,7 @@ type ToolContext struct {
 	UserID  string
 }
 
-func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) ([]openai.ChatCompletionMessage, error) {
+func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) ([]*types.MessageContext, error) {
 	var params struct {
 		StartDate string `json:"startDate"`
 		EndDate   string `json:"endDate"`
@@ -93,9 +93,9 @@ func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) ([]openai.Chat
 	}
 
 	if et.Sub(st).Hours() > 24*31 {
-		return []openai.ChatCompletionMessage{
+		return []*types.MessageContext{
 			{
-				Role:    types.USER_ROLE_TOOL.String(),
+				Role:    types.USER_ROLE_SYSTEM,
 				Content: "Failed to load user journal list, the max range is 31 days",
 			},
 		}, nil
@@ -134,9 +134,9 @@ func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) ([]openai.Chat
 		}
 	}
 
-	return []openai.ChatCompletionMessage{
+	return []*types.MessageContext{
 		{
-			Role:    types.USER_ROLE_SYSTEM.String(),
+			Role:    types.USER_ROLE_SYSTEM,
 			Content: sb.String(),
 		},
 	}, nil

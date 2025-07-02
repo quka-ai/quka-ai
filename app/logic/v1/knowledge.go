@@ -307,15 +307,10 @@ func EnhanceQuery(ctx context.Context, core *core.Core, query string, histories 
 	return resp, nil
 }
 
-type UsageItem struct {
-	Subject string
-	Usage   ai.Usage
-}
-
-func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query string, resource *types.ResourceQuery) (types.RAGDocs, []UsageItem, error) {
+func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query string, resource *types.ResourceQuery) (types.RAGDocs, []ai.UsageItem, error) {
 	var (
 		result types.RAGDocs
-		usages []UsageItem
+		usages []ai.UsageItem
 	)
 
 	vector, err := l.core.Srv().AI().EmbeddingForQuery(l.ctx, []string{query})
@@ -429,7 +424,7 @@ func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query stri
 	slog.Debug("rerank result", slog.Int("knowledge_length", len(rankList)))
 
 	if usage != nil {
-		usages = append(usages, UsageItem{
+		usages = append(usages, ai.UsageItem{
 			Usage: ai.Usage{
 				Model: usage.Model,
 				Usage: &openai.Usage{
