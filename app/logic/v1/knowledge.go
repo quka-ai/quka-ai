@@ -19,6 +19,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core/srv"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
 	"github.com/quka-ai/quka-ai/pkg/ai"
+	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/safe"
@@ -264,49 +265,6 @@ func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeAr
 	return nil
 }
 
-func EnhanceChatQuery(ctx context.Context, core *core.Core, query string, spaceID, sessionID, messageID string) (ai.EnhanceQueryResult, error) {
-	histories, err := core.Store().ChatMessageStore().ListSessionMessageUpToGivenID(ctx, spaceID, sessionID, messageID, 1, 6)
-	if err != nil {
-		slog.Error("Failed to get session message history", slog.String("space_id", spaceID), slog.String("session_id", sessionID),
-			slog.String("message_id", messageID), slog.String("error", err.Error()))
-	}
-
-	if len(histories) <= 1 {
-		return ai.EnhanceQueryResult{
-			Original: query,
-		}, nil
-	}
-
-	histories = lo.Reverse(histories)[:len(histories)-1]
-
-	decryptMessageLists(core, histories)
-
-	return EnhanceQuery(ctx, core, query, histories)
-}
-
-func decryptMessageLists(core *core.Core, messages []*types.ChatMessage) {
-	for _, v := range messages {
-		if v.IsEncrypt == types.MESSAGE_IS_ENCRYPT {
-			value, _ := core.DecryptData([]byte(v.Message))
-			v.Message = string(value)
-		}
-	}
-}
-
-func EnhanceQuery(ctx context.Context, core *core.Core, query string, histories []*types.ChatMessage) (ai.EnhanceQueryResult, error) {
-	aiOpts := core.Srv().AI().NewEnhance(ctx)
-	resp, err := aiOpts.WithPrompt(core.Prompt().EnhanceQuery).
-		WithHistories(histories).
-		EnhanceQuery(query)
-	if err != nil {
-		slog.Error("failed to enhance user query", slog.String("query", query), slog.String("error", err.Error()))
-		// return nil, errors.New("KnowledgeLogic.GetRelevanceKnowledges.AI.EnhanceQuery", i18n.ERROR_INTERNAL, err)
-	}
-
-	resp.Original = query
-	return resp, nil
-}
-
 func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query string, resource *types.ResourceQuery) (types.RAGDocs, []ai.UsageItem, error) {
 	var (
 		result types.RAGDocs
@@ -502,11 +460,11 @@ func (l *KnowledgeLogic) Query(spaceID, agent string, resource *types.ResourceQu
 		}
 	case types.AGENT_TYPE_NORMAL:
 
-		enhanceResult, _ := EnhanceChatQuery(l.ctx, l.core, msgArgs.Message, msgArgs.SpaceID, msgArgs.SessionID, msgArgs.ID)
+		enhanceResult, _ := rag.EnhanceChatQuery(l.ctx, l.core, msgArgs.Message, msgArgs.SpaceID, msgArgs.SessionID, msgArgs.ID)
 
 		process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msgArgs.ID, enhanceResult.Usage)
 
-		docs, usages, err := NewKnowledgeLogic(l.ctx, l.core).GetQueryRelevanceKnowledges(msgArgs.SpaceID, l.GetUserInfo().User, msgArgs.Message, resource)
+		docs, usages, err := rag.GetQueryRelevanceKnowledges(l.core, msgArgs.SpaceID, l.GetUserInfo().User, msgArgs.Message, resource)
 		if len(usages) > 0 {
 			for _, v := range usages {
 				process.NewRecordChatUsageRequest(v.Usage.Model, v.Subject, msgArgs.ID, v.Usage.Usage)

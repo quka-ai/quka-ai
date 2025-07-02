@@ -14,6 +14,7 @@ import (
 
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
+	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/safe"
@@ -217,13 +218,13 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 		// else rag handler
 		go safe.Run(func() {
 			getDocsFunc := func() (types.RAGDocs, error) {
-				enhanceResult, _ := EnhanceChatQuery(l.ctx, l.core, msg.Message, msg.SpaceID, msg.SessionID, msg.ID)
+				enhanceResult, _ := rag.EnhanceChatQuery(l.ctx, l.core, msg.Message, msg.SpaceID, msg.SessionID, msg.ID)
 
 				if enhanceResult.Usage != nil {
 					process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msg.ID, enhanceResult.Usage)
 				}
 
-				docs, usages, err := NewKnowledgeLogic(l.ctx, l.core).GetQueryRelevanceKnowledges(chatSession.SpaceID, l.GetUserInfo().User, enhanceResult.ResultQuery(), resourceQuery)
+				docs, usages, err := rag.GetQueryRelevanceKnowledges(l.core, chatSession.SpaceID, l.GetUserInfo().User, enhanceResult.ResultQuery(), resourceQuery)
 				if len(usages) > 0 {
 					for _, v := range usages {
 						process.NewRecordChatUsageRequest(v.Usage.Model, v.Subject, msgArgs.ID, v.Usage.Usage)
@@ -235,7 +236,7 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 				}
 
 				// Supplement associated document content.
-				SupplementSessionChatDocs(l.core, chatSession, docs)
+				rag.SupplementSessionChatDocs(l.core, chatSession.SpaceID, chatSession.ID, docs)
 				return docs, nil
 			}
 
