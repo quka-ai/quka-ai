@@ -1,5 +1,5 @@
 -- 创建 bw_butler 表
-CREATE TABLE bw_butler (
+CREATE TABLE IF NOT EXISTS bw_butler (
     table_id VARCHAR(32) PRIMARY KEY,  -- 记录ID, 自动递增
     user_id VARCHAR(32) NOT NULL, -- 关联用户id
     table_name VARCHAR(255) NOT NULL,  -- 日常事项名称
@@ -19,4 +19,4 @@ COMMENT ON COLUMN bw_butler.created_at IS '记录的创建时间，Unix时间戳
 COMMENT ON COLUMN bw_butler.updated_at IS '记录的最后更新时间，Unix时间戳';
 
 -- 创建索引，方便通过名称查询
-CREATE INDEX idx_bulter_user_id ON bw_butler (user_id);
+CREATE INDEX IF NOT EXISTS idx_bulter_user_id ON bw_butler (user_id);

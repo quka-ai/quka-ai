@@ -15,6 +15,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core/srv"
 	"github.com/quka-ai/quka-ai/app/store"
 	"github.com/quka-ai/quka-ai/app/store/sqlstore"
+	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 type Core struct {
@@ -57,11 +58,12 @@ func MustSetupCore(cfg CoreConfig) *Core {
 		httpEngine: gin.New(),
 		prompt:     cfg.Prompt,
 	}
+	utils.SetupGlobalEditorJS(cfg.ObjectStorage.StaticDomain)
 
 	// setup store
 	setupMysqlStore(core)
 
-	core.srv = srv.SetupSrvs(srv.ApplyAI(cfg.AI), // ai provider select
+	core.srv = srv.SetupSrvs(srv.ApplyAI(nil, srv.Usage{}), // ai provider select
 		// web socket
 		srv.ApplyTower())
 
@@ -108,6 +110,11 @@ func (s *Core) Metrics() *Metrics {
 
 func setupMysqlStore(core *Core) {
 	core.stores = sqlstore.MustSetup(core.cfg.Postgres)
+
+	// 执行数据库表初始化
+	if err := core.stores().Install(); err != nil {
+		panic(err)
+	}
 }
 
 func (s *Core) Store() *sqlstore.Provider {

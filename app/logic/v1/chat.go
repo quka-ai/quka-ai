@@ -184,6 +184,9 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 
 	if len(msg.Attach) > 0 {
 		for i := range msg.Attach {
+			if msg.Attach[i].URL == "" {
+				return 0, errors.New("ChatLogic.NewUserMessageSend.FileStorage.EmptyURL", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
+			}
 			url, err := l.core.FileStorage().GenGetObjectPreSignURL(msg.Attach[i].URL)
 			if err != nil {
 				return 0, errors.New("ChatLogic.NewUserMessageSend.FileStorage.GenGetObjectPreSignURL", i18n.ERROR_INTERNAL, err)

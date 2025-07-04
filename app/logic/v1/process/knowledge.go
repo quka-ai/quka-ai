@@ -292,7 +292,7 @@ func (p *KnowledgeProcess) processEmbedding(req *EmbeddingRequest) {
 
 		markdownContent := string(req.data.Content)
 		if req.data.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			markdownContent, err = utils.ConvertEditorJSBlocksToMarkdown(json.RawMessage(req.data.Content))
+			markdownContent, err = utils.ConvertEditorJSRawToMarkdown(json.RawMessage(req.data.Content))
 			if err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", append(logAttrs, slog.String("error", err.Error()))...)
 				return
@@ -457,7 +457,7 @@ func (p *KnowledgeProcess) processSummary(req *SummaryRequest) {
 	sw := mark.NewSensitiveWork()
 	markdownContent := string(req.data.Content)
 	if req.data.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		markdownContent, err = utils.ConvertEditorJSBlocksToMarkdown(json.RawMessage(req.data.Content))
+		markdownContent, err = utils.ConvertEditorJSRawToMarkdown(json.RawMessage(req.data.Content))
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", append(logAttrs, slog.String("error", err.Error()))...)
 			return

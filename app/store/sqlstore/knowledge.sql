@@ -1,5 +1,5 @@
 -- 创建 bw_knowledge 表
-CREATE TABLE bw_knowledge (
+CREATE TABLE IF NOT EXISTS bw_knowledge (
     id VARCHAR(32) PRIMARY KEY,
     space_id VARCHAR(32) NOT NULL,
     user_id VARCHAR(32) NOT NULL,
@@ -35,5 +35,5 @@ COMMENT ON COLUMN bw_knowledge.created_at IS '创建时间';
 COMMENT ON COLUMN bw_knowledge.updated_at IS '更新时间';
 
 -- 创建索引
-CREATE INDEX idx_bw_knowledge_main ON bw_knowledge (space_id, resource);
-CREATE INDEX idx_bw_knowledge_retry ON bw_knowledge (stage, retry_times);
+CREATE INDEX IF NOT EXISTS idx_bw_knowledge_main ON bw_knowledge (space_id, resource);
+CREATE INDEX IF NOT EXISTS idx_bw_knowledge_retry ON bw_knowledge (stage, retry_times);

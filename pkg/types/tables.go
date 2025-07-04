@@ -30,4 +30,7 @@ const (
 	TABLE_JOURNAL           = TableName("journal")
 	TABLE_BUTLER            = TableName("butler")
 	TABLE_SPACE_APPLICATION = TableName("space_application")
+	TABLE_MODEL_PROVIDER    = TableName("model_provider")
+	TABLE_MODEL_CONFIG      = TableName("model_config")
+	TABLE_CUSTOM_CONFIG     = TableName("custom_config")
 )

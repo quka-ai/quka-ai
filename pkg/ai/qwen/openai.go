@@ -150,7 +150,7 @@ func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionReque
 	return resp, nil
 }
 
-func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.GenerateResponse, error) {
+func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionResponse, error) {
 	needToSwitchVL := false
 	messages := lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 		if len(item.MultiContent) > 0 {
@@ -170,17 +170,12 @@ func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.G
 
 	slog.Debug("Query", slog.Any("query", req), slog.String("driver", NAME))
 
-	var result ai.GenerateResponse
 	resp, err := s.client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return result, fmt.Errorf("Completion error: %w", err)
+		return nil, fmt.Errorf("Completion error: %w", err)
 	}
 
-	result.Received = append(result.Received, resp.Choices[0].Message.Content)
-	result.Usage = &resp.Usage
-	result.Model = resp.Model
-
-	return result, nil
+	return &resp, nil
 }
 
 const SummarizeFuncName = "summarize"

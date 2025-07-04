@@ -1,5 +1,5 @@
 -- 创建 bw_share_token 表
-CREATE TABLE bw_share_token (
+CREATE TABLE IF NOT EXISTS bw_share_token (
     id SERIAL PRIMARY KEY, -- 自增ID，主键
     object_id VARCHAR(32) NOT NULL, -- 文章的唯一标识符 (原 knowledge_id 字段)
     space_id VARCHAR(32) NOT NULL,  -- 空间ID，用于区分不同的空间
@@ -15,7 +15,7 @@ CREATE TABLE bw_share_token (
 );
 
 -- 为 token 字段创建索引，加快查找速度
-CREATE INDEX idx_token ON bw_share_token(token);
+CREATE INDEX IF NOT EXISTS idx_token ON bw_share_token(token);
 
 -- 为每个字段添加注释
 COMMENT ON COLUMN bw_share_token.id IS '自增ID，主键';

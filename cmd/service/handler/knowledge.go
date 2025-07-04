@@ -154,8 +154,8 @@ func (s *HttpSrv) ListKnowledge(c *gin.Context) {
 		return
 	}
 
-	knowledgeList := lo.Map[*types.Knowledge, *types.KnowledgeResponse](list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
-		return KnowledgeToKnowledgeResponse(item)
+	knowledgeList := lo.Map(list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
+		return KnowledgeToKnowledgeResponseLite(item)
 	})
 
 	response.APISuccess(c, ListKnowledgeResponse{
@@ -179,14 +179,45 @@ func KnowledgeToKnowledgeResponse(item *types.Knowledge) *types.KnowledgeRespons
 		CreatedAt:   item.CreatedAt,
 	}
 
-	result.Content = string(item.Content)
 	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
 		result.Blocks = json.RawMessage(item.Content)
-		var err error
-		result.Content, err = utils.ConvertEditorJSBlocksToMarkdown(result.Blocks)
+	} else {
+		result.Content = string(item.Content)
+	}
+	return result
+}
+
+func KnowledgeToKnowledgeResponseLite(item *types.Knowledge) *types.KnowledgeResponse {
+	result := &types.KnowledgeResponse{
+		ID:          item.ID,
+		SpaceID:     item.SpaceID,
+		Title:       item.Title,
+		ContentType: item.ContentType,
+		Tags:        item.Tags,
+		Kind:        item.Kind,
+		Resource:    item.Resource,
+		UserID:      item.UserID,
+		Stage:       item.Stage,
+		UpdatedAt:   item.UpdatedAt,
+		CreatedAt:   item.CreatedAt,
+	}
+
+	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
+		blocks, err := utils.ParseRawToBlocks(json.RawMessage(item.Content))
+		if err != nil {
+			slog.Error("Failed to parse editor blocks", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
+		}
+
+		if len(blocks) > 6 {
+			blocks = blocks[:6]
+		}
+
+		result.Content, err = utils.ConvertEditorJSBlocksToMarkdown(blocks)
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
 		}
+	} else {
+		result.Content = string(item.Content)
 	}
 	return result
 }

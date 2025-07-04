@@ -1,5 +1,5 @@
 -- 创建表
-CREATE TABLE bw_vectors (
+CREATE TABLE IF NOT EXISTS bw_vectors (
     id VARCHAR(32) PRIMARY KEY,
     knowledge_id VARCHAR(32) NOT NULL,
     space_id VARCHAR(32) NOT NULL,
@@ -22,5 +22,5 @@ COMMENT ON COLUMN bw_vectors.created_at IS '创建时间，UNIX时间戳';
 COMMENT ON COLUMN bw_vectors.updated_at IS '更新时间，UNIX时间戳';
 
 
-CREATE INDEX idx_vectors_space_id_resource_knowledge_id ON bw_vectors (space_id, resource, knowledge_id);
-CREATE INDEX idx_vectors_embedding ON bw_vectors USING hnsw (embedding vector_ip_ops) WITH (m = 32, ef_construction = 128);
+CREATE INDEX IF NOT EXISTS idx_vectors_space_id_resource_knowledge_id ON bw_vectors (space_id, resource, knowledge_id);
+CREATE INDEX IF NOT EXISTS idx_vectors_embedding ON bw_vectors USING hnsw (embedding vector_ip_ops) WITH (m = 32, ef_construction = 128);

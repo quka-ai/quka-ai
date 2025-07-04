@@ -1,5 +1,5 @@
 -- 创建 AI Token 使用情况记录表
-CREATE TABLE bw_ai_token_usage (
+CREATE TABLE IF NOT EXISTS bw_ai_token_usage (
     id SERIAL PRIMARY KEY,                      -- 自增主键
     space_id VARCHAR(32) NOT NULL,             -- 空间 ID
     user_id VARCHAR(32) NOT NULL,              -- 用户 ID
@@ -13,6 +13,6 @@ CREATE TABLE bw_ai_token_usage (
 );
 
 -- 索引设计
-CREATE INDEX idx_bw_ai_token_usage_space_id ON bw_ai_token_usage (space_id, created_at);
-CREATE INDEX idx_bw_ai_token_usage_user_id ON bw_ai_token_usage (user_id, created_at);
-CREATE INDEX idx_bw_ai_token_usage_created_at ON bw_ai_token_usage (created_at);
+CREATE INDEX IF NOT EXISTS idx_bw_ai_token_usage_space_id ON bw_ai_token_usage (space_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_bw_ai_token_usage_user_id ON bw_ai_token_usage (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_bw_ai_token_usage_created_at ON bw_ai_token_usage (created_at);

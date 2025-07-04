@@ -27,7 +27,7 @@ type Driver struct {
 	client     *openai.Client
 	httpClient *http.Client
 	endpoint   string
-	model      ai.ModelName
+	model      string
 	token      string
 }
 
@@ -41,16 +41,10 @@ func NewClient(token, endpoint string) *openai.Client {
 	return openai.NewClientWithConfig(cfg)
 }
 
-func New(token, endpoint string, model ai.ModelName) *Driver {
+func New(token, endpoint string, model string) *Driver {
 	fmt.Println("New", token, endpoint, model)
 	cfg := openai.DefaultConfig(token)
 
-	if model.ChatModel == "" {
-		model.ChatModel = openai.GPT4oMini
-	}
-	if model.EmbeddingModel == "" {
-		model.EmbeddingModel = string(openai.LargeEmbedding3)
-	}
 	if endpoint != "" {
 		cfg.BaseURL = endpoint
 	}
@@ -73,7 +67,7 @@ func (s *Driver) Lang() string {
 func (s *Driver) embedding(ctx context.Context, title string, content []string) (ai.EmbeddingResult, error) {
 	slog.Debug("Embedding", slog.String("driver", NAME))
 	queryReq := openai.EmbeddingRequest{
-		Model:      openai.EmbeddingModel(s.model.EmbeddingModel),
+		Model:      openai.EmbeddingModel(s.model),
 		Dimensions: 1024,
 	}
 
@@ -129,8 +123,12 @@ func (s *Driver) EmbeddingForDocument(ctx context.Context, title string, content
 	return s.embedding(ctx, title, content)
 }
 
-func (s *Driver) NewQuery(ctx context.Context, model string, query []*types.MessageContext) *ai.QueryOptions {
-	return ai.NewQueryOptions(ctx, s, model, query)
+func (s *Driver) NewQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
+	return ai.NewQueryOptions(ctx, s, s.model, query)
+}
+
+func (s *Driver) NewVisionQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
+	return ai.NewQueryOptions(ctx, s, s.model, query)
 }
 
 func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
@@ -143,9 +141,9 @@ func (s *Driver) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 			Role:    item.Role.String(),
 			Content: item.Content,
 		}
-	}), s.model.ChatModel)
+	}), s.model)
 	if err != nil {
-		slog.Error("Failed to tik request token", slog.String("error", err.Error()), slog.String("driver", NAME), slog.String("model", s.model.ChatModel))
+		slog.Error("Failed to tik request token", slog.String("error", err.Error()), slog.String("driver", NAME), slog.String("model", s.model))
 		return false
 	}
 
@@ -156,7 +154,7 @@ func (s *Driver) EnhanceQuery(ctx context.Context, messages []openai.ChatComplet
 	slog.Debug("EnhanceQuery", slog.String("driver", NAME))
 
 	req := openai.ChatCompletionRequest{
-		Model:       s.model.ChatModel,
+		Model:       s.model,
 		Messages:    messages,
 		Temperature: 0.1,
 		MaxTokens:   200,
@@ -189,15 +187,15 @@ func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionReque
 		return nil, fmt.Errorf("Completion error: %w", err)
 	}
 
-	slog.Debug("Query", slog.Any("query_stream", req), slog.String("driver", NAME), slog.String("model", s.model.ChatModel))
+	slog.Debug("Query", slog.Any("query_stream", req), slog.String("driver", NAME), slog.String("model", s.model))
 
 	return resp, nil
 }
 
-func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.GenerateResponse, error) {
+func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionResponse, error) {
 
 	req := openai.ChatCompletionRequest{
-		Model: s.model.ChatModel,
+		Model: s.model,
 		Messages: lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 			return openai.ChatCompletionMessage{
 				Role:         item.Role.String(),
@@ -207,19 +205,14 @@ func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.G
 		}),
 	}
 
-	var result ai.GenerateResponse
 	resp, err := s.client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return result, fmt.Errorf("Completion error: %w", err)
+		return nil, fmt.Errorf("Completion error: %w", err)
 
 	}
 
-	slog.Debug("Query", slog.Any("query", req), slog.String("driver", NAME), slog.String("model", s.model.ChatModel))
-
-	result.Received = append(result.Received, resp.Choices[0].Message.Content)
-	result.Usage = &resp.Usage
-
-	return result, nil
+	slog.Debug("Query", slog.Any("query", req), slog.String("driver", NAME), slog.String("model", s.model))
+	return &resp, nil
 }
 
 func (s *Driver) Chat(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionResponse, error) {
@@ -229,7 +222,7 @@ func (s *Driver) Chat(ctx context.Context, req openai.ChatCompletionRequest) (*o
 		return nil, fmt.Errorf("Completion error: %w", err)
 	}
 
-	slog.Debug("Query", slog.Any("query_stream", req), slog.String("driver", NAME), slog.String("model", s.model.ChatModel))
+	slog.Debug("Query", slog.Any("query_stream", req), slog.String("driver", NAME), slog.String("model", s.model))
 
 	return &resp, nil
 }
@@ -290,11 +283,11 @@ func (s *Driver) Summarize(ctx context.Context, doc *string) (ai.SummarizeResult
 		{Role: openai.ChatMessageRoleUser, Content: *doc},
 	}
 	result := ai.SummarizeResult{
-		Model: s.model.ChatModel,
+		Model: s.model,
 	}
 	resp, err := s.client.CreateChatCompletion(ctx,
 		openai.ChatCompletionRequest{
-			Model:    s.model.ChatModel,
+			Model:    s.model,
 			Messages: dialogue,
 			Tools:    []openai.Tool{t},
 		},
@@ -363,11 +356,11 @@ func (s *Driver) Chunk(ctx context.Context, doc *string) (ai.ChunkResult, error)
 		{Role: openai.ChatMessageRoleUser, Content: strings.ReplaceAll(*doc, "\n", "")},
 	}
 	result := ai.ChunkResult{
-		Model: s.model.ChatModel,
+		Model: s.model,
 	}
 	resp, err := s.client.CreateChatCompletion(ctx,
 		openai.ChatCompletionRequest{
-			Model:    s.model.ChatModel,
+			Model:    s.model,
 			Messages: dialogue,
 			Tools:    []openai.Tool{t},
 		},
@@ -415,9 +408,8 @@ type RerankRequestBody struct {
 
 func (s *Driver) Rerank(ctx context.Context, query string, docs []*ai.RerankDoc) ([]ai.RankDocItem, *ai.Usage, error) {
 	slog.Debug("Rerank", slog.String("driver", NAME))
-	model := s.model.RerankModel
 	request := RerankRequestBody{
-		Model: model,
+		Model: s.model,
 		Query: query,
 		TopN:  len(docs),
 		Documents: lo.Map(docs, func(item *ai.RerankDoc, _ int) string {
@@ -459,7 +451,7 @@ func (s *Driver) Rerank(ctx context.Context, query string, docs []*ai.RerankDoc)
 	}
 
 	return rank, &ai.Usage{
-		Model: model,
+		Model: s.model,
 		Usage: &openai.Usage{
 			PromptTokens: result.Usage.TotalTokens,
 		},

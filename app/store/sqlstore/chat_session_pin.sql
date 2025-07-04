@@ -1,5 +1,5 @@
 -- 创建 bw_chat_session_pin 表
-CREATE TABLE bw_chat_session_pin (
+CREATE TABLE IF NOT EXISTS bw_chat_session_pin (
     session_id VARCHAR(32) NOT NULL,
     space_id VARCHAR(32) NOT NULL,
     user_id VARCHAR(32) NOT NULL,
@@ -11,9 +11,9 @@ CREATE TABLE bw_chat_session_pin (
 );
 
 -- 添加索引
-CREATE INDEX idx_bw_chat_session_pin_session_id ON bw_chat_session_pin (session_id);
-CREATE INDEX idx_bw_chat_session_pin_user_id ON bw_chat_session_pin (user_id);
-CREATE INDEX idx_bw_chat_session_pin_created_at ON bw_chat_session_pin (created_at);
+CREATE INDEX IF NOT EXISTS idx_bw_chat_session_pin_session_id ON bw_chat_session_pin (session_id);
+CREATE INDEX IF NOT EXISTS idx_bw_chat_session_pin_user_id ON bw_chat_session_pin (user_id);
+CREATE INDEX IF NOT EXISTS idx_bw_chat_session_pin_created_at ON bw_chat_session_pin (created_at);
 
 -- 添加字段注释（PostgreSQL 不支持直接在字段定义中使用 COMMENT）
 COMMENT ON COLUMN bw_chat_session_pin.session_id IS '唯一标识一个会话';

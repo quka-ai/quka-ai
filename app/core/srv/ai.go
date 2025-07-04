@@ -2,21 +2,14 @@ package srv
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"strings"
+	"encoding/json"
 
 	"github.com/samber/lo"
 	oai "github.com/sashabaranov/go-openai"
 
 	"github.com/quka-ai/quka-ai/pkg/ai"
-	"github.com/quka-ai/quka-ai/pkg/ai/azure_openai"
-	"github.com/quka-ai/quka-ai/pkg/ai/deepseek"
 	"github.com/quka-ai/quka-ai/pkg/ai/fusion"
 	"github.com/quka-ai/quka-ai/pkg/ai/jina"
-	"github.com/quka-ai/quka-ai/pkg/ai/ollama"
-	"github.com/quka-ai/quka-ai/pkg/ai/openai"
-	"github.com/quka-ai/quka-ai/pkg/ai/qwen"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
@@ -57,19 +50,11 @@ type AIDriver interface {
 	ReaderAI
 	VisionAI
 	RerankAI
-	DescribeImage(ctx context.Context, lang, imageURL string) (ai.GenerateResponse, error)
+	DescribeImage(ctx context.Context, lang, imageURL string) (*oai.ChatCompletionResponse, error)
 }
 
 type AIConfig struct {
-	Fusion   FusionAI    `toml:"fusion"`
-	Gemini   Gemini      `toml:"gemini"`
-	Openai   Openai      `toml:"openai"`
-	QWen     QWen        `toml:"qwen"`
-	DeepSeek DeepSeek    `toml:"deepseek"`
-	Jina     Jina        `toml:"jina"`
-	Azure    AzureOpenai `toml:"azure_openai"`
-	Ollama   Ollama      `toml:"ollama"`
-	Agent    AgentDriver `toml:"agent"`
+	Agent AgentDriver `toml:"agent"`
 	// Usage list
 	// embedding.query
 	// embedding.document
@@ -87,167 +72,10 @@ type AgentDriver struct {
 	VlModel  string `toml:"vl_model"`
 }
 
-type FusionAI struct {
-	Token    string       `toml:"token"`
-	Endpoint string       `toml:"endpoint"`
-	Model    ai.ModelName `toml:"models"`
-}
-
-func (cfg *FusionAI) Install(root *AI) {
-	var oai any
-	oai = fusion.New(cfg.Token, cfg.Endpoint, cfg.Model)
-
-	installAI(root, strings.ToLower(fusion.NAME), oai)
-}
-
 type Jina struct {
-	Token          string            `toml:"token"`
-	ReaderEndpoint string            `toml:"reader_endpoint"`
-	RerankEndpoint string            `toml:"rerank_endpoint"`
-	ApiEndpoint    string            `toml:"api_endpoint"`
-	Models         map[string]string `toml:"models"`
-}
-
-func (cfg *Jina) Install(root *AI) {
-	var oai any
-	oai = jina.New(cfg.Token, cfg.Models)
-
-	installAI(root, jina.NAME, oai)
-}
-
-func (c *Jina) FromENV() {
-	c.Token = os.Getenv("QUKA_API_AI_JINA_TOKEN")
-	c.ReaderEndpoint = os.Getenv("QUKA_API_AI_JINA_READER_ENDPOINT")
-}
-
-func (c *AIConfig) FromENV() {
-	c.Usage = make(map[string]string)
-	c.Usage["embedding.query"] = os.Getenv("QUKA_API_AI_USAGE_E_QUERY")
-	c.Usage["embedding.document"] = os.Getenv("QUKA_API_AI_USAGE_E_DOCUMENT")
-	c.Usage["query"] = os.Getenv("QUKA_API_AI_USAGE_QUERY")
-	c.Usage["summarize"] = os.Getenv("QUKA_API_AI_USAGE_SUMMARIZE")
-	c.Usage["enhance_query"] = os.Getenv("QUKA_API_AI_USAGE_ENHANCE_QUERY")
-	c.Usage["reader"] = os.Getenv("QUKA_API_AI_USAGE_READER")
-
-	c.Gemini.FromENV()
-	c.Openai.FromENV()
-	c.Azure.FromENV()
-	c.QWen.FromENV()
-	c.Jina.FromENV()
-	c.DeepSeek.FromENV()
-}
-
-func (c *DeepSeek) FromENV() {
-	c.Token = os.Getenv("QUKA_API_AI_DEEPSEEK_TOKEN")
-	c.Endpoint = os.Getenv("QUKA_API_AI_DEEPSEEK_ENDPOINT")
-}
-
-func (c *Gemini) FromENV() {
-	c.Token = os.Getenv("QUKA_API_AI_GEMINI_TOKEN")
-}
-
-func (c *Openai) FromENV() {
-	c.Token = os.Getenv("QUKA_API_AI_OPENAI_TOKEN")
-	c.Endpoint = os.Getenv("QUKA_API_AI_OPENAI_ENDPOINT")
-}
-
-func (c *AzureOpenai) FromENV() {
-	c.Token = os.Getenv("QUKA_API_AI_AZURE_OPENAI_TOKEN")
-	c.Endpoint = os.Getenv("QUKA_API_AI_AZURE_OPENAI_ENDPOINT")
-}
-
-func (c *QWen) FromENV() {
-	c.Token = os.Getenv("QUKA_API_AI_ALI_TOKEN")
-	c.Endpoint = os.Getenv("QUKA_API_AI_ALI_ENDPOINT")
-}
-
-type Gemini struct {
-	Token string `toml:"token"`
-}
-
-type DeepSeek struct {
-	Token          string `toml:"token"`
-	Endpoint       string `toml:"endpoint"`
-	EmbeddingModel string `toml:"embedding_model"`
-	ChatModel      string `toml:"chat_model"`
-}
-
-func (cfg *DeepSeek) Install(root *AI) {
-	var oai any
-	oai = deepseek.New(cfg.Token, cfg.Endpoint, ai.ModelName{
-		ChatModel:      cfg.ChatModel,
-		EmbeddingModel: cfg.EmbeddingModel,
-	})
-
-	installAI(root, strings.ToLower(deepseek.NAME), oai)
-}
-
-type Ollama struct {
-	Token          string `toml:"token"`
-	Endpoint       string `toml:"endpoint"`
-	EmbeddingModel string `toml:"embedding_model"`
-	ChatModel      string `toml:"chat_model"`
-}
-
-func (cfg *Ollama) Install(root *AI) {
-	var oai any
-	oai = ollama.New(cfg.Token, cfg.Endpoint, ai.ModelName{
-		ChatModel:      cfg.ChatModel,
-		EmbeddingModel: cfg.EmbeddingModel,
-	})
-
-	installAI(root, strings.ToLower(ollama.NAME), oai)
-}
-
-type Openai struct {
-	Token          string `toml:"token"`
-	Endpoint       string `toml:"endpoint"`
-	EmbeddingModel string `toml:"embedding_model"`
-	ChatModel      string `toml:"chat_model"`
-}
-
-func (cfg *Openai) Install(root *AI) {
-	var oai any
-	oai = openai.New(cfg.Token, cfg.Endpoint, ai.ModelName{
-		ChatModel:      cfg.ChatModel,
-		EmbeddingModel: cfg.EmbeddingModel,
-	})
-
-	installAI(root, strings.ToLower(openai.NAME), oai)
-}
-
-type AzureOpenai struct {
-	Token          string `toml:"token"`
-	Endpoint       string `toml:"endpoint"`
-	EmbeddingModel string `toml:"embedding_model"`
-	ChatModel      string `toml:"chat_model"`
-}
-
-func (cfg *AzureOpenai) Install(root *AI) {
-	var oai any
-	oai = azure_openai.New(cfg.Token, cfg.Endpoint, ai.ModelName{
-		ChatModel:      cfg.ChatModel,
-		EmbeddingModel: cfg.EmbeddingModel,
-	})
-
-	installAI(root, strings.ToLower(azure_openai.NAME), oai)
-}
-
-type QWen struct {
-	Token          string `toml:"token"`
-	Endpoint       string `toml:"endpoint"`
-	EmbeddingModel string `toml:"embedding_model"`
-	ChatModel      string `toml:"chat_model"`
-}
-
-func (cfg *QWen) Install(root *AI) {
-	var oai any
-	oai = qwen.New(cfg.Token, cfg.Endpoint, ai.ModelName{
-		ChatModel:      cfg.ChatModel,
-		EmbeddingModel: cfg.EmbeddingModel,
-	})
-
-	installAI(root, strings.ToLower(qwen.NAME), oai)
+	Token       string            `toml:"token"`
+	ApiEndpoint string            `toml:"api_endpoint"`
+	Models      map[string]string `toml:"models"`
 }
 
 type AI struct {
@@ -273,7 +101,7 @@ type AI struct {
 	rerankDefault  RerankAI
 }
 
-func (s *AI) DescribeImage(ctx context.Context, lang, imageURL string) (ai.GenerateResponse, error) {
+func (s *AI) DescribeImage(ctx context.Context, lang, imageURL string) (*oai.ChatCompletionResponse, error) {
 	opts := s.NewVisionQuery(ctx, []*types.MessageContext{
 		{
 			Role: types.USER_ROLE_USER,
@@ -331,14 +159,14 @@ func (s *AI) Lang() string {
 }
 
 func (s *AI) EmbeddingForQuery(ctx context.Context, content []string) (ai.EmbeddingResult, error) {
-	if d := s.embedUsage["embedding.query"]; d != nil {
+	if d := s.embedUsage["embedding"]; d != nil {
 		return d.EmbeddingForQuery(ctx, content)
 	}
 	return s.embedDefault.EmbeddingForQuery(ctx, content)
 }
 
 func (s *AI) EmbeddingForDocument(ctx context.Context, title string, content []string) (ai.EmbeddingResult, error) {
-	if d := s.embedUsage["embedding.document"]; d != nil {
+	if d := s.embedUsage["embedding"]; d != nil {
 		return d.EmbeddingForDocument(ctx, title, content)
 	}
 	return s.embedDefault.EmbeddingForQuery(ctx, content)
@@ -403,33 +231,35 @@ func (s *AI) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, err
 	return s.readerDefault.Reader(ctx, endpoint)
 }
 
-func installAI(a *AI, name string, driver any) {
-	if d, ok := driver.(ChatAI); ok {
-		a.chatDrivers[name] = d
-	}
-
-	if d, ok := driver.(EmbeddingAI); ok {
-		a.embedDrivers[name] = d
-	}
-
-	if d, ok := driver.(ai.Enhance); ok {
-		a.enhanceDrivers[name] = d
-	}
-
-	if d, ok := driver.(ReaderAI); ok {
-		a.readerDrivers[name] = d
-	}
-
-	if d, ok := driver.(VisionAI); ok {
-		a.visionDrivers[name] = d
-	}
-
-	if d, ok := driver.(RerankAI); ok {
-		a.rerankDrivers[name] = d
-	}
+type Usage struct {
+	Chat      string `json:"chat"`
+	Embedding string `json:"embedding"`
+	Vision    string `json:"vision"`
+	Rerank    string `json:"rerank"`
+	Reader    string `json:"reader"`
+	Enhance   string `json:"enhance"`
 }
 
-func SetupAI(cfg AIConfig) (*AI, error) {
+func SetupReader(s *AI, providers []types.CustomConfig) error {
+	for _, v := range providers {
+		switch v.Name {
+		case "jina":
+			var config jina.JinaConfig
+			if err := json.Unmarshal(v.Value, &config); err != nil {
+				return err
+			}
+			driver := jina.New(config.Token, config.Endpoint)
+			if v.Category == "reader" {
+				s.readerDrivers["jina"] = driver
+				s.readerDefault = driver
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+func SetupAI(providers []types.ModelConfig, usage Usage) (*AI, error) {
 	a := &AI{
 		chatDrivers:    make(map[string]ChatAI),
 		chatUsage:      make(map[string]ChatAI),
@@ -445,66 +275,54 @@ func SetupAI(cfg AIConfig) (*AI, error) {
 		rerankUsage:    make(map[string]RerankAI),
 	}
 
-	cfg.Openai.Install(a)
-	cfg.Azure.Install(a)
-	cfg.QWen.Install(a)
-	cfg.Jina.Install(a)
-	cfg.Fusion.Install(a)
-	cfg.DeepSeek.Install(a)
-	cfg.Ollama.Install(a)
-	// TODO: Gemini install
-
-	for k, v := range cfg.Usage {
-		v = strings.ToLower(v)
-		switch k {
-		case "reader":
-			a.readerUsage[k] = a.readerDrivers[v]
-		case "embedding.document", "embedding.query":
-			a.embedUsage[k] = a.embedDrivers[v]
-		case "enhance_query":
-			a.enhanceUsage[k] = a.enhanceDrivers[v]
-		case "vision":
-			a.visionUsage[k] = a.visionDrivers[v]
+	for _, v := range providers {
+		d := fusion.New(v.Provider.ApiKey, v.Provider.ApiUrl, v.ModelName)
+		switch v.ModelType {
+		case "chat":
+			a.chatDrivers[v.ID] = d
+			a.chatDefault = d
+			a.enhanceDrivers[v.ID] = d
+			a.enhanceDefault = d
+		case "embedding":
+			a.embedDrivers[v.ID] = d
+			a.embedDefault = d
 		case "rerank":
-			a.rerankUsage[k] = a.rerankDrivers[v]
-		default:
-			a.chatUsage[k] = a.chatDrivers[v]
+			a.rerankDrivers[v.ID] = d
+			a.rerankDefault = d
+		case "vision":
+			a.visionDrivers[v.ID] = d
+			a.visionDefault = d
 		}
 	}
 
-	for _, v := range a.chatDrivers {
-		a.chatDefault = v
-		break
+	a.readerUsage["reader"] = a.readerDrivers[usage.Reader]
+	if a.readerDefault == nil {
+		a.readerDefault = a.readerDrivers[usage.Reader]
 	}
 
-	for _, v := range a.embedDrivers {
-		a.embedDefault = v
-		break
+	a.embedUsage["embedding"] = a.embedDrivers[usage.Embedding]
+	if a.embedDefault == nil {
+		a.embedDefault = a.embedDrivers[usage.Embedding]
 	}
 
-	for _, v := range a.enhanceDrivers {
-		a.enhanceDefault = v
-		break
+	a.enhanceUsage["enhance_query"] = a.enhanceDrivers[usage.Enhance]
+	if a.enhanceDefault == nil {
+		a.enhanceDefault = a.enhanceDrivers[usage.Enhance]
 	}
 
-	for _, v := range a.readerDrivers {
-		a.readerDefault = v
-		break
+	a.visionUsage["vision"] = a.visionDrivers[usage.Vision]
+	if a.visionDefault == nil {
+		a.visionDefault = a.visionDrivers[usage.Vision]
 	}
 
-	for _, v := range a.visionDrivers {
-		a.visionDefault = v
-		break
+	a.rerankUsage["rerank"] = a.rerankDrivers[usage.Rerank]
+	if a.rerankDefault == nil {
+		a.rerankDefault = a.rerankDrivers[usage.Rerank]
 	}
 
-	for _, v := range a.rerankDrivers {
-		a.rerankDefault = v
-		break
-	}
-
-	if a.chatDefault == nil || a.embedDefault == nil {
-		fmt.Println("chat", a.chatDefault, "embedding", a.embedDefault)
-		panic("AI driver of chat and embedding must be set")
+	a.chatUsage["query"] = a.chatDrivers[usage.Chat]
+	if a.chatDefault == nil {
+		a.chatDefault = a.chatDrivers[usage.Chat]
 	}
 
 	return a, nil
@@ -512,8 +330,8 @@ func SetupAI(cfg AIConfig) (*AI, error) {
 
 type ApplyFunc func(s *Srv)
 
-func ApplyAI(cfg AIConfig) ApplyFunc {
+func ApplyAI(providers []types.ModelConfig, usage Usage) ApplyFunc {
 	return func(s *Srv) {
-		s.ai, _ = SetupAI(cfg)
+		s.ai, _ = SetupAI(providers, usage)
 	}
 }

@@ -1,4 +1,4 @@
-FROM golang:1.23.4 AS builder
+FROM docker.1ms.run/library/golang:1.23-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -20,12 +20,12 @@ COPY tpls/ tpls/
 # Start build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -ldflags '-extldflags "-static"' -o _build/quka ./cmd/
 
-FROM alpine:3.18
-LABEL MAINTAINER=hey@brew.re
+FROM docker.1ms.run/library/alpine:3.20
+LABEL MAINTAINER=hey@quka.ai
 
 WORKDIR /app
 COPY --from=builder /app/cmd/service/etc/service-default.toml /app/etc/service-default.toml
 COPY --from=builder /app/_build/quka /app/quka
-COPY --from=builder /app/_build/tpls /app/tpls
+COPY --from=builder /app/tpls /app/tpls
 
 CMD ["/app/quka", "service", "-c", "/app/etc/service-default.toml"]

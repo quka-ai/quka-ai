@@ -1,4 +1,4 @@
-CREATE TABLE bw_space (
+CREATE TABLE IF NOT EXISTS bw_space (
     space_id VARCHAR(32) NOT NULL,  -- 空间的唯一标识
     title VARCHAR(32) NOT NULL,  -- 空间的唯一标识
     description TEXT NOT NULL, -- 用户在空间中的角色
@@ -17,4 +17,4 @@ COMMENT ON COLUMN bw_space.description IS '简介';
 COMMENT ON COLUMN bw_space.created_at IS '创建时间，存储为时间戳';
 
 -- 创建 user_id 和 space_id 索引
-CREATE INDEX idx_space_id ON bw_space (space_id);
+CREATE INDEX IF NOT EXISTS idx_space_id ON bw_space (space_id);

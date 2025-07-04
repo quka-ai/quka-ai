@@ -180,6 +180,19 @@ func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeAr
 		return errors.New("KnowledgeLogic.Update.KnowledgeStore.GetKnowledge", i18n.ERROR_NOT_FOUND, err).Code(http.StatusNotFound)
 	}
 
+	if args.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
+		blocks, err := utils.ParseRawToBlocks(json.RawMessage(args.Content))
+		if err != nil {
+			return errors.New("KnowledgeLogic.Update.ConvertEditorJSBlocksToRaw", i18n.ERROR_INTERNAL, err)
+		}
+
+		blocks = utils.RemoveFileBlockHost(blocks)
+		args.Content, err = json.Marshal(blocks)
+		if err != nil {
+			return errors.New("KnowledgeLogic.Update.ConvertEditorJSBlocksToRaw", i18n.ERROR_INTERNAL, err)
+		}
+	}
+
 	tagsChanged := false
 	if len(args.Tags) != 0 {
 		if len(args.Tags) != len(oldKnowledge.Tags) {
@@ -340,7 +353,7 @@ func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query stri
 		}
 
 		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			content, err := utils.ConvertEditorJSBlocksToMarkdown(json.RawMessage(v.Content))
+			content, err := utils.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
 			if err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue
@@ -585,6 +598,19 @@ func UpdateFilesToDelete(ctx context.Context, core *core.Core, spaceID string, c
 func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType) (string, error) {
 	if resource == "" {
 		resource = types.DEFAULT_RESOURCE
+	}
+
+	if contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
+		blocks, err := utils.ParseRawToBlocks(json.RawMessage(content))
+		if err != nil {
+			return "", errors.New("KnowledgeLogic.insertContent.ParseRawToBlocks", i18n.ERROR_INTERNAL, err)
+		}
+
+		blocks = utils.RemoveFileBlockHost(blocks)
+		content, err = json.Marshal(blocks)
+		if err != nil {
+			return "", errors.New("KnowledgeLogic.insertContent.RemoveFileBlockHost", i18n.ERROR_INTERNAL, err)
+		}
 	}
 
 	var (

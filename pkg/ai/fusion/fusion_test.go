@@ -12,9 +12,7 @@ import (
 
 func new() *fusion.Driver {
 	fmt.Println(os.Getenv("QUKA_API_AI_FUSION_TOKEN"), os.Getenv("QUKA_API_AI_FUSION_ENDPOINT"))
-	return fusion.New(os.Getenv("QUKA_API_AI_FUSION_TOKEN"), os.Getenv("QUKA_API_AI_FUSION_ENDPOINT"), ai.ModelName{
-		RerankModel: "Qwen/Qwen3-Reranker-8B",
-	})
+	return fusion.New(os.Getenv("QUKA_API_AI_FUSION_TOKEN"), os.Getenv("QUKA_API_AI_FUSION_ENDPOINT"), "Qwen/Qwen3-Reranker-8B")
 }
 
 // curl --request POST \

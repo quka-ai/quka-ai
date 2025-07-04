@@ -105,7 +105,7 @@ type KnowledgeResponse struct {
 	Title       string               `json:"title" db:"title"`
 	Tags        pq.StringArray       `json:"tags" db:"tags"`
 	Content     string               `json:"content" db:"content"`
-	Blocks      json.RawMessage      `json:"blocks" db:"-"`
+	Blocks      json.RawMessage      `json:"blocks,omitempty" db:"-"`
 	ContentType KnowledgeContentType `json:"content_type" db:"content_type"`
 	UserID      string               `json:"user_id" db:"user_id"`
 	Stage       KnowledgeStage       `json:"stage" db:"stage"`

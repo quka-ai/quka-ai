@@ -36,21 +36,7 @@ func RegisterProvider(key string, p core.Plugins) {
 	}
 }
 
-type ObjectStorageDriver struct {
-	StaticDomain string    `toml:"static_domain"`
-	Driver       string    `toml:"driver"`
-	S3           *S3Config `toml:"s3"`
-}
-
-type S3Config struct {
-	Bucket    string `toml:"bucket"`
-	Region    string `toml:"region"`
-	Endpoint  string `toml:"endpoint"`
-	AccessKey string `toml:"access_key"`
-	SecretKey string `toml:"secret_key"`
-}
-
-func SetupObjectStorage(cfg ObjectStorageDriver) core.FileStorage {
+func SetupObjectStorage(cfg core.ObjectStorageDriver) core.FileStorage {
 	var s core.FileStorage
 	switch strings.ToLower(cfg.Driver) {
 	case "s3":

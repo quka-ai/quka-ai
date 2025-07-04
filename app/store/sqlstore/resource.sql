@@ -1,4 +1,4 @@
-CREATE TABLE bw_resource (
+CREATE TABLE IF NOT EXISTS bw_resource (
     id VARCHAR(32) NOT NULL, -- 资源的唯一标识
     title VARCHAR(255) NOT NULL,         -- 资源标题
     user_id VARCHAR(32) NOT NULL         -- 用户id
@@ -10,7 +10,7 @@ CREATE TABLE bw_resource (
 );
 
 -- 为 space_id，id 创建唯一索引
-CREATE UNIQUE INDEX bw_resource_unique_idx ON bw_resource (space_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS bw_resource_unique_idx ON bw_resource (space_id, id);
 
 -- 添加字段注释
 COMMENT ON COLUMN bw_resource.id IS '资源的唯一标识';

@@ -186,8 +186,8 @@ func (b *ButlerAgent) Query(userID string, reqMsg *types.ChatMessage) ([]openai.
 						continue
 					}
 					resp, err := b.core.Srv().AI().DescribeImage(ctx, "中文", v.ImageURL.URL)
-					if resp.Usage != nil {
-						usages = append(usages, resp.Usage)
+					if resp.Usage.CompletionTokens > 0 {
+						usages = append(usages, &resp.Usage)
 					}
 					if err != nil {
 						return nil, usages, err
@@ -195,10 +195,10 @@ func (b *ButlerAgent) Query(userID string, reqMsg *types.ChatMessage) ([]openai.
 
 					req = append(req, openai.ChatCompletionMessage{
 						Role:    types.USER_ROLE_SYSTEM.String(),
-						Content: resp.Message(),
+						Content: resp.Choices[0].Message.Content,
 					})
 
-					reqMsg.Attach[i].AIDescription = resp.Message()
+					reqMsg.Attach[i].AIDescription = resp.Choices[0].Message.Content
 					needToUpdateMsgAttach = true
 				}
 				continue

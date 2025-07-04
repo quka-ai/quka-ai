@@ -123,7 +123,7 @@ func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) ([]*types.Mess
 			if err != nil {
 				return nil, err
 			}
-			md, err := utils.ConvertEditorJSBlocksToMarkdown(content)
+			md, err := utils.ConvertEditorJSRawToMarkdown(content)
 			if err != nil {
 				return nil, err
 			}

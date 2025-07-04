@@ -12,7 +12,6 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
-	"github.com/quka-ai/quka-ai/pkg/reader/rednote"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
@@ -34,30 +33,30 @@ func NewReaderLogic(ctx context.Context, core *core.Core) *ReaderLogic {
 }
 
 type ReaderResult struct {
-	Type          string             `json:"type"`
-	AIResut       *ai.ReaderResult   `json:"ai_result,omitempty"`
-	RednoteResult *rednote.Knowledge `json:"rednote_result,omitempty"`
+	Type    string           `json:"type"`
+	AIResut *ai.ReaderResult `json:"ai_result,omitempty"`
+	// RednoteResult *rednote.Knowledge `json:"rednote_result,omitempty"`
 }
 
 func (l *ReaderLogic) Reader(endpoint string) (*ReaderResult, error) {
-	switch true {
-	case rednote.Match(endpoint):
-		detail, err := rednote.Read(endpoint)
-		if err != nil {
-			return nil, errors.New("ReaderLogic.Reader.RedNote.Read", i18n.ERROR_INTERNAL, err)
-		}
+	// switch true {
+	// case rednote.Match(endpoint):
+	// 	detail, err := rednote.Read(endpoint)
+	// 	if err != nil {
+	// 		return nil, errors.New("ReaderLogic.Reader.RedNote.Read", i18n.ERROR_INTERNAL, err)
+	// 	}
 
-		knowledge, err := rednote.ParseRedNote(l.ctx, "unknown", detail, l.core.FileStorage())
-		if err != nil {
-			return nil, errors.New("ReaderLogic.Reader.RedNote.Parse", i18n.ERROR_INTERNAL, err)
-		}
+	// 	knowledge, err := rednote.ParseRedNote(l.ctx, "unknown", detail, l.core.FileStorage())
+	// 	if err != nil {
+	// 		return nil, errors.New("ReaderLogic.Reader.RedNote.Parse", i18n.ERROR_INTERNAL, err)
+	// 	}
 
-		return &ReaderResult{
-			Type:          "rednote",
-			RednoteResult: knowledge,
-		}, nil
-	default:
-	}
+	// 	return &ReaderResult{
+	// 		Type:          "rednote",
+	// 		RednoteResult: knowledge,
+	// 	}, nil
+	// default:
+	// }
 
 	res, err := l.core.Srv().AI().Reader(l.ctx, endpoint)
 	if err != nil {
@@ -114,9 +113,9 @@ func (l *ReaderLogic) DescribeImage(imageURL string) (string, error) {
 		return "", errors.New("KnowledgeLogic.DescribeImage.Query", i18n.ERROR_INTERNAL, err)
 	}
 
-	if resp.Usage != nil {
-		process.NewRecordUsageRequest(resp.Model, types.USAGE_TYPE_SYSTEM, types.USAGE_SUB_TYPE_DESCRIBE_IMAGE, "", l.GetUserInfo().User, resp.Usage)
+	if resp.Usage.CompletionTokens > 0 {
+		process.NewRecordUsageRequest(resp.Model, types.USAGE_TYPE_SYSTEM, types.USAGE_SUB_TYPE_DESCRIBE_IMAGE, "", l.GetUserInfo().User, &resp.Usage)
 	}
 
-	return resp.Message(), nil
+	return resp.Choices[0].Message.Content, nil
 }

@@ -201,5 +201,5 @@ func Test_DescribeImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Log(resp.Message())
+	t.Log(resp.Choices[0].Message.Content)
 }

@@ -1,4 +1,4 @@
-CREATE TABLE bw_file_management (
+CREATE TABLE IF NOT EXISTS bw_file_management (
     id BIGSERIAL PRIMARY KEY,                      -- 文件记录的唯一标识
     space_id VARCHAR(32) NOT NULL,             -- 关联空间id
     user_id VARCHAR NOT NULL,                       -- 关联的用户ID，用于区分每个用户的文件数据
@@ -23,4 +23,4 @@ COMMENT ON COLUMN bw_file_management.status IS '文件的状态，1表示可用�
 COMMENT ON COLUMN bw_file_management.created_at IS '记录文件的上传时间';
 
 -- 添加唯一约束
-CREATE UNIQUE INDEX idx_user_id_file_name ON bw_file_management (user_id, file);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_id_file_name ON bw_file_management (user_id, file);

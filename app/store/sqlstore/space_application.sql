@@ -1,5 +1,5 @@
 -- 创建 bw_space_application 表
-CREATE TABLE bw_space_application (
+CREATE TABLE IF NOT EXISTS bw_space_application (
     id VARCHAR(32) PRIMARY KEY,
     space_id VARCHAR(32) NOT NULL,  -- 空间ID，用于区分不同的空间
     user_id VARCHAR(32) NOT NULL,     -- 用户ID
@@ -10,7 +10,7 @@ CREATE TABLE bw_space_application (
 );
 
 -- 为 token 字段创建索引，加快查找速度
-CREATE INDEX idx_space_user ON bw_space_application(space_id,user_id);
+CREATE INDEX IF NOT EXISTS idx_space_user ON bw_space_application(space_id,user_id);
 
 -- 为每个字段添加注释
 COMMENT ON COLUMN bw_space_application.id IS '唯一标识';

@@ -1,5 +1,5 @@
 -- 创建 bw_chat_message 表，表示消息的基本信息
-CREATE TABLE bw_chat_message (
+CREATE TABLE IF NOT EXISTS bw_chat_message (
     id VARCHAR(32) PRIMARY KEY, -- 消息的唯一标识，使用字符串形式的 ID
     space_id VARCHAR(32) NOT NULL, -- 空间ID，表示消息所属的空间
     session_id VARCHAR(32) NOT NULL, -- 会话ID，表示消息所属的会话
@@ -16,11 +16,11 @@ CREATE TABLE bw_chat_message (
 );
 
 -- 为 bw_chat_message 表添加索引
-CREATE INDEX idx_bw_chat_message_space_id ON bw_chat_message (space_id); -- 空间ID索引，提升按空间查询的速度
-CREATE INDEX idx_bw_chat_message_session_id_message_id ON bw_chat_message (session_id, id); -- 会话ID索引，提升按会话查询的效率
-CREATE INDEX idx_bw_chat_message_user_id ON bw_chat_message (user_id); -- 用户ID索引，优化按用户查询
-CREATE INDEX idx_bw_chat_message_sequence ON bw_chat_message (sequence); -- 消息顺序索引，优化消息顺序查询
-CREATE INDEX idx_bw_chat_message_encrypt ON bw_chat_message (complete, is_encrypt); -- 消息加密状态
+CREATE INDEX IF NOT EXISTS idx_bw_chat_message_space_id ON bw_chat_message (space_id); -- 空间ID索引，提升按空间查询的速度
+CREATE INDEX IF NOT EXISTS idx_bw_chat_message_session_id_message_id ON bw_chat_message (session_id, id); -- 会话ID索引，提升按会话查询的效率
+CREATE INDEX IF NOT EXISTS idx_bw_chat_message_user_id ON bw_chat_message (user_id); -- 用户ID索引，优化按用户查询
+CREATE INDEX IF NOT EXISTS idx_bw_chat_message_sequence ON bw_chat_message (sequence); -- 消息顺序索引，优化消息顺序查询
+CREATE INDEX IF NOT EXISTS idx_bw_chat_message_encrypt ON bw_chat_message (complete, is_encrypt); -- 消息加密状态
 
 -- 添加字段注释
 COMMENT ON COLUMN bw_chat_message.id IS '消息的唯一标识，使用字符串形式的 ID';

@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/pkg/plugins"
 	"github.com/quka-ai/quka-ai/pkg/reader/rednote"
 )
@@ -33,10 +34,10 @@ func TestReader(t *testing.T) {
 	}
 	t.Log(result)
 
-	objectDriver := plugins.SetupObjectStorage(plugins.ObjectStorageDriver{
+	objectDriver := plugins.SetupObjectStorage(core.ObjectStorageDriver{
 		StaticDomain: "test.com",
 		Driver:       "s3",
-		S3: &plugins.S3Config{
+		S3: &core.S3Config{
 			Bucket:    os.Getenv("TEST_BREW_S3_BUCKET"),
 			Region:    os.Getenv("TEST_BREW_S3_REGION"),
 			Endpoint:  os.Getenv("TEST_BREW_S3_ENDPOINT"),

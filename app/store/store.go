@@ -252,3 +252,33 @@ type SpaceApplicationStore interface {
 	Total(ctx context.Context, spaceID string, opts types.ListSpaceApplicationOptions) (int64, error)
 	List(ctx context.Context, spaceID string, opts types.ListSpaceApplicationOptions, page, pagesize uint64) ([]types.SpaceApplication, error)
 }
+
+type ModelProviderStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.ModelProvider) error
+	Get(ctx context.Context, id string) (*types.ModelProvider, error)
+	Update(ctx context.Context, id string, data types.ModelProvider) error
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context, opts types.ListModelProviderOptions, page, pageSize uint64) ([]types.ModelProvider, error)
+	Total(ctx context.Context, opts types.ListModelProviderOptions) (int64, error)
+}
+
+type ModelConfigStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.ModelConfig) error
+	Get(ctx context.Context, id string) (*types.ModelConfig, error)
+	Update(ctx context.Context, id string, data types.ModelConfig) error
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context, opts types.ListModelConfigOptions) ([]types.ModelConfig, error)
+	ListWithProvider(ctx context.Context, opts types.ListModelConfigOptions) ([]types.ModelConfig, error)
+	Total(ctx context.Context, opts types.ListModelConfigOptions) (int64, error)
+}
+
+type CustomConfigStore interface {
+	sqlstore.SqlCommons
+	Upsert(ctx context.Context, data types.CustomConfig) error
+	Get(ctx context.Context, name string) (*types.CustomConfig, error)
+	Delete(ctx context.Context, name string) error
+	List(ctx context.Context, opts types.ListCustomConfigOptions, page, pageSize uint64) ([]types.CustomConfig, error)
+	Total(ctx context.Context, opts types.ListCustomConfigOptions) (int64, error)
+}

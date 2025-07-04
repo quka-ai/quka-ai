@@ -1,5 +1,5 @@
 -- 创建 bw_chat_session 表，表示会话的基本信息
-CREATE TABLE bw_chat_session (
+CREATE TABLE IF NOT EXISTS bw_chat_session (
     id VARCHAR(32) PRIMARY KEY, -- 会话的唯一标识
     space_id VARCHAR(32) NOT NULL, -- 空间ID，表示session属于哪个space 
     user_id VARCHAR(32) NOT NULL, -- 用户ID，表示属于哪个用户
@@ -11,9 +11,9 @@ CREATE TABLE bw_chat_session (
 );
 
 -- 为 bw_chat_session 表添加索引
-CREATE INDEX idx_bw_chat_session_space_id_user_id ON bw_chat_session (space_id,user_id); -- 用户ID索引，提升用户相关的查询速度
-CREATE INDEX idx_bw_chat_session_created_at ON bw_chat_session (created_at); -- 创建时间索引，优化按时间排序的查询
-CREATE INDEX idx_bw_chat_session_latest_access_time ON bw_chat_session (latest_access_time); -- 最近访问时间索引，优化按最近访问查询
+CREATE INDEX IF NOT EXISTS idx_bw_chat_session_space_id_user_id ON bw_chat_session (space_id,user_id); -- 用户ID索引，提升用户相关的查询速度
+CREATE INDEX IF NOT EXISTS idx_bw_chat_session_created_at ON bw_chat_session (created_at); -- 创建时间索引，优化按时间排序的查询
+CREATE INDEX IF NOT EXISTS idx_bw_chat_session_latest_access_time ON bw_chat_session (latest_access_time); -- 最近访问时间索引，优化按最近访问查询
 
 -- 添加字段注释
 COMMENT ON COLUMN bw_chat_session.id IS '会话的唯一标识，使用字符串形式的 ID';

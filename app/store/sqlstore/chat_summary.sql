@@ -1,5 +1,5 @@
 -- 创建表 bw_chat_summary
-CREATE TABLE bw_chat_summary (
+CREATE TABLE IF NOT EXISTS bw_chat_summary (
     id VARCHAR(32) PRIMARY KEY,                  -- 主键，消息摘要唯一标识符
     space_id VARCHAR(32) NOT NULL,             -- 消息ID，关联具体的消息
     message_id VARCHAR(32) NOT NULL,             -- 消息ID，关联具体的消息
@@ -8,8 +8,8 @@ CREATE TABLE bw_chat_summary (
     created_at BIGINT NOT NULL            -- 创建时间，使用UNIX时间戳
 );
 
-CREATE INDEX idx_bw_chat_summary_session_id_message_id ON bw_chat_summary (session_id,message_id); -- 用户ID索引，提升用户相关的查询速度
-CREATE INDEX idx_bw_chat_summary_space_id ON bw_chat_summary (space_id);
+CREATE INDEX IF NOT EXISTS idx_bw_chat_summary_session_id_message_id ON bw_chat_summary (session_id,message_id); -- 用户ID索引，提升用户相关的查询速度
+CREATE INDEX IF NOT EXISTS idx_bw_chat_summary_space_id ON bw_chat_summary (space_id);
 
 -- 添加字段备注
 COMMENT ON COLUMN bw_chat_summary.id IS '主键，消息摘要唯一标识符';

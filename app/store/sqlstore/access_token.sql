@@ -1,5 +1,5 @@
 -- 创建表
-CREATE TABLE bw_access_token (
+CREATE TABLE IF NOT EXISTS bw_access_token (
     id SERIAL PRIMARY KEY,
     appid VARCHAR(32) NOT NULL,
     user_id VARCHAR(32) NOT NULL,
@@ -21,7 +21,7 @@ COMMENT ON COLUMN bw_access_token.info IS 'token 描述，描述 token 的用途
 
 
 -- 为 user_id 字段创建索引
-CREATE INDEX idx_bw_access_token_appid_user_id ON bw_access_token (appid, user_id);
+CREATE INDEX IF NOT EXISTS idx_bw_access_token_appid_user_id ON bw_access_token (appid, user_id);
 
 -- 为 token 字段创建索引
-CREATE INDEX idx_bw_access_token_appid_token ON bw_access_token (appid, token);
+CREATE INDEX IF NOT EXISTS idx_bw_access_token_appid_token ON bw_access_token (appid, token);

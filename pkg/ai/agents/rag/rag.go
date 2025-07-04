@@ -195,7 +195,7 @@ func GetQueryRelevanceKnowledges(core *core.Core, spaceID, userID, query string,
 		}
 
 		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			content, err := utils.ConvertEditorJSBlocksToMarkdown(json.RawMessage(v.Content))
+			content, err := utils.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
 			if err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue

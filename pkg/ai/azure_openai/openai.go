@@ -167,7 +167,7 @@ func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionReque
 	return resp, nil
 }
 
-func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.GenerateResponse, error) {
+func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionResponse, error) {
 
 	req := openai.ChatCompletionRequest{
 		Model: s.model.ChatModel,
@@ -179,21 +179,15 @@ func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.G
 		}),
 	}
 
-	result := ai.GenerateResponse{
-		Model: s.model.ChatModel,
-	}
 	resp, err := s.client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return result, fmt.Errorf("Completion error: %w", err)
+		return nil, fmt.Errorf("Completion error: %w", err)
 
 	}
 
 	slog.Debug("Query", slog.Any("query", req), slog.String("driver", NAME), slog.String("model", s.model.ChatModel))
 
-	result.Received = append(result.Received, resp.Choices[0].Message.Content)
-	result.Usage = &resp.Usage
-
-	return result, nil
+	return &resp, nil
 }
 
 const SummarizeFuncName = "summarize"

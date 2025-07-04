@@ -27,4 +27,4 @@ COMMENT ON COLUMN bw_user.updated_at IS '更新时间，Unix时间戳';
 COMMENT ON COLUMN bw_user.created_at IS '创建时间，Unix时间戳';
 
 
-CREATE UNIQUE INDEX bw_user_appid_email ON bw_user (appid,email);
+CREATE UNIQUE INDEX IF NOT EXISTS bw_user_appid_email ON bw_user (appid,email);

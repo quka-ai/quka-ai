@@ -30,8 +30,7 @@ func NewSingleLock() *SingleLock {
 }
 
 type SelfHostCustomConfig struct {
-	ObjectStorage ObjectStorageDriver `toml:"object_storage"`
-	EncryptKey    string              `toml:"encrypt_key"`
+	EncryptKey string `toml:"encrypt_key"`
 }
 
 type SingleLock struct {
@@ -241,7 +240,7 @@ func (s *SelfHostPlugin) FileStorage() core.FileStorage {
 		return s.storage
 	}
 
-	s.storage = SetupObjectStorage(s.customConfig.ObjectStorage)
+	s.storage = SetupObjectStorage(s.core.Cfg().ObjectStorage)
 
 	return s.storage
 }
@@ -291,7 +290,7 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 	for _, v := range knowledges {
 		content := string(v.Content)
 		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			if content, err = utils.ConvertEditorJSBlocksToMarkdown(json.RawMessage(v.Content)); err != nil {
+			if content, err = utils.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content)); err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue
 			}

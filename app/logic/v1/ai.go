@@ -385,8 +385,8 @@ func requestAIWithTools(ctx context.Context, core *core.Core, opts AIRequestOpti
 				return nil, err
 			}
 
-			raw, _ := json.Marshal(msg)
-			fmt.Println("msg", string(raw))
+			// raw, _ := json.Marshal(msg)
+			// fmt.Println("msg", string(raw))
 
 			if msg.Message != "" {
 				if err := receiveFunc(&types.TextMessage{Text: msg.Message}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
@@ -593,20 +593,6 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 			Prompt:         prompt,
 			MessageID:      reqMsg.ID,
 			MessageContext: userChatMessage,
-		}
-	}
-
-	for _, v := range sessionContext.MessageContext {
-		if len(v.MultiContent) > 0 {
-			for i, vv := range v.MultiContent {
-				if vv.ImageURL != nil {
-					url, err := s.core.FileStorage().GenGetObjectPreSignURL(vv.ImageURL.URL)
-					if err != nil {
-						return err
-					}
-					v.MultiContent[i].ImageURL.URL = url
-				}
-			}
 		}
 	}
 
