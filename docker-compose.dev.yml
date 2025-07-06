@@ -15,15 +15,18 @@ services:
   qukaai:
     image: docker.io/holdno/quka:v0.1.0
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
-      MINIO_BUCKET: ${MINIO_BUCKET:-quka-bucket}
-      STATIC_DOMAIN: ${STATIC_DOMAIN:-http://localhost}
-      ENCRYPT_KEY: ${ENCRYPT_KEY:-quka-encrypt-key}
+      QUKA_API_SERVICE_ADDRESS: ${QUKA_API_SERVICE_ADDRESS:-http://localhost:33033}
+      QUKA_POSTGRES_HOST: postgres
+      QUKA_POSTGRES_PORT: 5432
+      QUKA_POSTGRES_USER: ${QUKA_POSTGRES_USER:-postgres}
+      QUKA_POSTGRES_PASSWORD: ${QUKA_POSTGRES_PASSWORD:-postgres}
+      QUKA_S3_ACCESS_KEY: ${QUKA_S3_ACCESS_KEY:-minioadmin}
+      QUKA_S3_SECRET_KEY: ${QUKA_S3_SECRET_KEY:-minioadmin123}
+      QUKA_S3_BUCKET: ${QUKA_S3_BUCKET:-quka-bucket}
+      QUKA_S3_REGION: ${QUKA_S3_REGION:-fake}
+      QUKA_S3_ENDPOINT: ${QUKA_S3_ENDPOINT:-http://minio:9000}
+      QUKA_STATIC_DOMAIN: ${QUKA_STATIC_DOMAIN:-http://localhost}
+      QUKA_ENCRYPT_KEY: ${QUKA_ENCRYPT_KEY:-quka-encrypt-key}
   # 权限初始化容器
   postgres:
     image: docker.1ms.run/pgvector/pgvector:pg17
@@ -31,8 +34,8 @@ services:
     ports:
       - "35432:5432"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${QUKA_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${QUKA_POSTGRES_PASSWORD:-postgres}
     volumes:
       # 选项1：使用命名卷（推荐，避免权限问题）
       - postgres_data:/var/lib/postgresql/data
@@ -45,8 +48,8 @@ services:
       - "39000:9000"
       - "39001:9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_ROOT_USER: ${QUKA_MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${QUKA_MINIO_ROOT_PASSWORD:-minioadmin123}
     volumes:
       # 选项1：使用命名卷（推荐）
       - minio_data:/mnt/data
@@ -64,9 +67,9 @@ services:
     depends_on:
       - minio
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
-      MINIO_BUCKET: ${MINIO_BUCKET:-quka-bucket}
+      MINIO_ROOT_USER: ${QUKA_MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${QUKA_MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKET: ${QUKA_MINIO_BUCKET:-quka-bucket}
     entrypoint: >
       /bin/sh -c "
       echo '⏳ 等待 MinIO 启动...';
