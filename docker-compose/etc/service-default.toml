@@ -25,4 +25,4 @@ secret_key = "minio-secret-key-change-me"
 use_path_style = true
 
 [custom_config]
-encrypt_key="mdka2lakcydd1kab"
+encrypt_key="aaaaaaaaaaaaaaaa"
