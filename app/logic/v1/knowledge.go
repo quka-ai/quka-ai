@@ -81,6 +81,22 @@ func (l *KnowledgeLogic) GetKnowledge(spaceID, id string) (*types.Knowledge, err
 		if data.Content, err = l.core.DecryptData(data.Content); err != nil {
 			return nil, errors.New("KnowledgeLogic.GetJournal.DecryptData", i18n.ERROR_INTERNAL, err)
 		}
+
+		// 替换静态资源URL为预签名URL
+		contentStr := string(data.Content)
+		switch data.ContentType {
+		case types.KNOWLEDGE_CONTENT_TYPE_BLOCKS:
+			contentStr = utils.ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(
+				contentStr,
+				l.core.Plugins.FileStorage(),
+			)
+		default:
+			contentStr = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(
+				contentStr,
+				l.core.Plugins.FileStorage(),
+			)
+		}
+		data.Content = types.KnowledgeContent(contentStr)
 	}
 
 	return data, nil

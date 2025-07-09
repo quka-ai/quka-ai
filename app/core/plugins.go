@@ -84,6 +84,8 @@ type Limiter interface {
 type SetupFunc func() Plugins
 
 func (c *Core) InstallPlugins(p Plugins) {
-	p.Install(c)
+	if err := p.Install(c); err != nil {
+		panic(err)
+	}
 	c.Plugins = p
 }

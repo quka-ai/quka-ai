@@ -1,5 +1,5 @@
 -- 创建自定义配置表
-CREATE TABLE IF NOT EXISTS bw_custom_config (
+CREATE TABLE IF NOT EXISTS quka_custom_config (
     name VARCHAR(255) PRIMARY KEY,
     description TEXT,
     value JSONB,
@@ -10,6 +10,6 @@ CREATE TABLE IF NOT EXISTS bw_custom_config (
 );
 
 -- 创建索引以提高查询性能
-CREATE INDEX IF NOT EXISTS idx_custom_config_category ON bw_custom_config(category);
-CREATE INDEX IF NOT EXISTS idx_custom_config_status ON bw_custom_config(status);
-CREATE INDEX IF NOT EXISTS idx_custom_config_created_at ON bw_custom_config(created_at); 
+CREATE INDEX IF NOT EXISTS idx_custom_config_category ON quka_custom_config(category);
+CREATE INDEX IF NOT EXISTS idx_custom_config_status ON quka_custom_config(status);
+CREATE INDEX IF NOT EXISTS idx_custom_config_created_at ON quka_custom_config(created_at); 

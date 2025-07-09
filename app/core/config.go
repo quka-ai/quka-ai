@@ -76,11 +76,12 @@ type ObjectStorageDriver struct {
 }
 
 type S3Config struct {
-	Bucket    string `toml:"bucket"`
-	Region    string `toml:"region"`
-	Endpoint  string `toml:"endpoint"`
-	AccessKey string `toml:"access_key"`
-	SecretKey string `toml:"secret_key"`
+	Bucket       string `toml:"bucket"`
+	Region       string `toml:"region"`
+	Endpoint     string `toml:"endpoint"`
+	AccessKey    string `toml:"access_key"`
+	SecretKey    string `toml:"secret_key"`
+	UsePathStyle bool   `toml:"use_path_style"`
 }
 
 type Site struct {

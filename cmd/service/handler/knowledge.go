@@ -155,7 +155,9 @@ func (s *HttpSrv) ListKnowledge(c *gin.Context) {
 	}
 
 	knowledgeList := lo.Map(list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
-		return KnowledgeToKnowledgeResponseLite(item)
+		liteContent := KnowledgeToKnowledgeResponseLite(item)
+		liteContent.Content = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(liteContent.Content, s.Core.Plugins.FileStorage())
+		return liteContent
 	})
 
 	response.APISuccess(c, ListKnowledgeResponse{

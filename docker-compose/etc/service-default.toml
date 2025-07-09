@@ -1,0 +1,28 @@
+[log]
+level = "debug"
+path = ""
+
+[postgres]
+#dsn = "postgresql://quka:quka123@postgres:5432/quka?sslmode=disable"
+dsn = "postgresql://quka:quka123@localhost:35432/quka?sslmode=disable"
+
+[site]
+default_avatar = "/assets/default_avatar.png"
+[site.share]
+site_title = "Quka.AI"
+site_description = "Quka.AI - 快速构建个人第二大脑"
+
+[object_storage]
+static_domain = "http://localhost:30080"
+driver = "s3"
+
+[object_storage.s3]
+bucket = "quka-bucket"
+region = ""
+endpoint = "http://localhost:39000"
+access_key = "myminioadmin"
+secret_key = "minio-secret-key-change-me"
+use_path_style = true
+
+[custom_config]
+encrypt_key="mdka2lakcydd1kab"

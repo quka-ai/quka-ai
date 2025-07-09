@@ -40,6 +40,6 @@ const (
 const (
 	// event notify
 	TOWER_EVENT_CLOSE_CHAT_STREAM = "/qukaai/event/chat/close_stream"
-	FIXED_S3_UPLOAD_PATH_PREFIX   = "/quka/assets/"
+	FIXED_S3_UPLOAD_PATH_PREFIX   = "/assets/s3/"
 	DEFAULT_APPID                 = "quka"
 )

@@ -18,7 +18,11 @@ func serve(core *core.Core) {
 	}
 	setupHttpRouter(httpSrv)
 
-	core.HttpEngine().Run(core.Cfg().Addr)
+	address := core.Cfg().Addr
+	if address == "" {
+		address = ":33033"
+	}
+	core.HttpEngine().Run(address)
 }
 
 func GetIPLimitBuilder(appCore *core.Core) middleware.LimiterFunc {
@@ -64,6 +68,12 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	s.Engine.GET("/s/k/:token", s.BuildKnowledgeSharePage)
 	s.Engine.GET("/s/s/:token", s.BuildSessionSharePage)
 	s.Engine.GET("/s/sp/:token", s.BuildSessionSharePage)
+
+	// 公共资源路由（无需认证）
+	s.Engine.GET("/public/*object_path", s.ObjectHandler)
+
+	// 图片代理路由（支持多种认证方式，用于 <img> 标签）
+	s.Engine.GET("/image/*object_path", middleware.FlexibleAuth(s.Core), s.ObjectHandler)
 
 	// auth
 	s.Engine.Use(middleware.I18n(), response.NewResponse())
@@ -124,6 +134,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			object := space.Group("/:spaceid/object")
 			{
 				object.POST("/upload/key", userLimit("upload"), s.GenUploadKey)
+				object.GET("/proxy/*object_path", middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView), s.ObjectHandler)
 			}
 
 			journal := space.Group("/:spaceid/journal")

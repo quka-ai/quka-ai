@@ -1,5 +1,5 @@
 -- 创建模型提供商表
-CREATE TABLE IF NOT EXISTS bw_model_provider (
+CREATE TABLE IF NOT EXISTS quka_model_provider (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -12,6 +12,6 @@ CREATE TABLE IF NOT EXISTS bw_model_provider (
 );
 
 -- 创建索引
-CREATE INDEX IF NOT EXISTS idx_bw_model_provider_status ON bw_model_provider (status);
-CREATE INDEX IF NOT EXISTS idx_bw_model_provider_name ON bw_model_provider (name);
-CREATE INDEX IF NOT EXISTS idx_bw_model_provider_created_at ON bw_model_provider (created_at); 
+CREATE INDEX IF NOT EXISTS idx_quka_model_provider_status ON quka_model_provider (status);
+CREATE INDEX IF NOT EXISTS idx_quka_model_provider_name ON quka_model_provider (name);
+CREATE INDEX IF NOT EXISTS idx_quka_model_provider_created_at ON quka_model_provider (created_at); 

@@ -34,12 +34,12 @@ func ConvertEditorJSRawToMarkdown(blockString json.RawMessage) (string, error) {
 	return editorJSMarkdownEngine.GenerateMarkdownWithUnknownBlock(string(blockString))
 }
 
-type editorJS struct {
+type EditorJS struct {
 	Blocks []goeditorjs.EditorJSBlock `json:"blocks"`
 }
 
 func ParseRawToBlocks(blockString json.RawMessage) ([]goeditorjs.EditorJSBlock, error) {
-	var blocks editorJS
+	var blocks EditorJS
 	if err := json.Unmarshal(blockString, &blocks); err != nil {
 		return nil, err
 	}

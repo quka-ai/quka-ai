@@ -7,21 +7,27 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	crand "crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
 	"io"
+	"log/slog"
 	"math"
 	"math/rand"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/davidscottmills/goeditorjs"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/holdno/snowFlakeByGo"
@@ -30,10 +36,14 @@ import (
 
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
+)
 
-	"encoding/base64"
-	"mime"
-	"path/filepath"
+const (
+	// PRESIGN_FAILURE_PLACEHOLDER_IMAGE 预签名失败时使用的占位图片
+	// 这是一个base64编码的SVG错误图标，显示一个带有感叹号的警告图标
+	// 颜色为橙色(#FF6B41)，尺寸为24x24像素
+	// 当S3预签名URL生成失败时，使用此占位图片确保用户界面不会显示空白
+	PRESIGN_FAILURE_PLACEHOLDER_IMAGE = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDlWMTNNMTIgMTcuMDEwOUwxMi4wMSAxN00yMSAxMkMxNyAxMiAxNyA4IDEyIDhDNyA4IDcgMTIgMyAxMiIgc3Ryb2tlPSIjRkY2QjQxIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K"
 )
 
 var (
@@ -617,4 +627,309 @@ type FileInfo struct {
 	IsURL          bool      `json:"is_url"`
 	SupportedByLLM bool      `json:"supported_by_llm"`
 	ModTime        time.Time `json:"mod_time,omitempty"`
+}
+
+// FileStorageInterface 文件存储接口定义
+type FileStorageInterface interface {
+	GenGetObjectPreSignURL(objectPath string) (string, error)
+}
+
+// ReplaceMarkdownStaticResourcesWithPresignedURL 替换markdown中的静态资源URL为预签名URL
+func ReplaceMarkdownStaticResourcesWithPresignedURL(content string, fileStorage FileStorageInterface) string {
+	if content == "" || fileStorage == nil {
+		return content
+	}
+
+	// 匹配markdown中的图片语法: ![alt](url)
+	imageRegex := regexp.MustCompile(`!\[(.*?)\]\(([^)]+)\)`)
+
+	// 替换图片URL
+	content = imageRegex.ReplaceAllStringFunc(content, func(match string) string {
+		// 提取URL部分
+		submatches := imageRegex.FindStringSubmatch(match)
+		if len(submatches) != 3 {
+			return match
+		}
+
+		altText := submatches[1]
+		originalURL := submatches[2]
+
+		// 检查是否是需要预签名的内部资源
+		if shouldPresignURL(originalURL) {
+			// 提取object path
+			objectPath := extractObjectPath(originalURL)
+			if objectPath != "" {
+				// 生成预签名URL
+				if presignedURL, err := fileStorage.GenGetObjectPreSignURL(objectPath); err == nil {
+					return fmt.Sprintf("![%s](%s)", altText, presignedURL)
+				} else {
+					// 记录预签名失败的日志
+					slog.Warn("Failed to generate presigned URL for markdown image",
+						slog.String("object_path", objectPath),
+						slog.String("error", err.Error()))
+					// 预签名失败，返回一个降级的占位符或错误提示
+					return fmt.Sprintf("![%s](# \"Resource temporarily unavailable: %s\")", altText, err.Error())
+				}
+			}
+		}
+
+		return match
+	})
+
+	// 匹配HTML中的img标签: <img src="url" ... />
+	htmlImgRegex := regexp.MustCompile(`<img[^>]+src\s*=\s*["']([^"']+)["'][^>]*>`)
+
+	// 替换HTML img标签中的src
+	content = htmlImgRegex.ReplaceAllStringFunc(content, func(match string) string {
+		// 提取src属性值
+		srcRegex := regexp.MustCompile(`src\s*=\s*["']([^"']+)["']`)
+		srcMatches := srcRegex.FindStringSubmatch(match)
+		if len(srcMatches) != 2 {
+			return match
+		}
+
+		originalURL := srcMatches[1]
+
+		// 检查是否需要预签名
+		if shouldPresignURL(originalURL) {
+			// 提取object path
+			objectPath := extractObjectPath(originalURL)
+			if objectPath != "" {
+				// 生成预签名URL
+				if presignedURL, err := fileStorage.GenGetObjectPreSignURL(objectPath); err == nil {
+					return srcRegex.ReplaceAllString(match, fmt.Sprintf(`src="%s"`, presignedURL))
+				} else {
+					// 记录预签名失败的日志
+					slog.Warn("Failed to generate presigned URL for HTML image",
+						slog.String("object_path", objectPath),
+						slog.String("error", err.Error()))
+					// 预签名失败，返回一个错误占位图片
+					return srcRegex.ReplaceAllString(match, fmt.Sprintf(`src="%s" alt="Resource unavailable"`, PRESIGN_FAILURE_PLACEHOLDER_IMAGE))
+				}
+			}
+		}
+
+		return match
+	})
+
+	return content
+}
+
+// ReplaceEditorJSBlocksStaticResourcesWithPresignedURL 替换EditorJS blocks中的静态资源URL为预签名URL
+func ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocksJSON string, fileStorage FileStorageInterface) string {
+	if blocksJSON == "" || fileStorage == nil {
+		return blocksJSON
+	}
+
+	// 解析为EditorJS blocks结构
+	blocks, err := ParseRawToBlocks(json.RawMessage(blocksJSON))
+	if err != nil {
+		return blocksJSON
+	}
+
+	// 处理每个block
+	for i, block := range blocks {
+		switch block.Type {
+		case "image":
+			blocks[i] = processImageBlockWithStruct(block, fileStorage)
+		case "video":
+			blocks[i] = processVideoBlockWithStruct(block, fileStorage)
+		case "attaches":
+			blocks[i] = processAttachesBlockWithStruct(block, fileStorage)
+		}
+	}
+
+	// 重新构造JSON结构
+	// TODO: add editorjs version
+	data := EditorJS{
+		Blocks: blocks,
+	}
+
+	// 重新序列化JSON
+	if newJSON, err := json.Marshal(data); err == nil {
+		return string(newJSON)
+	}
+
+	return blocksJSON
+}
+
+// EditorAttaches 表示EditorJS的附件块数据结构
+type EditorAttaches struct {
+	File    EditorAttachesFile `json:"file"`
+	Title   string             `json:"title,omitempty"`
+	Caption string             `json:"caption,omitempty"`
+}
+
+// EditorAttachesFile 表示附件的文件信息
+type EditorAttachesFile struct {
+	URL   string `json:"url"`
+	Name  string `json:"name,omitempty"`
+	Size  int64  `json:"size,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// EditorImageFileWithError 扩展的图片文件结构，支持错误信息
+type EditorImageFileWithError struct {
+	URL   string `json:"url"`
+	Error string `json:"error,omitempty"`
+}
+
+// EditorImageWithError 扩展的图片结构，支持错误信息
+type EditorImageWithError struct {
+	File           EditorImageFileWithError `json:"file"`
+	Caption        string                   `json:"caption,omitempty"`
+	WithBorder     bool                     `json:"withBorder,omitempty"`
+	WithBackground bool                     `json:"withBackground,omitempty"`
+	Stretched      bool                     `json:"stretched,omitempty"`
+}
+
+// EditorVideoFileWithError 扩展的视频文件结构，支持错误信息
+type EditorVideoFileWithError struct {
+	Type  string `json:"type,omitempty"`
+	URL   string `json:"url"`
+	Error string `json:"error,omitempty"`
+}
+
+// EditorVideoWithError 扩展的视频结构，支持错误信息
+type EditorVideoWithError struct {
+	File           EditorVideoFileWithError `json:"file"`
+	Caption        string                   `json:"caption,omitempty"`
+	WithBorder     bool                     `json:"withBorder,omitempty"`
+	WithBackground bool                     `json:"withBackground,omitempty"`
+	Stretched      bool                     `json:"stretched,omitempty"`
+}
+
+// processImageBlockWithStruct 使用结构体处理图片块中的URL
+func processImageBlockWithStruct(block goeditorjs.EditorJSBlock, fileStorage FileStorageInterface) goeditorjs.EditorJSBlock {
+	image := &EditorImage{}
+	if err := json.Unmarshal(block.Data, image); err != nil {
+		return block
+	}
+
+	originalURL := image.File.URL
+	if shouldPresignURL(originalURL) {
+		objectPath := extractObjectPath(originalURL)
+		if objectPath != "" {
+			if presignedURL, err := fileStorage.GenGetObjectPreSignURL(objectPath); err == nil {
+				image.File.URL = presignedURL
+			} else {
+				// 记录预签名失败的日志
+				slog.Warn("Failed to generate presigned URL for EditorJS image block",
+					slog.String("object_path", objectPath),
+					slog.String("error", err.Error()))
+				// 预签名失败，设置错误占位符
+				image.File.URL = PRESIGN_FAILURE_PLACEHOLDER_IMAGE
+			}
+		}
+	}
+
+	// 重新序列化block数据
+	if newData, err := json.Marshal(image); err == nil {
+		block.Data = newData
+	}
+
+	return block
+}
+
+// processVideoBlockWithStruct 使用结构体处理视频块中的URL
+func processVideoBlockWithStruct(block goeditorjs.EditorJSBlock, fileStorage FileStorageInterface) goeditorjs.EditorJSBlock {
+	video := &EditorVideo{}
+	if err := json.Unmarshal(block.Data, video); err != nil {
+		return block
+	}
+
+	originalURL := video.File.URL
+	if shouldPresignURL(originalURL) {
+		objectPath := extractObjectPath(originalURL)
+		if objectPath != "" {
+			if presignedURL, err := fileStorage.GenGetObjectPreSignURL(objectPath); err == nil {
+				video.File.URL = presignedURL
+			} else {
+				// 记录预签名失败的日志
+				slog.Warn("Failed to generate presigned URL for EditorJS video block",
+					slog.String("object_path", objectPath),
+					slog.String("error", err.Error()))
+				// 预签名失败，保持原URL（视频可能有其他处理方式）
+			}
+		}
+	}
+
+	// 重新序列化block数据
+	if newData, err := json.Marshal(video); err == nil {
+		block.Data = newData
+	}
+
+	return block
+}
+
+// processAttachesBlockWithStruct 使用结构体处理附件块中的URL
+func processAttachesBlockWithStruct(block goeditorjs.EditorJSBlock, fileStorage FileStorageInterface) goeditorjs.EditorJSBlock {
+	attaches := &EditorAttaches{}
+	if err := json.Unmarshal(block.Data, attaches); err != nil {
+		return block
+	}
+
+	originalURL := attaches.File.URL
+	if shouldPresignURL(originalURL) {
+		objectPath := extractObjectPath(originalURL)
+		if objectPath != "" {
+			if presignedURL, err := fileStorage.GenGetObjectPreSignURL(objectPath); err == nil {
+				attaches.File.URL = presignedURL
+			} else {
+				// 记录预签名失败的日志
+				slog.Warn("Failed to generate presigned URL for EditorJS attaches block",
+					slog.String("object_path", objectPath),
+					slog.String("error", err.Error()))
+				// 预签名失败，保持原URL
+			}
+		}
+	}
+
+	// 重新序列化block数据
+	if newData, err := json.Marshal(attaches); err == nil {
+		block.Data = newData
+	}
+
+	return block
+}
+
+// shouldPresignURL 判断URL是否需要预签名处理
+func shouldPresignURL(url string) bool {
+	// 跳过已经是预签名的URL
+	if strings.Contains(url, "X-Amz-Algorithm") || strings.Contains(url, "Signature") {
+		return false
+	}
+
+	// 跳过外部URL
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		return false
+	}
+
+	// 跳过base64数据
+	if strings.HasPrefix(url, "data:") {
+		return false
+	}
+
+	// 跳过public资源
+	if strings.HasPrefix(url, "/public/") {
+		return false
+	}
+
+	// 其他所有内部资源都需要预签名
+	return true
+}
+
+// extractObjectPath 从URL中提取object path
+func extractObjectPath(url string) string {
+	// 移除查询参数
+	if idx := strings.Index(url, "?"); idx != -1 {
+		url = url[:idx]
+	}
+
+	// 移除fragment
+	if idx := strings.Index(url, "#"); idx != -1 {
+		url = url[:idx]
+	}
+
+	return url
 }

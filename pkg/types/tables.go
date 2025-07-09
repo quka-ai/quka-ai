@@ -8,7 +8,7 @@ func (s TableName) Name() string {
 	return fmt.Sprintf("%s%s", TABLE_PREFIX, s)
 }
 
-const TABLE_PREFIX = "bw_"
+const TABLE_PREFIX = "quka_"
 
 const (
 	TABLE_KNOWLEDGE         = TableName("knowledge")

@@ -124,7 +124,7 @@ func (s *SelfHostPlugin) Install(c *core.Core) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
-	userID := utils.GenRandomID()
+
 	var (
 		token   string
 		spaceID string
@@ -133,7 +133,7 @@ func (s *SelfHostPlugin) Install(c *core.Core) error {
 
 	err = s.core.Store().Transaction(ctx, func(ctx context.Context) error {
 		authLogic := v1.NewAuthLogic(ctx, s.core)
-		token, err = authLogic.GenAccessToken(s.Appid, "Initialize the self-host token.", userID, time.Now().AddDate(999, 0, 0).Unix())
+		token, err = authLogic.InitAdminUser(s.Appid)
 		if err != nil {
 			return err
 		}
@@ -295,6 +295,9 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 				continue
 			}
 		}
+		
+		// 对所有转换后的markdown内容进行预签名URL替换
+		content = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(content, s.FileStorage())
 
 		sw := mark.NewSensitiveWork()
 		docs = append(docs, &types.PassageInfo{

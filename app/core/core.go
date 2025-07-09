@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -61,7 +62,7 @@ func MustSetupCore(cfg CoreConfig) *Core {
 	utils.SetupGlobalEditorJS(cfg.ObjectStorage.StaticDomain)
 
 	// setup store
-	setupMysqlStore(core)
+	setupSqlStore(core)
 
 	core.srv = srv.SetupSrvs(srv.ApplyAI(nil, srv.Usage{}), // ai provider select
 		// web socket
@@ -108,13 +109,14 @@ func (s *Core) Metrics() *Metrics {
 	return s.metrics
 }
 
-func setupMysqlStore(core *Core) {
+func setupSqlStore(core *Core) {
 	core.stores = sqlstore.MustSetup(core.cfg.Postgres)
-
+	fmt.Println("setupSqlStore", core.cfg.Postgres)
 	// 执行数据库表初始化
 	if err := core.stores().Install(); err != nil {
 		panic(err)
 	}
+	fmt.Println("setupSqlStore done")
 }
 
 func (s *Core) Store() *sqlstore.Provider {

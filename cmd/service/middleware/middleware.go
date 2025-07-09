@@ -48,7 +48,7 @@ func AcceptLanguage() gin.HandlerFunc {
 			return
 		}
 
-		ctx.Set(v1.LANGUAGE_KEY, lo.If[string](strings.Contains(res[0].Tag, "zh"), types.LANGUAGE_CN_KEY).Else(types.LANGUAGE_EN_KEY))
+		ctx.Set(v1.LANGUAGE_KEY, lo.If(strings.Contains(res[0].Tag, "zh"), types.LANGUAGE_CN_KEY).Else(types.LANGUAGE_EN_KEY))
 	}
 }
 
@@ -166,6 +166,71 @@ func checkAuthToken(c *gin.Context, core *core.Core) (bool, error) {
 	}
 
 	return ParseAuthToken(c, tokenValue, core)
+}
+
+func FlexibleAuth(core *core.Core) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 1. 尝试 Header 认证 (X-Access-Token)
+		matched, err := checkAccessToken(c, core)
+		if err != nil {
+			response.APIError(c, errors.Trace("middleware.FlexibleAuth.checkAccessToken", err))
+			return
+		}
+		
+		if matched {
+			return
+		}
+
+		// 2. 尝试 Header 认证 (X-Authorization)
+		matched, err = checkAuthToken(c, core)
+		if err != nil {
+			response.APIError(c, errors.Trace("middleware.FlexibleAuth.checkAuthToken", err))
+			return
+		}
+		
+		if matched {
+			return
+		}
+
+		// 3. 尝试 Cookie 认证 (quka-auth)
+		if cookieToken, err := c.Cookie("quka-auth"); err == nil && cookieToken != "" {
+			passed, authErr := ParseAuthToken(c, cookieToken, core)
+			if authErr != nil {
+				response.APIError(c, errors.Trace("middleware.FlexibleAuth.ParseCookieToken", authErr))
+				return
+			}
+			
+			if passed {
+				return
+			}
+		}
+
+		// 4. 尝试查询参数认证
+		tokenValue := c.Query("token")
+		tokenType := c.Query("token-type")
+		
+		if tokenValue != "" {
+			var passed bool
+			var authErr error
+			
+			if tokenType == "authorization" {
+				passed, authErr = ParseAuthToken(c, tokenValue, core)
+			} else {
+				passed, authErr = ParseAccessToken(c, tokenValue, core)
+			}
+			
+			if authErr != nil {
+				response.APIError(c, errors.Trace("middleware.FlexibleAuth.ParseQueryToken", authErr))
+				return
+			}
+			
+			if passed {
+				return
+			}
+		}
+
+		response.APIError(c, errors.New("middleware.FlexibleAuth", i18n.ERROR_UNAUTHORIZED, nil).Code(http.StatusUnauthorized))
+	}
 }
 
 func PaymentRequired(c *gin.Context) {

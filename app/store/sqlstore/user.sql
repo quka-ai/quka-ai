@@ -1,5 +1,5 @@
--- 创建bw_user表
-CREATE TABLE IF NOT EXISTS bw_user (
+-- 创建quka_user表
+CREATE TABLE IF NOT EXISTS quka_user (
     id VARCHAR(32) PRIMARY KEY,             -- 用户ID，主键
     appid VARCHAR(32) NOT NULL,              -- appid，租户id 
     name VARCHAR(50) NOT NULL,              -- 用户名
@@ -14,17 +14,17 @@ CREATE TABLE IF NOT EXISTS bw_user (
 );
 
 -- 添加字段注释
-COMMENT ON COLUMN bw_user.id IS '用户ID，主键';
-COMMENT ON COLUMN bw_user.appid IS '租户id';
-COMMENT ON COLUMN bw_user.name IS '用户名';
-COMMENT ON COLUMN bw_user.avatar IS '用户头像URL';
-COMMENT ON COLUMN bw_user.email IS '用户邮箱，唯一约束';
-COMMENT ON COLUMN bw_user.password IS '用户密码';
-COMMENT ON COLUMN bw_user.salt IS '用户密码盐值';
-COMMENT ON COLUMN bw_user.source IS '用户注册来源';
-COMMENT ON COLUMN bw_user.plan_id IS '会员方案id';
-COMMENT ON COLUMN bw_user.updated_at IS '更新时间，Unix时间戳';
-COMMENT ON COLUMN bw_user.created_at IS '创建时间，Unix时间戳';
+COMMENT ON COLUMN quka_user.id IS '用户ID，主键';
+COMMENT ON COLUMN quka_user.appid IS '租户id';
+COMMENT ON COLUMN quka_user.name IS '用户名';
+COMMENT ON COLUMN quka_user.avatar IS '用户头像URL';
+COMMENT ON COLUMN quka_user.email IS '用户邮箱，唯一约束';
+COMMENT ON COLUMN quka_user.password IS '用户密码';
+COMMENT ON COLUMN quka_user.salt IS '用户密码盐值';
+COMMENT ON COLUMN quka_user.source IS '用户注册来源';
+COMMENT ON COLUMN quka_user.plan_id IS '会员方案id';
+COMMENT ON COLUMN quka_user.updated_at IS '更新时间，Unix时间戳';
+COMMENT ON COLUMN quka_user.created_at IS '创建时间，Unix时间戳';
 
 
-CREATE UNIQUE INDEX IF NOT EXISTS bw_user_appid_email ON bw_user (appid,email);
+CREATE UNIQUE INDEX IF NOT EXISTS quka_user_appid_email ON quka_user (appid,email);

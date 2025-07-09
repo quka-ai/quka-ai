@@ -17,21 +17,34 @@ import (
 )
 
 type S3 struct {
-	Endpoint string
-	Region   string
-	Bucket   string
-	ak       string
-	sk       string
-	cli      *s3.Client
+	Endpoint     string
+	Region       string
+	Bucket       string
+	ak           string
+	sk           string
+	cli          *s3.Client
+	UsePathStyle bool
 }
 
-func NewS3Client(endpoint, region, bucket, ak, sk string) *S3 {
+type S3Options func(*S3)
+
+func WithPathStyle(usePathStyle bool) S3Options {
+	return func(s *S3) {
+		s.UsePathStyle = usePathStyle
+	}
+}
+
+func NewS3Client(endpoint, region, bucket, ak, sk string, opts ...S3Options) *S3 {
 	cli := &S3{
 		Endpoint: endpoint,
 		Region:   region,
 		Bucket:   bucket,
 		ak:       ak,
 		sk:       sk,
+	}
+
+	for _, opt := range opts {
+		opt(cli)
 	}
 
 	if _, err := cli.DefaultConfig(context.Background()); err != nil {
@@ -55,7 +68,7 @@ func (s *S3) DefaultConfig(ctx context.Context) (aws.Config, error) {
 				URL:           s.Endpoint,
 				SigningRegion: s.Region,
 				// 关键配置：强制使用路径样式 URL
-				// HostnameImmutable: true,
+				HostnameImmutable: s.UsePathStyle,
 			}, nil
 		})))
 	if err != nil {
@@ -65,7 +78,7 @@ func (s *S3) DefaultConfig(ctx context.Context) (aws.Config, error) {
 	// 创建 S3 客户端时启用路径样式
 	s.cli = s3.NewFromConfig(cfg, func(o *s3.Options) {
 		// 强制使用路径样式 URL（endpoint/bucket 而不是 bucket.endpoint）
-		// o.UsePathStyle = true
+		o.UsePathStyle = s.UsePathStyle
 	})
 	return cfg, nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/store"
 	"github.com/quka-ai/quka-ai/pkg/register"
 	"github.com/quka-ai/quka-ai/pkg/sqlstore"
+	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
 func init() {
@@ -146,7 +147,7 @@ func (p *Provider) enableExtensions() error {
 // ensureMigrationTable 确保迁移记录表存在
 func (p *Provider) ensureMigrationTable() error {
 	createTableSQL := `
-CREATE TABLE IF NOT EXISTS bw_schema_migrations (
+CREATE TABLE IF NOT EXISTS ` + types.TABLE_PREFIX + `schema_migrations (
     filename VARCHAR(255) PRIMARY KEY,
     executed_at BIGINT NOT NULL
 );`
@@ -158,7 +159,7 @@ CREATE TABLE IF NOT EXISTS bw_schema_migrations (
 func (p *Provider) isFileExecuted(filename string) (bool, error) {
 	var count int
 	err := p.SqlProvider.GetReplica().Get(&count,
-		"SELECT COUNT(*) FROM bw_schema_migrations WHERE filename = $1", filename)
+		"SELECT COUNT(*) FROM "+types.TABLE_PREFIX+"schema_migrations WHERE filename = $1", filename)
 	if err != nil {
 		return false, err
 	}
@@ -168,27 +169,17 @@ func (p *Provider) isFileExecuted(filename string) (bool, error) {
 // markFileExecuted 标记文件为已执行
 func (p *Provider) markFileExecuted(filename string) error {
 	_, err := p.SqlProvider.GetMaster().Exec(
-		"INSERT INTO bw_schema_migrations (filename, executed_at) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING",
+		"INSERT INTO "+types.TABLE_PREFIX+"schema_migrations (filename, executed_at) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING",
 		filename, time.Now().Unix())
 	return err
 }
 
 // executeSQLFile 执行SQL文件内容，分割语句并逐个执行
 func (p *Provider) executeSQLFile(content, filename string) error {
-	// 分割SQL语句（以分号分隔）
-	statements := strings.Split(content, ";")
-
-	for i, stmt := range statements {
-		// 清理语句，去除空白和注释
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" || strings.HasPrefix(stmt, "--") {
-			continue
-		}
-
-		// 执行语句
-		if _, err := p.SqlProvider.GetMaster().Exec(stmt); err != nil {
-			return fmt.Errorf("failed to execute statement %d in file %s: %w\nSQL: %s", i+1, filename, err, stmt)
-		}
+	fmt.Println("executeSQLFile", content)
+	// 执行语句
+	if _, err := p.SqlProvider.GetMaster().Exec(content); err != nil {
+		return err
 	}
 	return nil
 }

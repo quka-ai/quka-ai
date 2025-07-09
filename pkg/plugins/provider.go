@@ -43,7 +43,7 @@ func SetupObjectStorage(cfg core.ObjectStorageDriver) core.FileStorage {
 		s3Cfg := cfg.S3
 		s = &S3FileStorage{
 			StaticDomain: cfg.StaticDomain,
-			S3:           s3.NewS3Client(s3Cfg.Endpoint, s3Cfg.Region, s3Cfg.Bucket, s3Cfg.AccessKey, s3Cfg.SecretKey),
+			S3:           s3.NewS3Client(s3Cfg.Endpoint, s3Cfg.Region, s3Cfg.Bucket, s3Cfg.AccessKey, s3Cfg.SecretKey, s3.WithPathStyle(s3Cfg.UsePathStyle)),
 		}
 	case "local":
 		s = &LocalFileStorage{
