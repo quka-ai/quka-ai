@@ -1031,7 +1031,7 @@ ReGen:
 	}
 
 	// 获取比summary msgid更大的聊天内容组成上下文
-	msgList, err := core.Store().ChatMessageStore().ListSessionMessage(ctx, reqMsgWithDocs.SpaceID, reqMsgWithDocs.SessionID, summary.MessageID, types.NO_PAGING, types.NO_PAGING)
+	msgList, err := core.Store().ChatMessageStore().ListSessionMessage(ctx, reqMsgWithDocs.SpaceID, reqMsgWithDocs.SessionID, summary.MessageID, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil {
 		return nil, errors.New("genDialogContextAndSummaryIfExceedsTokenLimit.ChatMessageStore.ListSessionMessage", i18n.ERROR_INTERNAL, err)
 	}

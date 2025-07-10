@@ -2,6 +2,7 @@ package srv
 
 import (
 	"github.com/quka-ai/quka-ai/pkg/socket/firetower"
+	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
 type Srv struct {
@@ -35,4 +36,33 @@ func (t *Tower) Pusher() *firetower.SelfPusher[PublishData] {
 
 func (s *Srv) Tower() *Tower {
 	return s.tower
+}
+
+// ReloadAI 重新加载AI配置
+func (s *Srv) ReloadAI(models []types.ModelConfig, usage Usage) error {
+	news, err := SetupAI(models, usage)
+	if err != nil {
+		return err
+	}
+	s.ai = news
+	return nil
+}
+
+// GetAIStatus 获取AI系统状态
+func (s *Srv) GetAIStatus() map[string]interface{} {
+	if s.ai == nil {
+		return map[string]interface{}{
+			"status": "not_initialized",
+		}
+	}
+
+	return map[string]interface{}{
+		"status":            "running",
+		"chat_available":    s.ai.chatDefault != nil,
+		"embed_available":   s.ai.embedDefault != nil,
+		"vision_available":  s.ai.visionDefault != nil,
+		"rerank_available":  s.ai.rerankDefault != nil,
+		"reader_available":  s.ai.readerDefault != nil,
+		"enhance_available": s.ai.enhanceDefault != nil,
+	}
 }

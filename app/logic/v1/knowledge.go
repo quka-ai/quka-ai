@@ -86,7 +86,7 @@ func (l *KnowledgeLogic) GetKnowledge(spaceID, id string) (*types.Knowledge, err
 		contentStr := string(data.Content)
 		switch data.ContentType {
 		case types.KNOWLEDGE_CONTENT_TYPE_BLOCKS:
-			contentStr = utils.ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(
+			contentStr = utils.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(
 				contentStr,
 				l.core.Plugins.FileStorage(),
 			)
@@ -116,7 +116,7 @@ func (l *KnowledgeLogic) GetTimeRangeLiteKnowledges(spaceID string, st, et time.
 			St: st.Unix(),
 			Et: et.Unix(),
 		},
-	}, types.NO_PAGING, types.NO_PAGING)
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, errors.New("KnowledgeLogic.GetTimeRangeLiteKnowledges.KnowledgeStore.ListLiteKnowledges", i18n.ERROR_INTERNAL, err)
 	}

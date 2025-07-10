@@ -75,7 +75,7 @@ func (l *ResourceLogic) Delete(spaceID, id string) error {
 				Include: []string{id},
 			},
 			SpaceID: spaceID,
-		}, types.NO_PAGING, types.NO_PAGING)
+		}, types.NO_PAGINATION, types.NO_PAGINATION)
 
 		if err != nil {
 			return errors.New("ResourceLogic.Delete.KnowledgeStore.ListKnowledges", i18n.ERROR_INTERNAL, err)
@@ -102,7 +102,7 @@ func (l *ResourceLogic) Delete(spaceID, id string) error {
 }
 
 func (l *ResourceLogic) Update(spaceID, id, title, desc, tag string, cycle int) error {
-	resources, err := l.core.Store().ResourceStore().ListResources(l.ctx, spaceID, types.NO_PAGING, types.NO_PAGING)
+	resources, err := l.core.Store().ResourceStore().ListResources(l.ctx, spaceID, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil {
 		return errors.New("ResourceLogic.Update.ResourceStore.ListResources", i18n.ERROR_INTERNAL, err)
 	}

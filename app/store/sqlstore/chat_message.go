@@ -173,7 +173,7 @@ func (s *ChatMessageStore) DeleteAll(ctx context.Context, spaceID string) error 
 func (s *ChatMessageStore) ListSessionMessageUpToGivenID(ctx context.Context, spaceID, sessionID, msgID string, page, pageSize uint64) ([]*types.ChatMessage, error) {
 	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID}).Where(sq.LtOrEq{"id": msgID}).OrderBy("id DESC")
 
-	if page != types.NO_PAGING || pageSize != types.NO_PAGING {
+	if page != types.NO_PAGINATION || pageSize != types.NO_PAGINATION {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
 	queryString, args, err := query.ToSql()
@@ -193,7 +193,7 @@ func (s *ChatMessageStore) ListSessionMessage(ctx context.Context, spaceID, sess
 	if msgID != "" {
 		query = query.Where(sq.Gt{"id": msgID})
 	}
-	if page != types.NO_PAGING || pageSize != types.NO_PAGING {
+	if page != types.NO_PAGINATION || pageSize != types.NO_PAGINATION {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
 	queryString, args, err := query.ToSql()
@@ -212,7 +212,7 @@ func (s *ChatMessageStore) ListUnEncryptMessage(ctx context.Context, page, pageS
 	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).
 		Where(sq.And{sq.NotEq{"is_encrypt": types.MESSAGE_IS_ENCRYPT}, sq.Eq{"complete": types.MESSAGE_PROGRESS_COMPLETE}})
 
-	if page != types.NO_PAGING || pageSize != types.NO_PAGING {
+	if page != types.NO_PAGINATION || pageSize != types.NO_PAGINATION {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
 	queryString, args, err := query.ToSql()

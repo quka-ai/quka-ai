@@ -394,7 +394,7 @@ func TestReplaceEditorJSBlocksStaticResourcesWithPresignedURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockStorage := &MockFileStorage{shouldFail: tt.shouldFail}
 
-			result := ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(tt.blocksJSON, mockStorage)
+			result := ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(tt.blocksJSON, mockStorage)
 
 			if tt.expected != "" {
 				if result != tt.expected {
@@ -411,39 +411,39 @@ func TestReplaceEditorJSBlocksStaticResourcesWithPresignedURL(t *testing.T) {
 	}
 }
 
-func TestReplaceEditorJSBlocksStaticResourcesWithPresignedURL_EdgeCases(t *testing.T) {
+func TestReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL_EdgeCases(t *testing.T) {
 	mockStorage := &MockFileStorage{}
 
 	// Test with invalid JSON
-	result := ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(`{"invalid": json}`, mockStorage)
+	result := ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(`{"invalid": json}`, mockStorage)
 	expected := `{"invalid": json}`
 	if result != expected {
 		t.Errorf("With invalid JSON, expected %q, got %q", expected, result)
 	}
 
 	// Test with nil fileStorage
-	result = ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(`{"blocks":[]}`, nil)
+	result = ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(`{"blocks":[]}`, nil)
 	expected = `{"blocks":[]}`
 	if result != expected {
 		t.Errorf("With nil fileStorage, expected %q, got %q", expected, result)
 	}
 
 	// Test with empty string
-	result = ReplaceEditorJSBlocksStaticResourcesWithPresignedURL("", mockStorage)
+	result = ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL("", mockStorage)
 	expected = ""
 	if result != expected {
 		t.Errorf("With empty string, expected %q, got %q", expected, result)
 	}
 
 	// Test with JSON without blocks
-	result = ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(`{"version": "2.0"}`, mockStorage)
+	result = ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(`{"version": "2.0"}`, mockStorage)
 	expected = `{"blocks":null}`
 	if result != expected {
 		t.Errorf("With JSON without blocks, expected %q, got %q", expected, result)
 	}
 
 	// Test with blocks that have no file data
-	result = ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(`{
+	result = ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(`{
 		"blocks": [
 			{
 				"type": "image",
@@ -458,7 +458,6 @@ func TestReplaceEditorJSBlocksStaticResourcesWithPresignedURL_EdgeCases(t *testi
 		t.Errorf("Result should contain original caption, got %q", result)
 	}
 }
-
 
 func BenchmarkReplaceMarkdownStaticResourcesWithPresignedURL(b *testing.B) {
 	mockStorage := &MockFileStorage{}
@@ -543,6 +542,6 @@ func BenchmarkReplaceEditorJSBlocksStaticResourcesWithPresignedURL(b *testing.B)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocksJSON, mockStorage)
+		ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON, mockStorage)
 	}
 }

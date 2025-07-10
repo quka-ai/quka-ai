@@ -64,7 +64,7 @@ func (l *HistoryLogic) GetMessageExt(spaceID, sessionID, messageID string) (*Cha
 		docs, err := l.core.Store().KnowledgeStore().ListKnowledges(l.ctx, types.GetKnowledgeOptions{
 			IDs:     data.RelDocs,
 			SpaceID: spaceID,
-		}, types.NO_PAGING, types.NO_PAGING)
+		}, types.NO_PAGINATION, types.NO_PAGINATION)
 		if err != nil {
 			return nil, errors.New("HistoryLogic.GetMessageExt.KnowledgeStore.ListKnowledges", i18n.ERROR_INTERNAL, err)
 		}
@@ -144,7 +144,7 @@ func (l *HistoryLogic) GetHistoryMessage(spaceID, sessionID, afterMsgID string, 
 			return k
 		}),
 		SpaceID: spaceID,
-	}, types.NO_PAGING, types.NO_PAGING)
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
 
 	docsMap := lo.SliceToMap(docs, func(v *types.KnowledgeLite) (string, *types.KnowledgeLite) {
 		return v.ID, v

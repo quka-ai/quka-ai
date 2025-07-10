@@ -277,7 +277,7 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 	spaceID := knowledges[0].SpaceID
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	spaceResources, err := s.core.Store().ResourceStore().ListResources(ctx, spaceID, types.NO_PAGING, types.NO_PAGING)
+	spaceResources, err := s.core.Store().ResourceStore().ListResources(ctx, spaceID, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil {
 		slog.Error("Failed to get space resources", slog.String("space_id", spaceID), slog.String("error", err.Error()))
 		return docs, err
@@ -295,7 +295,7 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 				continue
 			}
 		}
-		
+
 		// 对所有转换后的markdown内容进行预签名URL替换
 		content = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(content, s.FileStorage())
 

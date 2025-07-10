@@ -188,23 +188,50 @@ func (l *ModelProviderLogic) DeleteProvider(id string) error {
 		return errors.New("ModelProviderLogic.DeleteProvider.ID.Empty", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
 	}
 
-	// 检查是否存在关联的模型配置
+	// 检查是否有正在使用的模型
+	statusEnabled := types.StatusEnabled
+	usageConfigs, err := l.core.Store().CustomConfigStore().List(l.ctx, types.ListCustomConfigOptions{
+		Category: types.AI_USAGE_CATEGORY,
+		Status:   &statusEnabled,
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
+	if err != nil {
+		return errors.New("ModelProviderLogic.DeleteProvider.CheckUsage", i18n.ERROR_INTERNAL, err)
+	}
+
+	// 获取该提供商下的所有模型ID
 	models, err := l.core.Store().ModelConfigStore().List(l.ctx, types.ListModelConfigOptions{
 		ProviderID: id,
 	})
 	if err != nil {
-		return errors.New("ModelProviderLogic.DeleteProvider.ListModels", i18n.ERROR_INTERNAL, err)
+		return errors.New("ModelProviderLogic.DeleteProvider.GetModels", i18n.ERROR_INTERNAL, err)
 	}
 
+	// 构建模型ID映射表用于快速查找
+	modelIDs := make(map[string]bool, len(models))
+	for _, model := range models {
+		modelIDs[model.ID] = true
+	}
+
+	// 检查是否有正在使用的模型
+	for _, config := range usageConfigs {
+		var modelID string
+		if err := json.Unmarshal(config.Value, &modelID); err != nil {
+			continue
+		}
+		if modelIDs[modelID] {
+			return errors.New("ModelProviderLogic.DeleteProvider.ModelInUse", i18n.ERROR_PROVIDER_MODEL_IN_USE, nil).Code(http.StatusBadRequest)
+		}
+	}
+
+	// 批量删除该提供商下的所有模型配置
 	if len(models) > 0 {
-		return errors.New("ModelProviderLogic.DeleteProvider.HasModels", "此提供商下还有模型配置，请先删除所有模型配置", nil).Code(http.StatusBadRequest)
+		if err := l.core.Store().ModelConfigStore().DeleteByProviderID(l.ctx, id); err != nil {
+			return errors.New("ModelProviderLogic.DeleteProvider.DeleteModels", i18n.ERROR_INTERNAL, err)
+		}
 	}
 
 	// 删除提供商
 	if err := l.core.Store().ModelProviderStore().Delete(l.ctx, id); err != nil {
-		if err == sql.ErrNoRows {
-			return errors.New("ModelProviderLogic.DeleteProvider.NotFound", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNotFound)
-		}
 		return errors.New("ModelProviderLogic.DeleteProvider.Delete", i18n.ERROR_INTERNAL, err)
 	}
 

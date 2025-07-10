@@ -335,3 +335,15 @@ func ApplyAI(providers []types.ModelConfig, usage Usage) ApplyFunc {
 		s.ai, _ = SetupAI(providers, usage)
 	}
 }
+
+// 配置热重载方法
+func (s *AI) ReloadFromProviders(providers []types.ModelConfig, usage Usage) error {
+	newAI, err := SetupAI(providers, usage)
+	if err != nil {
+		return err
+	}
+
+	// 原子性替换AI配置
+	*s = *newAI
+	return nil
+}

@@ -41,4 +41,5 @@ const (
 	ERROR_INVALID_ACCOUNT = "error.invalid.account"
 
 	ERROR_LOGIC_VECTOR_DB_NOT_MATCHED_CONTENT_DB = "error.logic.vector.db.notmatch.content.db"
+	ERROR_PROVIDER_MODEL_IN_USE                  = "error.provider.model.in.use"
 )

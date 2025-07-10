@@ -98,7 +98,7 @@ func SupplementSessionChatDocs(core *core.Core, spaceID, sessionID string, docs 
 	knowledges, err := core.Store().KnowledgeStore().ListKnowledges(ctx, types.GetKnowledgeOptions{
 		SpaceID: spaceID,
 		IDs:     differenceItems,
-	}, types.NO_PAGING, types.NO_PAGING)
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil {
 		slog.Error("Failed to get knowledge content", slog.String("session_id", sessionID), slog.String("error", err.Error()), slog.Any("knowledge_ids", differenceItems))
 		return

@@ -112,6 +112,19 @@ func (s *ModelConfigStore) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// DeleteByProviderID 根据提供商ID批量删除模型配置
+func (s *ModelConfigStore) DeleteByProviderID(ctx context.Context, providerID string) error {
+	query := sq.Delete(s.GetTable()).Where(sq.Eq{"provider_id": providerID})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return ErrorSqlBuild(err)
+	}
+
+	_, err = s.GetMaster(ctx).Exec(queryString, args...)
+	return err
+}
+
 // List 分页获取模型配置列表
 func (s *ModelConfigStore) List(ctx context.Context, opts types.ListModelConfigOptions) ([]types.ModelConfig, error) {
 	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).OrderBy("provider_id ASC, model_name ASC")

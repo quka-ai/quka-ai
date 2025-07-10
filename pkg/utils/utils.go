@@ -716,17 +716,7 @@ func ReplaceMarkdownStaticResourcesWithPresignedURL(content string, fileStorage 
 }
 
 // ReplaceEditorJSBlocksStaticResourcesWithPresignedURL 替换EditorJS blocks中的静态资源URL为预签名URL
-func ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocksJSON string, fileStorage FileStorageInterface) string {
-	if blocksJSON == "" || fileStorage == nil {
-		return blocksJSON
-	}
-
-	// 解析为EditorJS blocks结构
-	blocks, err := ParseRawToBlocks(json.RawMessage(blocksJSON))
-	if err != nil {
-		return blocksJSON
-	}
-
+func ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocks []goeditorjs.EditorJSBlock, fileStorage FileStorageInterface) []goeditorjs.EditorJSBlock {
 	// 处理每个block
 	for i, block := range blocks {
 		switch block.Type {
@@ -739,6 +729,24 @@ func ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocksJSON string, fil
 		}
 	}
 
+	// 重新构造JSON结构
+	// TODO: add editorjs version
+	return blocks
+}
+
+// ReplaceEditorJSBlocksStaticResourcesWithPresignedURL 替换EditorJS blocks中的静态资源URL为预签名URL
+func ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON string, fileStorage FileStorageInterface) string {
+	if blocksJSON == "" || fileStorage == nil {
+		return blocksJSON
+	}
+
+	// 解析为EditorJS blocks结构
+	blocks, err := ParseRawToBlocks(json.RawMessage(blocksJSON))
+	if err != nil {
+		return blocksJSON
+	}
+
+	blocks = ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocks, fileStorage)
 	// 重新构造JSON结构
 	// TODO: add editorjs version
 	data := EditorJS{

@@ -117,3 +117,7 @@ other = "Request forbidden, Too many requests"
 ['error.logic.vector.db.notmatch.content.db']
 one = "The vector database differs from the knowledge base, so it is recommended to reinitialize"
 other = "The vector database differs from the knowledge base, so it is recommended to reinitialize"
+
+['error.provider.model.in.use']
+one = "This provider has models in use, please remove the related models from AI usage configuration first"
+other = "This provider has models in use, please remove the related models from AI usage configuration first"

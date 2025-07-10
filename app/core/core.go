@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core/srv"
 	"github.com/quka-ai/quka-ai/app/store"
 	"github.com/quka-ai/quka-ai/app/store/sqlstore"
+	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
@@ -125,4 +127,67 @@ func (s *Core) Store() *sqlstore.Provider {
 
 func (s *Core) Srv() *srv.Srv {
 	return s.srv
+}
+
+// ReloadAI 从数据库重新加载AI配置
+func (s *Core) ReloadAI(ctx context.Context) error {
+	// 1. 从数据库获取启用的模型配置
+	statusEnabled := types.StatusEnabled
+	models, err := s.Store().ModelConfigStore().List(ctx, types.ListModelConfigOptions{
+		Status: &statusEnabled,
+	})
+	if err != nil {
+		return err
+	}
+
+	// 2. 获取使用配置
+	usage, err := s.loadAIUsageFromDB(ctx)
+	if err != nil {
+		return err
+	}
+
+	// 3. 热重载AI配置
+	return s.srv.ReloadAI(models, usage)
+}
+
+// loadAIUsageFromDB 从数据库加载使用配置
+func (s *Core) loadAIUsageFromDB(ctx context.Context) (srv.Usage, error) {
+	statusEnabled := types.StatusEnabled
+	configs, err := s.Store().CustomConfigStore().List(ctx, types.ListCustomConfigOptions{
+		Category: types.AI_USAGE_CATEGORY,
+		Status:   &statusEnabled,
+	}, 0, 0)
+	if err != nil {
+		return srv.Usage{}, err
+	}
+
+	usage := srv.Usage{}
+	for _, config := range configs {
+		var modelID string
+		if err := json.Unmarshal(config.Value, &modelID); err != nil {
+			continue
+		}
+
+		switch config.Name {
+		case types.AI_USAGE_CHAT:
+			usage.Chat = modelID
+		case types.AI_USAGE_EMBEDDING:
+			usage.Embedding = modelID
+		case types.AI_USAGE_VISION:
+			usage.Vision = modelID
+		case types.AI_USAGE_RERANK:
+			usage.Rerank = modelID
+		case types.AI_USAGE_READER:
+			usage.Reader = modelID
+		case types.AI_USAGE_ENHANCE:
+			usage.Enhance = modelID
+		}
+	}
+
+	return usage, nil
+}
+
+// GetAIStatus 获取AI系统状态
+func (s *Core) GetAIStatus() map[string]interface{} {
+	return s.srv.GetAIStatus()
 }

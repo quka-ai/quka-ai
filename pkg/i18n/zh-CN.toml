@@ -121,3 +121,7 @@ other = "请求被禁止，请求过多"
 ['error.logic.vector.db.notmatch.content.db']
 one = "向量数据库与知识库不匹配，建议重新初始化"
 other = "向量数据库与知识库不匹配，建议重新初始化"
+
+['error.provider.model.in.use']
+one = "此提供商下有正在使用的模型，请先在AI使用配置中移除相关模型"
+other = "此提供商下有正在使用的模型，请先在AI使用配置中移除相关模型"

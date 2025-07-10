@@ -112,7 +112,7 @@ func (l *SpaceApplicationLogic) WaitingList(spaceID string, opts types.ListSpace
 
 	userList, err := l.core.Store().UserStore().ListUsers(l.ctx, types.ListUserOptions{
 		IDs: userIDs,
-	}, types.NO_PAGING, types.NO_PAGING)
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
 
 	if err != nil && err != sql.ErrNoRows {
 		return nil, 0, errors.New("SpaceApplicationLogic.WaitingList.UserStore.ListUsers", i18n.ERROR_INTERNAL, err)
@@ -157,7 +157,7 @@ func (l *SpaceApplicationLogic) HandlerApplication(spaceID string, ids []string,
 
 	datas, err := l.core.Store().SpaceApplicationStore().List(l.ctx, spaceID, types.ListSpaceApplicationOptions{
 		IDs: ids,
-	}, types.NO_PAGING, types.NO_PAGING)
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil && err != sql.ErrNoRows {
 		return errors.New("SpaceApplicationLogic.HandlerApplication.SpaceApplicationStore.GetByID", i18n.ERROR_INTERNAL, err)
 	}

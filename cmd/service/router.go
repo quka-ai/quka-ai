@@ -208,5 +208,38 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			tools.GET("/reader", s.ToolsReader)
 			tools.POST("/describe/image", s.DescribeImage)
 		}
+
+		// 管理员路由（需要管理员权限）
+		admin := authed.Group("/admin")
+		{
+			// 模型提供商管理
+			providers := admin.Group("/model/providers")
+			{
+				providers.POST("", s.CreateModelProvider)       // 创建提供商
+				providers.GET("", s.ListModelProviders)         // 获取提供商列表
+				providers.GET("/:id", s.GetModelProvider)       // 获取提供商详情
+				providers.PUT("/:id", s.UpdateModelProvider)    // 更新提供商
+				providers.DELETE("/:id", s.DeleteModelProvider) // 删除提供商
+			}
+
+			// 模型配置管理
+			configs := admin.Group("/model/configs")
+			{
+				configs.POST("", s.CreateModelConfig)       // 创建模型配置
+				configs.GET("", s.ListModelConfigs)         // 获取模型配置列表
+				configs.GET("/:id", s.GetModelConfig)       // 获取模型配置详情
+				configs.PUT("/:id", s.UpdateModelConfig)    // 更新模型配置
+				configs.DELETE("/:id", s.DeleteModelConfig) // 删除模型配置
+			}
+
+			// AI系统管理
+			aiSystem := admin.Group("/ai/system")
+			{
+				aiSystem.POST("/reload", s.ReloadAIConfig) // 重新加载AI配置
+				aiSystem.GET("/status", s.GetAIStatus)     // 获取AI系统状态
+				aiSystem.PUT("/usage", s.UpdateAIUsage)    // 更新AI使用配置
+				aiSystem.GET("/usage", s.GetAIUsage)       // 获取AI使用配置
+			}
+		}
 	}
 }
