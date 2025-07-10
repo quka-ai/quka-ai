@@ -32,7 +32,7 @@ func (s *HttpSrv) ReloadAIConfig(c *gin.Context) {
 	}
 
 	response.APISuccess(c, map[string]interface{}{
-		"message": "AI配置重载成功",
+		"message": i18n.MESSAGE_AI_CONFIG_RELOAD_SUCCESS,
 		"time":    time.Now().Unix(),
 	})
 }
@@ -59,14 +59,14 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 	// 验证必需的模型配置
 	if req.Chat != "" {
 		if _, err := logic.GetModel(req.Chat); err != nil {
-			response.APIError(c, errors.New("UpdateAIUsage.ChatModel.NotFound", "聊天模型配置不存在", err).Code(http.StatusBadRequest))
+			response.APIError(c, errors.New("UpdateAIUsage.ChatModel.NotFound", i18n.ERROR_AI_CHAT_MODEL_NOT_FOUND, err).Code(http.StatusBadRequest))
 			return
 		}
 	}
 
 	if req.Embedding != "" {
 		if _, err := logic.GetModel(req.Embedding); err != nil {
-			response.APIError(c, errors.New("UpdateAIUsage.EmbeddingModel.NotFound", "向量化模型配置不存在", err).Code(http.StatusBadRequest))
+			response.APIError(c, errors.New("UpdateAIUsage.EmbeddingModel.NotFound", i18n.ERROR_AI_EMBEDDING_MODEL_NOT_FOUND, err).Code(http.StatusBadRequest))
 			return
 		}
 	}
@@ -154,7 +154,7 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 	}
 
 	response.APISuccess(c, map[string]interface{}{
-		"message": "AI使用配置更新成功",
+		"message": i18n.MESSAGE_AI_USAGE_UPDATE_SUCCESS,
 		"configs": configs,
 	})
 }

@@ -42,4 +42,9 @@ const (
 
 	ERROR_LOGIC_VECTOR_DB_NOT_MATCHED_CONTENT_DB = "error.logic.vector.db.notmatch.content.db"
 	ERROR_PROVIDER_MODEL_IN_USE                  = "error.provider.model.in.use"
+	ERROR_AI_CHAT_MODEL_NOT_FOUND                = "error.ai.chat.model.not.found"
+	ERROR_AI_EMBEDDING_MODEL_NOT_FOUND           = "error.ai.embedding.model.not.found"
+
+	MESSAGE_AI_CONFIG_RELOAD_SUCCESS = "message.ai.config.reload.success"
+	MESSAGE_AI_USAGE_UPDATE_SUCCESS  = "message.ai.usage.update.success"
 )

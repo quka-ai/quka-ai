@@ -1,0 +1,671 @@
+# AI 管理接口文档
+
+## 概述
+
+这是 QukaAI 项目的 AI 管理接口文档，包含模型提供商管理、模型配置管理和 AI 系统管理功能。这些接口用于 Web 界面的后端管理功能，支持动态配置管理和热重载。
+
+## 基础信息
+
+- **基础路径**: `/api/v1/admin`
+- **认证方式**: JWT Token + 管理员权限
+- **Content-Type**: `application/json`
+
+## 接口分类
+
+### 1. 模型提供商管理 (Model Providers)
+
+#### 1.1 创建模型提供商
+
+**接口**: `POST /admin/model/providers`
+
+**功能**: 创建新的AI模型提供商配置
+
+**请求体**:
+```json
+{
+  "name": "OpenAI",
+  "description": "OpenAI API提供商",
+  "api_url": "https://api.openai.com/v1",
+  "api_key": "sk-xxx...",
+  "config": {
+    "timeout": 30,
+    "max_retries": 3
+  }
+}
+```
+
+**字段说明**:
+- `name` (string, required): 提供商名称，必须唯一
+- `description` (string): 提供商描述
+- `api_url` (string, required): API 基础地址
+- `api_key` (string, required): API 密钥
+- `config` (object): 额外配置参数
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "provider_123",
+    "name": "OpenAI",
+    "description": "OpenAI API提供商",
+    "api_url": "https://api.openai.com/v1",
+    "status": 1,
+    "config": {
+      "timeout": 30,
+      "max_retries": 3
+    },
+    "created_at": 1640995200,
+    "updated_at": 1640995200
+  }
+}
+```
+
+#### 1.2 获取提供商列表
+
+**接口**: `GET /admin/model/providers`
+
+**功能**: 获取所有模型提供商列表
+
+**查询参数**:
+- `page` (int): 页码，默认 1
+- `limit` (int): 每页条数，默认 20
+- `name` (string): 按名称过滤
+- `status` (int): 按状态过滤 (0=禁用, 1=启用)
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "list": [
+      {
+        "id": "provider_123",
+        "name": "OpenAI",
+        "description": "OpenAI API提供商",
+        "api_url": "https://api.openai.com/v1",
+        "status": 1,
+        "created_at": 1640995200,
+        "updated_at": 1640995200
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 20
+  }
+}
+```
+
+#### 1.3 获取提供商详情
+
+**接口**: `GET /admin/model/providers/:id`
+
+**功能**: 获取指定提供商的详细信息
+
+**路径参数**:
+- `id` (string): 提供商ID
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "provider_123",
+    "name": "OpenAI",
+    "description": "OpenAI API提供商",
+    "api_url": "https://api.openai.com/v1",
+    "status": 1,
+    "config": {
+      "timeout": 30,
+      "max_retries": 3
+    },
+    "created_at": 1640995200,
+    "updated_at": 1640995200
+  }
+}
+```
+
+#### 1.4 更新提供商信息
+
+**接口**: `PUT /admin/model/providers/:id`
+
+**功能**: 更新指定提供商的信息
+
+**路径参数**:
+- `id` (string): 提供商ID
+
+**请求体**:
+```json
+{
+  "name": "OpenAI Updated",
+  "description": "更新后的OpenAI API提供商",
+  "api_url": "https://api.openai.com/v1",
+  "api_key": "sk-new-key...",
+  "status": 1,
+  "config": {
+    "timeout": 60,
+    "max_retries": 5
+  }
+}
+```
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "provider_123",
+    "name": "OpenAI Updated",
+    "description": "更新后的OpenAI API提供商",
+    "api_url": "https://api.openai.com/v1",
+    "status": 1,
+    "config": {
+      "timeout": 60,
+      "max_retries": 5
+    },
+    "created_at": 1640995200,
+    "updated_at": 1640995260
+  }
+}
+```
+
+#### 1.5 删除提供商
+
+**接口**: `DELETE /admin/model/providers/:id`
+
+**功能**: 删除指定的模型提供商
+
+**路径参数**:
+- `id` (string): 提供商ID
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "message": "Provider deleted successfully"
+  }
+}
+```
+
+### 2. 模型配置管理 (Model Configs)
+
+#### 2.1 创建模型配置
+
+**接口**: `POST /admin/model/configs`
+
+**功能**: 为提供商创建具体的模型配置
+
+**请求体**:
+```json
+{
+  "provider_id": "provider_123",
+  "model_name": "gpt-4",
+  "display_name": "GPT-4",
+  "model_type": "chat",
+  "is_multi_modal": true,
+  "config": {
+    "max_tokens": 4096,
+    "temperature": 0.7,
+    "top_p": 1.0
+  }
+}
+```
+
+**字段说明**:
+- `provider_id` (string, required): 提供商ID
+- `model_name` (string, required): 模型名称
+- `display_name` (string): 显示名称
+- `model_type` (string, required): 模型类型 (chat/embedding/vision/rerank/reader/enhance)
+- `is_multi_modal` (bool): 是否支持多模态
+- `config` (object): 模型配置参数
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "config_456",
+    "provider_id": "provider_123",
+    "model_name": "gpt-4",
+    "display_name": "GPT-4",
+    "model_type": "chat",
+    "is_multi_modal": true,
+    "status": 1,
+    "config": {
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "top_p": 1.0
+    },
+    "created_at": 1640995200,
+    "updated_at": 1640995200,
+    "provider": {
+      "id": "provider_123",
+      "name": "OpenAI"
+    }
+  }
+}
+```
+
+#### 2.2 获取模型配置列表
+
+**接口**: `GET /admin/model/configs`
+
+**功能**: 获取所有模型配置列表
+
+**查询参数**:
+- `page` (int): 页码，默认 1
+- `limit` (int): 每页条数，默认 20
+- `provider_id` (string): 按提供商ID过滤
+- `model_type` (string): 按模型类型过滤
+- `status` (int): 按状态过滤
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "list": [
+      {
+        "id": "config_456",
+        "provider_id": "provider_123",
+        "model_name": "gpt-4",
+        "display_name": "GPT-4",
+        "model_type": "chat",
+        "is_multi_modal": true,
+        "status": 1,
+        "created_at": 1640995200,
+        "updated_at": 1640995200,
+        "provider": {
+          "id": "provider_123",
+          "name": "OpenAI"
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 20
+  }
+}
+```
+
+#### 2.3 获取模型配置详情
+
+**接口**: `GET /admin/model/configs/:id`
+
+**功能**: 获取指定模型配置的详细信息
+
+**路径参数**:
+- `id` (string): 模型配置ID
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "config_456",
+    "provider_id": "provider_123",
+    "model_name": "gpt-4",
+    "display_name": "GPT-4",
+    "model_type": "chat",
+    "is_multi_modal": true,
+    "status": 1,
+    "config": {
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "top_p": 1.0
+    },
+    "created_at": 1640995200,
+    "updated_at": 1640995200,
+    "provider": {
+      "id": "provider_123",
+      "name": "OpenAI",
+      "api_url": "https://api.openai.com/v1"
+    }
+  }
+}
+```
+
+#### 2.4 更新模型配置
+
+**接口**: `PUT /admin/model/configs/:id`
+
+**功能**: 更新指定模型配置的信息
+
+**路径参数**:
+- `id` (string): 模型配置ID
+
+**请求体**:
+```json
+{
+  "display_name": "GPT-4 Updated",
+  "model_type": "chat",
+  "is_multi_modal": true,
+  "status": 1,
+  "config": {
+    "max_tokens": 8192,
+    "temperature": 0.8,
+    "top_p": 0.9
+  }
+}
+```
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "config_456",
+    "provider_id": "provider_123",
+    "model_name": "gpt-4",
+    "display_name": "GPT-4 Updated",
+    "model_type": "chat",
+    "is_multi_modal": true,
+    "status": 1,
+    "config": {
+      "max_tokens": 8192,
+      "temperature": 0.8,
+      "top_p": 0.9
+    },
+    "created_at": 1640995200,
+    "updated_at": 1640995320
+  }
+}
+```
+
+#### 2.5 删除模型配置
+
+**接口**: `DELETE /admin/model/configs/:id`
+
+**功能**: 删除指定的模型配置
+
+**路径参数**:
+- `id` (string): 模型配置ID
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "message": "Model config deleted successfully"
+  }
+}
+```
+
+### 3. AI 系统管理 (AI System)
+
+#### 3.1 重新加载 AI 配置
+
+**接口**: `POST /admin/ai/system/reload`
+
+**功能**: 重新加载 AI 系统配置，实现热重载
+
+**请求体**: 无
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "message": "AI配置重载成功",
+    "time": 1640995200
+  }
+}
+```
+
+#### 3.2 获取 AI 系统状态
+
+**接口**: `GET /admin/ai/system/status`
+
+**功能**: 获取 AI 系统当前状态信息
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "chat_drivers_count": 3,
+    "embed_drivers_count": 2,
+    "vision_drivers_count": 1,
+    "rerank_drivers_count": 1,
+    "reader_drivers_count": 1,
+    "enhance_drivers_count": 1,
+    "last_reload_time": 1640995200
+  }
+}
+```
+
+#### 3.3 更新 AI 使用配置
+
+**接口**: `PUT /admin/ai/system/usage`
+
+**功能**: 更新 AI 各功能模块使用的模型配置
+
+**请求体**:
+```json
+{
+  "chat": "config_456",
+  "embedding": "config_789",
+  "vision": "config_101",
+  "rerank": "config_112",
+  "reader": "config_131",
+  "enhance": "config_415"
+}
+```
+
+**字段说明**:
+- `chat` (string, required): 聊天功能使用的模型配置ID
+- `embedding` (string, required): 向量化功能使用的模型配置ID
+- `vision` (string): 视觉功能使用的模型配置ID
+- `rerank` (string): 重排序功能使用的模型配置ID
+- `reader` (string): 阅读功能使用的模型配置ID
+- `enhance` (string): 增强功能使用的模型配置ID
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "message": "AI使用配置更新成功",
+    "configs": [
+      {
+        "name": "ai_usage_chat",
+        "category": "ai_usage",
+        "value": "\"config_456\"",
+        "description": "聊天功能使用的模型",
+        "status": 1
+      },
+      {
+        "name": "ai_usage_embedding",
+        "category": "ai_usage",
+        "value": "\"config_789\"",
+        "description": "向量化功能使用的模型",
+        "status": 1
+      }
+    ]
+  }
+}
+```
+
+#### 3.4 获取 AI 使用配置
+
+**接口**: `GET /admin/ai/system/usage`
+
+**功能**: 获取当前 AI 各功能模块的使用配置
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "chat": "config_456",
+    "embedding": "config_789",
+    "vision": "config_101",
+    "rerank": "config_112",
+    "reader": "config_131",
+    "enhance": "config_415"
+  }
+}
+```
+
+## 错误代码
+
+| 错误代码 | HTTP状态码 | 说明 |
+|---------|-----------|------|
+| 200 | 200 | 成功 |
+| 400 | 400 | 请求参数错误 |
+| 401 | 401 | 未经授权 |
+| 403 | 403 | 权限不足 |
+| 404 | 404 | 资源不存在 |
+| 409 | 409 | 资源冲突 |
+| 500 | 500 | 服务器内部错误 |
+
+## 错误响应格式
+
+```json
+{
+  "code": 400,
+  "message": "error.invalidargument",
+  "data": null
+}
+```
+
+## 认证说明
+
+所有接口都需要在请求头中包含 JWT Token：
+
+```
+Authorization: Bearer <JWT_TOKEN>
+```
+
+用户必须具有管理员权限才能访问这些接口。
+
+## 支持的 AI 服务提供商
+
+- OpenAI
+- Azure OpenAI
+- Qwen (通义千问)
+- Baishan (白山)
+- 其他兼容 OpenAI API 的服务
+
+## 模型类型说明
+
+- `chat`: 聊天对话模型
+- `embedding`: 文本向量化模型
+- `vision`: 视觉理解模型
+- `rerank`: 文档重排序模型
+- `reader`: 文档阅读模型
+- `enhance`: 内容增强模型
+
+## 使用示例
+
+### 创建 OpenAI 提供商
+```bash
+curl -X POST "https://api.example.com/api/v1/admin/model/providers" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "OpenAI",
+    "description": "OpenAI API提供商",
+    "api_url": "https://api.openai.com/v1",
+    "api_key": "sk-xxx...",
+    "config": {
+      "timeout": 30,
+      "max_retries": 3
+    }
+  }'
+```
+
+### 创建 GPT-4 模型配置
+```bash
+curl -X POST "https://api.example.com/api/v1/admin/model/configs" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider_id": "provider_123",
+    "model_name": "gpt-4",
+    "display_name": "GPT-4",
+    "model_type": "chat",
+    "is_multi_modal": true,
+    "config": {
+      "max_tokens": 4096,
+      "temperature": 0.7
+    }
+  }'
+```
+
+### 更新 AI 使用配置
+```bash
+curl -X PUT "https://api.example.com/api/v1/admin/ai/system/usage" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat": "config_456",
+    "embedding": "config_789"
+  }'
+```
+
+## 前端开发指南
+
+基于此 API 文档，您可以使用 React 构建以下管理界面：
+
+### 1. 提供商管理页面
+- 提供商列表展示
+- 创建/编辑提供商表单
+- 提供商状态切换
+- 删除确认对话框
+
+### 2. 模型配置管理页面
+- 模型配置列表展示
+- 按提供商分组展示
+- 创建/编辑模型配置表单
+- 模型类型选择器
+
+### 3. AI 系统管理页面
+- 系统状态仪表板
+- AI 使用配置设置
+- 配置重载按钮
+- 实时状态监控
+
+### 4. 推荐的 React 组件结构
+```
+src/
+├── components/
+│   ├── providers/
+│   │   ├── ProviderList.jsx
+│   │   ├── ProviderForm.jsx
+│   │   └── ProviderCard.jsx
+│   └── models/
+│       ├── ModelList.jsx
+│       ├── ModelForm.jsx
+│       ├── ModelUsageSetting.jsx
+│       └── ModelCard.jsx
+├── pages/
+│   ├── ProvidersPage.jsx
+│   ├── ModelsPage.jsx
+│   └── ModelUsagePage.jsx
+├── hooks/
+│   ├── useProviders.js
+│   ├── useModels.js
+│   └── useSystem.js
+└── api/
+    ├── providers.js
+    ├── models.js
+    └── system.js
+```
+
+这个 API 文档提供了完整的接口规范，可以直接用于前端开发和后端对接。

@@ -125,3 +125,19 @@ other = "向量数据库与知识库不匹配，建议重新初始化"
 ['error.provider.model.in.use']
 one = "此提供商下有正在使用的模型，请先在AI使用配置中移除相关模型"
 other = "此提供商下有正在使用的模型，请先在AI使用配置中移除相关模型"
+
+['error.ai.chat.model.not.found']
+one = "聊天模型配置不存在"
+other = "聊天模型配置不存在"
+
+['error.ai.embedding.model.not.found']
+one = "向量化模型配置不存在"
+other = "向量化模型配置不存在"
+
+['message.ai.config.reload.success']
+one = "AI配置重载成功"
+other = "AI配置重载成功"
+
+['message.ai.usage.update.success']
+one = "AI使用配置更新成功"
+other = "AI使用配置更新成功"
