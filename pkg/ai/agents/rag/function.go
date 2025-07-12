@@ -30,5 +30,3 @@ var FunctionDefine = lo.Map([]*openai.FunctionDefinition{
 		Function: item,
 	}
 })
-
-

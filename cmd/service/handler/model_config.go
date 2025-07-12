@@ -11,13 +11,14 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/types"
+	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 // CreateModelConfig 创建模型配置
 func (s *HttpSrv) CreateModelConfig(c *gin.Context) {
 	var req v1.CreateModelRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.APIError(c, errors.New("CreateModelConfig.BindJSON", i18n.ERROR_INVALIDARGUMENT, err).Code(http.StatusBadRequest))
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
 		return
 	}
 
@@ -71,25 +72,16 @@ func (s *HttpSrv) ListModelConfigs(c *gin.Context) {
 
 	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
 
-	// 如果需要包含提供商信息
-	withProvider := c.Query("with_provider") == "true"
-
-	var models []types.ModelConfig
+	var models []*types.ModelConfig
 	var err error
-
-	if withProvider {
-		models, err = logic.ListModelsWithProvider(providerID)
-	} else {
-		models, err = logic.ListModels(providerID)
-	}
-
+	models, err = logic.ListModelsWithProvider(providerID)
 	if err != nil {
 		response.APIError(c, err)
 		return
 	}
 
 	// 客户端过滤（简化版，生产环境建议在数据库层过滤）
-	filteredModels := make([]types.ModelConfig, 0)
+	filteredModels := make([]*types.ModelConfig, 0)
 	for _, model := range models {
 		if status != nil && model.Status != *status {
 			continue
@@ -106,15 +98,8 @@ func (s *HttpSrv) ListModelConfigs(c *gin.Context) {
 		filteredModels = append(filteredModels, model)
 	}
 
-	total, err := logic.GetModelTotal(providerID, modelType, modelName, status, isMultiModal)
-	if err != nil {
-		response.APIError(c, err)
-		return
-	}
-
 	response.APISuccess(c, map[string]interface{}{
-		"list":  filteredModels,
-		"total": total,
+		"list": filteredModels,
 	})
 }
 
@@ -127,8 +112,8 @@ func (s *HttpSrv) UpdateModelConfig(c *gin.Context) {
 	}
 
 	var req v1.UpdateModelRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.APIError(c, errors.New("UpdateModelConfig.BindJSON", i18n.ERROR_INVALIDARGUMENT, err).Code(http.StatusBadRequest))
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
 		return
 	}
 

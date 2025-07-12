@@ -271,7 +271,7 @@ type ModelConfigStore interface {
 	Delete(ctx context.Context, id string) error
 	DeleteByProviderID(ctx context.Context, providerID string) error
 	List(ctx context.Context, opts types.ListModelConfigOptions) ([]types.ModelConfig, error)
-	ListWithProvider(ctx context.Context, opts types.ListModelConfigOptions) ([]types.ModelConfig, error)
+	ListWithProvider(ctx context.Context, opts types.ListModelConfigOptions) ([]*types.ModelConfig, error)
 	Total(ctx context.Context, opts types.ListModelConfigOptions) (int64, error)
 }
 

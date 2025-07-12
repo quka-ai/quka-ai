@@ -14,9 +14,6 @@ CREATE TABLE IF NOT EXISTS quka_share_token (
     CONSTRAINT unique_object_id_type UNIQUE (object_id, type) -- 确保 object_id 和 type 的组合唯一
 );
 
--- 为 token 字段创建索引，加快查找速度
-CREATE INDEX IF NOT EXISTS idx_token ON quka_share_token(token);
-
 -- 为每个字段添加注释
 COMMENT ON COLUMN quka_share_token.id IS '自增ID，主键';
 COMMENT ON COLUMN quka_share_token.object_id IS '文章的唯一标识符 (原 knowledge_id 字段)';

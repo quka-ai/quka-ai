@@ -4,7 +4,7 @@ package types
 const (
 	// AI使用配置分类
 	AI_USAGE_CATEGORY = "ai_usage"
-	
+
 	// AI使用配置名称
 	AI_USAGE_CHAT      = "ai_usage_chat"
 	AI_USAGE_EMBEDDING = "ai_usage_embedding"
@@ -12,7 +12,7 @@ const (
 	AI_USAGE_RERANK    = "ai_usage_rerank"
 	AI_USAGE_READER    = "ai_usage_reader"
 	AI_USAGE_ENHANCE   = "ai_usage_enhance"
-	
+
 	// 模型类型常量
 	MODEL_TYPE_CHAT       = "chat"
 	MODEL_TYPE_EMBEDDING  = "embedding"

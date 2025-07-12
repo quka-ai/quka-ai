@@ -12,6 +12,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/types"
+	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 // AIUsageRequest AI使用配置请求
@@ -48,8 +49,8 @@ func (s *HttpSrv) GetAIStatus(c *gin.Context) {
 // UpdateAIUsage 更新AI使用配置
 func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 	var req AIUsageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.APIError(c, errors.New("UpdateAIUsage.BindJSON", i18n.ERROR_INVALIDARGUMENT, err).Code(http.StatusBadRequest))
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
 		return
 	}
 

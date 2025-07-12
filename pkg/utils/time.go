@@ -22,7 +22,6 @@ func GetWeekStartAndEnd(date time.Time) (time.Time, time.Time) {
 	return startOfWeek, endOfWeek
 }
 
-
 func GetMonthStartAndEnd(date time.Time) (time.Time, time.Time) {
 	// 获取本月的第一天
 	startOfMonth := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())

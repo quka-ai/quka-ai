@@ -66,11 +66,44 @@ func MustSetupCore(cfg CoreConfig) *Core {
 	// setup store
 	setupSqlStore(core)
 
-	core.srv = srv.SetupSrvs(srv.ApplyAI(nil, srv.Usage{}), // ai provider select
+	// 初始化时加载AI配置
+	aiApplyFunc := core.loadInitialAIConfig()
+	core.srv = srv.SetupSrvs(aiApplyFunc, // ai provider select
 		// web socket
 		srv.ApplyTower())
 
 	return core
+}
+
+// loadInitialAIConfig 系统启动时加载AI配置
+func (s *Core) loadInitialAIConfig() srv.ApplyFunc {
+	ctx := context.Background()
+	
+	// 1. 从数据库获取启用的模型配置
+	statusEnabled := types.StatusEnabled
+	models, err := s.Store().ModelConfigStore().List(ctx, types.ListModelConfigOptions{
+		Status: &statusEnabled,
+	})
+	if err != nil {
+		// 如果加载失败，返回空配置而不是nil
+		return srv.ApplyAI([]types.ModelConfig{}, []types.ModelProvider{}, srv.Usage{})
+	}
+
+	// 2. 获取启用的模型提供商配置
+	modelProviders, err := s.Store().ModelProviderStore().List(ctx, types.ListModelProviderOptions{
+		Status: &statusEnabled,
+	}, 0, 0)
+	if err != nil {
+		return srv.ApplyAI([]types.ModelConfig{}, []types.ModelProvider{}, srv.Usage{})
+	}
+
+	// 3. 获取使用配置
+	usage, err := s.loadAIUsageFromDB(ctx)
+	if err != nil {
+		return srv.ApplyAI(models, modelProviders, srv.Usage{})
+	}
+
+	return srv.ApplyAI(models, modelProviders, usage)
 }
 
 // TODO: gen with redis
@@ -140,14 +173,22 @@ func (s *Core) ReloadAI(ctx context.Context) error {
 		return err
 	}
 
-	// 2. 获取使用配置
+	// 2. 获取启用的模型提供商配置
+	modelProviders, err := s.Store().ModelProviderStore().List(ctx, types.ListModelProviderOptions{
+		Status: &statusEnabled,
+	}, 0, 0) // 获取所有记录
+	if err != nil {
+		return err
+	}
+
+	// 3. 获取使用配置
 	usage, err := s.loadAIUsageFromDB(ctx)
 	if err != nil {
 		return err
 	}
 
-	// 3. 热重载AI配置
-	return s.srv.ReloadAI(models, usage)
+	// 4. 热重载AI配置
+	return s.srv.ReloadAI(models, modelProviders, usage)
 }
 
 // loadAIUsageFromDB 从数据库加载使用配置
@@ -177,10 +218,11 @@ func (s *Core) loadAIUsageFromDB(ctx context.Context) (srv.Usage, error) {
 			usage.Vision = modelID
 		case types.AI_USAGE_RERANK:
 			usage.Rerank = modelID
-		case types.AI_USAGE_READER:
-			usage.Reader = modelID
 		case types.AI_USAGE_ENHANCE:
 			usage.Enhance = modelID
+		case types.AI_USAGE_READER:
+			// Reader配置存储的是provider_id，不是model_id
+			usage.Reader = modelID
 		}
 	}
 

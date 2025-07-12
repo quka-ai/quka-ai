@@ -27,7 +27,7 @@ type S3ProxyResponse struct {
 
 func (s *HttpSrv) ObjectHandler(c *gin.Context) {
 	var req S3ProxyRequest
-	
+
 	if err := c.ShouldBindUri(&req); err != nil {
 		response.APIError(c, err)
 		return
@@ -40,14 +40,14 @@ func (s *HttpSrv) ObjectHandler(c *gin.Context) {
 	}
 
 	logic := v1.NewObjectLogic(c, s.Core)
-	
+
 	if logic.IsPublicResource(decodedPath) {
 		hasPermission, err := logic.CheckObjectPermission("", "", decodedPath)
 		if err != nil {
 			response.APIError(c, err)
 			return
 		}
-		
+
 		if !hasPermission {
 			response.APIError(c, errors.New("ObjectHandler.CheckObjectPermission", i18n.ERROR_FORBIDDEN, nil).Code(http.StatusForbidden))
 			return
@@ -76,7 +76,7 @@ func (s *HttpSrv) ObjectHandler(c *gin.Context) {
 			response.APIError(c, err)
 			return
 		}
-		
+
 		if !hasPermission {
 			response.APIError(c, errors.New("ObjectHandler.CheckObjectPermission", i18n.ERROR_FORBIDDEN, nil).Code(http.StatusForbidden))
 			return
@@ -91,7 +91,7 @@ func (s *HttpSrv) ObjectHandler(c *gin.Context) {
 			response.APIError(c, err)
 			return
 		}
-		
+
 		response.APISuccess(c, S3ProxyResponse{
 			URL: presignedURL,
 		})
@@ -113,7 +113,7 @@ func (s *HttpSrv) ObjectHandler(c *gin.Context) {
 	c.Header("Content-Length", strconv.Itoa(len(objectResult.File)))
 
 	isImageRequest := strings.HasPrefix(c.Request.URL.Path, "/image/")
-	
+
 	if logic.IsPublicResource(decodedPath) || isImageRequest {
 		c.Header("Cache-Control", "public, max-age=3600")
 		filename := extractFilename(decodedPath)
@@ -129,7 +129,6 @@ func (s *HttpSrv) ObjectHandler(c *gin.Context) {
 
 	c.DataFromReader(http.StatusOK, int64(len(objectResult.File)), contentType, bytes.NewReader(objectResult.File), nil)
 }
-
 
 func extractFilename(path string) string {
 	parts := strings.Split(path, "/")

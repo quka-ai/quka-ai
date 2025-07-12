@@ -1,7 +1,7 @@
 package types
 
 type Journal struct {
-	ID        int64           `json:"id" db:"id"`
+	ID        int64            `json:"id" db:"id"`
 	SpaceID   string           `json:"space_id" db:"space_id"`
 	UserID    string           `json:"user_id" db:"user_id"`
 	Date      string           `json:"date" db:"date"`

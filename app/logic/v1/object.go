@@ -28,12 +28,12 @@ func (l *ObjectLogic) CheckObjectPermission(userID, spaceID, objectPath string) 
 	}
 
 	userSpaceStore := l.core.Store().UserSpaceStore()
-	
+
 	userSpace, err := userSpaceStore.GetUserSpaceRole(l.ctx, userID, spaceID)
 	if err != nil && err != sql.ErrNoRows {
 		return false, errors.New("ObjectLogic.CheckObjectPermission.GetUserSpaceRole", i18n.ERROR_INTERNAL, err)
 	}
-	
+
 	if userSpace == nil {
 		return false, nil
 	}
@@ -49,24 +49,24 @@ func (l *ObjectLogic) IsPublicResource(objectPath string) bool {
 	if objectPath == "" {
 		return false
 	}
-	
+
 	if strings.Contains(objectPath, "../") {
 		return false
 	}
-	
+
 	publicPatterns := []string{
 		"/avatar/",
 		"/public/",
 		"/quka/assets/public/",
 		"/quka/assets/avatar/",
 	}
-	
+
 	for _, pattern := range publicPatterns {
 		if strings.Contains(objectPath, pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -74,14 +74,14 @@ func (l *ObjectLogic) isValidObjectPath(objectPath, spaceID string) bool {
 	if objectPath == "" {
 		return false
 	}
-	
+
 	if strings.Contains(objectPath, "../") {
 		return false
 	}
-	
+
 	if !strings.HasPrefix(objectPath, spaceID+"/") {
 		return false
 	}
-	
+
 	return true
 }

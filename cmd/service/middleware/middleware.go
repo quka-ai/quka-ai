@@ -176,7 +176,7 @@ func FlexibleAuth(core *core.Core) gin.HandlerFunc {
 			response.APIError(c, errors.Trace("middleware.FlexibleAuth.checkAccessToken", err))
 			return
 		}
-		
+
 		if matched {
 			return
 		}
@@ -187,7 +187,7 @@ func FlexibleAuth(core *core.Core) gin.HandlerFunc {
 			response.APIError(c, errors.Trace("middleware.FlexibleAuth.checkAuthToken", err))
 			return
 		}
-		
+
 		if matched {
 			return
 		}
@@ -199,7 +199,7 @@ func FlexibleAuth(core *core.Core) gin.HandlerFunc {
 				response.APIError(c, errors.Trace("middleware.FlexibleAuth.ParseCookieToken", authErr))
 				return
 			}
-			
+
 			if passed {
 				return
 			}
@@ -208,22 +208,22 @@ func FlexibleAuth(core *core.Core) gin.HandlerFunc {
 		// 4. 尝试查询参数认证
 		tokenValue := c.Query("token")
 		tokenType := c.Query("token-type")
-		
+
 		if tokenValue != "" {
 			var passed bool
 			var authErr error
-			
+
 			if tokenType == "authorization" {
 				passed, authErr = ParseAuthToken(c, tokenValue, core)
 			} else {
 				passed, authErr = ParseAccessToken(c, tokenValue, core)
 			}
-			
+
 			if authErr != nil {
 				response.APIError(c, errors.Trace("middleware.FlexibleAuth.ParseQueryToken", authErr))
 				return
 			}
-			
+
 			if passed {
 				return
 			}

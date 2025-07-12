@@ -10,13 +10,14 @@ import (
 	"github.com/quka-ai/quka-ai/app/response"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
+	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 // CreateModelProvider 创建模型提供商
 func (s *HttpSrv) CreateModelProvider(c *gin.Context) {
 	var req v1.CreateProviderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.APIError(c, errors.New("CreateModelProvider.BindJSON", i18n.ERROR_INVALIDARGUMENT, err).Code(http.StatusBadRequest))
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
 		return
 	}
 
@@ -87,8 +88,8 @@ func (s *HttpSrv) UpdateModelProvider(c *gin.Context) {
 	}
 
 	var req v1.UpdateProviderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.APIError(c, errors.New("UpdateModelProvider.BindJSON", i18n.ERROR_INVALIDARGUMENT, err).Code(http.StatusBadRequest))
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
 		return
 	}
 

@@ -232,34 +232,47 @@ func (s *AI) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, err
 }
 
 type Usage struct {
+	// 模型级别配置（指向model_id）
 	Chat      string `json:"chat"`
 	Embedding string `json:"embedding"`
 	Vision    string `json:"vision"`
 	Rerank    string `json:"rerank"`
-	Reader    string `json:"reader"`
 	Enhance   string `json:"enhance"`
+	
+	// 提供商级别配置（指向provider_id）
+	Reader    string `json:"reader"`
 }
 
-func SetupReader(s *AI, providers []types.CustomConfig) error {
+func SetupReader(s *AI, providers []types.ModelProvider) error {
 	for _, v := range providers {
+		var providerConfig types.ModelProviderConfig
+		if err := json.Unmarshal(v.Config, &providerConfig); err != nil {
+			continue // 如果配置解析失败，跳过该提供商
+		}
+		
+		// 只有配置了is_reader为true的提供商才会设置Reader功能
+		if !providerConfig.IsReader {
+			continue
+		}
+		
 		switch v.Name {
 		case "jina":
 			var config jina.JinaConfig
-			if err := json.Unmarshal(v.Value, &config); err != nil {
+			if err := json.Unmarshal(v.Config, &config); err != nil {
 				return err
 			}
 			driver := jina.New(config.Token, config.Endpoint)
-			if v.Category == "reader" {
-				s.readerDrivers["jina"] = driver
+			// 使用provider_id作为key，不是固定的"jina"
+			s.readerDrivers[v.ID] = driver
+			if s.readerDefault == nil {
 				s.readerDefault = driver
 			}
-			return nil
 		}
 	}
 	return nil
 }
 
-func SetupAI(providers []types.ModelConfig, usage Usage) (*AI, error) {
+func SetupAI(providers []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) (*AI, error) {
 	a := &AI{
 		chatDrivers:    make(map[string]ChatAI),
 		chatUsage:      make(map[string]ChatAI),
@@ -275,6 +288,7 @@ func SetupAI(providers []types.ModelConfig, usage Usage) (*AI, error) {
 		rerankUsage:    make(map[string]RerankAI),
 	}
 
+	// 设置模型配置
 	for _, v := range providers {
 		d := fusion.New(v.Provider.ApiKey, v.Provider.ApiUrl, v.ModelName)
 		switch v.ModelType {
@@ -294,10 +308,10 @@ func SetupAI(providers []types.ModelConfig, usage Usage) (*AI, error) {
 			a.visionDefault = d
 		}
 	}
-
-	a.readerUsage["reader"] = a.readerDrivers[usage.Reader]
-	if a.readerDefault == nil {
-		a.readerDefault = a.readerDrivers[usage.Reader]
+	
+	// 设置提供商级别的Reader配置
+	if err := SetupReader(a, modelProviders); err != nil {
+		return nil, err
 	}
 
 	a.embedUsage["embedding"] = a.embedDrivers[usage.Embedding]
@@ -324,21 +338,29 @@ func SetupAI(providers []types.ModelConfig, usage Usage) (*AI, error) {
 	if a.chatDefault == nil {
 		a.chatDefault = a.chatDrivers[usage.Chat]
 	}
+	
+	// 设置Reader usage配置（使用provider_id）
+	if usage.Reader != "" {
+		a.readerUsage["reader"] = a.readerDrivers[usage.Reader]
+		if a.readerDefault == nil {
+			a.readerDefault = a.readerDrivers[usage.Reader]
+		}
+	}
 
 	return a, nil
 }
 
 type ApplyFunc func(s *Srv)
 
-func ApplyAI(providers []types.ModelConfig, usage Usage) ApplyFunc {
+func ApplyAI(providers []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) ApplyFunc {
 	return func(s *Srv) {
-		s.ai, _ = SetupAI(providers, usage)
+		s.ai, _ = SetupAI(providers, modelProviders, usage)
 	}
 }
 
 // 配置热重载方法
-func (s *AI) ReloadFromProviders(providers []types.ModelConfig, usage Usage) error {
-	newAI, err := SetupAI(providers, usage)
+func (s *AI) ReloadFromProviders(providers []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) error {
+	newAI, err := SetupAI(providers, modelProviders, usage)
 	if err != nil {
 		return err
 	}

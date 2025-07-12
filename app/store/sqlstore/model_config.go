@@ -2,6 +2,7 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -143,7 +144,7 @@ func (s *ModelConfigStore) List(ctx context.Context, opts types.ListModelConfigO
 }
 
 // ListWithProvider 分页获取模型配置列表，包含提供商信息
-func (s *ModelConfigStore) ListWithProvider(ctx context.Context, opts types.ListModelConfigOptions) ([]types.ModelConfig, error) {
+func (s *ModelConfigStore) ListWithProvider(ctx context.Context, opts types.ListModelConfigOptions) ([]*types.ModelConfig, error) {
 	// 构建联合查询
 	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).OrderBy("provider_id ASC, model_name ASC")
 	opts.Apply(&query)
@@ -153,24 +154,28 @@ func (s *ModelConfigStore) ListWithProvider(ctx context.Context, opts types.List
 		return nil, ErrorSqlBuild(err)
 	}
 
-	var res []types.ModelConfig
+	var res []*types.ModelConfig
 	if err = s.GetReplica(ctx).Select(&res, queryString, args...); err != nil {
 		return nil, err
 	}
 
-	providers, err := s.getProvider(ctx, lo.Map(res, func(item types.ModelConfig, _ int) string {
+	providers, err := s.getProvider(ctx, lo.Map(res, func(item *types.ModelConfig, _ int) string {
 		return item.ProviderID
 	}))
 	if err != nil {
 		return nil, err
 	}
 
+	pmap := lo.SliceToMap(providers, func(item *types.ModelProvider) (string, *types.ModelProvider) {
+		return item.ID, item
+	})
+
+	fmt.Println(pmap)
+
 	for _, item := range res {
-		for _, provider := range providers {
-			if item.ProviderID == provider.ID {
-				item.Provider = provider
-				break
-			}
+		data, exist := pmap[item.ProviderID]
+		if exist {
+			item.Provider = data
 		}
 	}
 

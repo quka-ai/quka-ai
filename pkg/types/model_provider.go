@@ -25,9 +25,16 @@ type ModelProvider struct {
 	ApiUrl      string          `json:"api_url" db:"api_url"`         // API地址
 	ApiKey      string          `json:"-" db:"api_key"`               // API密钥（不返回给前端）
 	Status      int             `json:"status" db:"status"`           // 状态：1-启用，0-禁用
-	Config      json.RawMessage `json:"config" db:"config"`           // 额外配置（JSON格式）
+	Config      json.RawMessage `json:"config" db:"config"`           // 额外配置（JSON格式，包含is_reader等厂商特有功能配置）
 	CreatedAt   int64           `json:"created_at" db:"created_at"`   // 创建时间
 	UpdatedAt   int64           `json:"updated_at" db:"updated_at"`   // 更新时间
+}
+
+// ModelProviderConfig 模型提供商配置结构
+type ModelProviderConfig struct {
+	IsReader   bool `json:"is_reader"`   // 是否支持Reader功能（厂商特有功能）
+	Timeout    int  `json:"timeout"`     // 请求超时时间（秒）
+	MaxRetries int  `json:"max_retries"` // 最大重试次数
 }
 
 // ModelConfig 模型配置

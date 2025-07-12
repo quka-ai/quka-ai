@@ -256,7 +256,7 @@ func (l *ModelConfigLogic) ListModels(providerID string) ([]types.ModelConfig, e
 }
 
 // ListModelsWithProvider 列出模型配置（包含提供商信息）
-func (l *ModelConfigLogic) ListModelsWithProvider(providerID string) ([]types.ModelConfig, error) {
+func (l *ModelConfigLogic) ListModelsWithProvider(providerID string) ([]*types.ModelConfig, error) {
 	opts := types.ListModelConfigOptions{
 		ProviderID: providerID,
 	}
@@ -288,7 +288,7 @@ func (l *ModelConfigLogic) GetModelTotal(providerID, modelType, modelName string
 }
 
 // GetAvailableModels 获取可用的模型配置（只返回启用的）
-func (l *ModelConfigLogic) GetAvailableModels(modelType string, isMultiModal *bool) ([]types.ModelConfig, error) {
+func (l *ModelConfigLogic) GetAvailableModels(modelType string, isMultiModal *bool) ([]*types.ModelConfig, error) {
 	enabledStatus := types.StatusEnabled
 	opts := types.ListModelConfigOptions{
 		ModelType:    modelType,

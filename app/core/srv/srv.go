@@ -39,8 +39,8 @@ func (s *Srv) Tower() *Tower {
 }
 
 // ReloadAI 重新加载AI配置
-func (s *Srv) ReloadAI(models []types.ModelConfig, usage Usage) error {
-	news, err := SetupAI(models, usage)
+func (s *Srv) ReloadAI(models []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) error {
+	news, err := SetupAI(models, modelProviders, usage)
 	if err != nil {
 		return err
 	}

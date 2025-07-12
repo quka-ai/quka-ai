@@ -92,7 +92,6 @@ func (s *QueryOptions) WithVar(key, value string) {
 	s.vars[key] = value
 }
 
-
 type EnhanceOptions struct {
 	ctx     context.Context
 	prompt  string
