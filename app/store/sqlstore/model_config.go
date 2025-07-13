@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -128,7 +127,7 @@ func (s *ModelConfigStore) DeleteByProviderID(ctx context.Context, providerID st
 
 // List 分页获取模型配置列表
 func (s *ModelConfigStore) List(ctx context.Context, opts types.ListModelConfigOptions) ([]types.ModelConfig, error) {
-	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).OrderBy("provider_id ASC, model_name ASC")
+	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).OrderBy("provider_id ASC, created_at DESC")
 	opts.Apply(&query)
 
 	queryString, args, err := query.ToSql()
@@ -169,8 +168,6 @@ func (s *ModelConfigStore) ListWithProvider(ctx context.Context, opts types.List
 	pmap := lo.SliceToMap(providers, func(item *types.ModelProvider) (string, *types.ModelProvider) {
 		return item.ID, item
 	})
-
-	fmt.Println(pmap)
 
 	for _, item := range res {
 		data, exist := pmap[item.ProviderID]

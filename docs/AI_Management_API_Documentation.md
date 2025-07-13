@@ -1,5 +1,17 @@
 # AI 管理接口文档
 
+## 变更日志
+
+### v2.0.0 - Reader功能重构
+- **重大变更**: Reader功能从模型类型重构为厂商特有功能
+- **新增**: ModelProvider.config.is_reader字段，用于标识厂商是否支持Reader功能
+- **新增**: ModelProvider.config.timeout和max_retries字段
+- **新增**: 提供商列表API支持`is_reader`查询参数
+- **新增**: 模型列表API自动包含Reader虚拟模型，统一前端处理体验
+- **恢复**: MODEL_TYPE_READER模型类型（用于Reader虚拟模型标识）
+- **变更**: AI使用配置中的reader字段现在指向provider_id而不是model_id
+- **简化**: Reader虚拟模型ID直接使用provider_id，简化系统逻辑
+
 ## 概述
 
 这是 QukaAI 项目的 AI 管理接口文档，包含模型提供商管理、模型配置管理和 AI 系统管理功能。这些接口用于 Web 界面的后端管理功能，支持动态配置管理和热重载。
@@ -23,11 +35,12 @@
 **请求体**:
 ```json
 {
-  "name": "OpenAI",
-  "description": "OpenAI API提供商",
-  "api_url": "https://api.openai.com/v1",
-  "api_key": "sk-xxx...",
+  "name": "Jina",
+  "description": "Jina Reader API提供商",
+  "api_url": "https://r.jina.ai",
+  "api_key": "jina_xxx...",
   "config": {
+    "is_reader": true,
     "timeout": 30,
     "max_retries": 3
   }
@@ -40,6 +53,9 @@
 - `api_url` (string, required): API 基础地址
 - `api_key` (string, required): API 密钥
 - `config` (object): 额外配置参数
+  - `is_reader` (bool): 是否支持Reader功能（厂商特有功能）
+  - `timeout` (int): 请求超时时间（秒）
+  - `max_retries` (int): 最大重试次数
 
 **响应示例**:
 ```json
@@ -48,11 +64,12 @@
   "message": "success",
   "data": {
     "id": "provider_123",
-    "name": "OpenAI",
-    "description": "OpenAI API提供商",
-    "api_url": "https://api.openai.com/v1",
+    "name": "Jina",
+    "description": "Jina Reader API提供商",
+    "api_url": "https://r.jina.ai",
     "status": 1,
     "config": {
+      "is_reader": true,
       "timeout": 30,
       "max_retries": 3
     },
@@ -73,6 +90,7 @@
 - `limit` (int): 每页条数，默认 20
 - `name` (string): 按名称过滤
 - `status` (int): 按状态过滤 (0=禁用, 1=启用)
+- `is_reader` (bool): 按Reader功能过滤 (true=支持Reader, false=不支持Reader)
 
 **响应示例**:
 ```json
@@ -221,7 +239,7 @@
 - `provider_id` (string, required): 提供商ID
 - `model_name` (string, required): 模型名称
 - `display_name` (string): 显示名称
-- `model_type` (string, required): 模型类型 (chat/embedding/vision/rerank/reader/enhance)
+- `model_type` (string, required): 模型类型 (chat/embedding/vision/rerank/enhance)
 - `is_multi_modal` (bool): 是否支持多模态
 - `config` (object): 模型配置参数
 
@@ -257,14 +275,20 @@
 
 **接口**: `GET /admin/model/configs`
 
-**功能**: 获取所有模型配置列表
+**功能**: 获取所有模型配置列表，包含真实模型配置和Reader虚拟模型
 
 **查询参数**:
 - `page` (int): 页码，默认 1
 - `limit` (int): 每页条数，默认 20
 - `provider_id` (string): 按提供商ID过滤
-- `model_type` (string): 按模型类型过滤
+- `model_type` (string): 按模型类型过滤（支持reader类型）
 - `status` (int): 按状态过滤
+
+**说明**: 
+- 此接口会返回真实的模型配置，同时将支持Reader功能的提供商作为虚拟模型返回
+- Reader虚拟模型的ID直接使用provider_id
+- Reader虚拟模型的model_type为 "reader"
+- Reader虚拟模型使用提供商名称作为模型名称
 
 **响应示例**:
 ```json
@@ -287,9 +311,24 @@
           "id": "provider_123",
           "name": "OpenAI"
         }
+      },
+      {
+        "id": "provider_456",
+        "provider_id": "provider_456",
+        "model_name": "Jina",
+        "display_name": "Jina Reader",
+        "model_type": "reader",
+        "is_multi_modal": false,
+        "status": 1,
+        "created_at": 1640995200,
+        "updated_at": 1640995200,
+        "provider": {
+          "id": "provider_456",
+          "name": "Jina"
+        }
       }
     ],
-    "total": 1,
+    "total": 2,
     "page": 1,
     "limit": 20
   }
@@ -460,7 +499,7 @@
   "embedding": "config_789",
   "vision": "config_101",
   "rerank": "config_112",
-  "reader": "config_131",
+  "reader": "provider_123",
   "enhance": "config_415"
 }
 ```
@@ -470,7 +509,7 @@
 - `embedding` (string, required): 向量化功能使用的模型配置ID
 - `vision` (string): 视觉功能使用的模型配置ID
 - `rerank` (string): 重排序功能使用的模型配置ID
-- `reader` (string): 阅读功能使用的模型配置ID
+- `reader` (string): 阅读功能使用的提供商ID（注意：这里是provider_id，不是model_id）
 - `enhance` (string): 增强功能使用的模型配置ID
 
 **响应示例**:
@@ -516,7 +555,7 @@
     "embedding": "config_789",
     "vision": "config_101",
     "rerank": "config_112",
-    "reader": "config_131",
+    "reader": "provider_123",
     "enhance": "config_415"
   }
 }
@@ -568,26 +607,36 @@ Authorization: Bearer <JWT_TOKEN>
 - `embedding`: 文本向量化模型
 - `vision`: 视觉理解模型
 - `rerank`: 文档重排序模型
-- `reader`: 文档阅读模型
 - `enhance`: 内容增强模型
+
+## 厂商特有功能说明
+
+- `Reader功能`: 文档阅读功能是厂商特有的能力，不属于模型类型。通过ModelProvider的config.is_reader字段标识该厂商是否支持Reader功能。
 
 ## 使用示例
 
-### 创建 OpenAI 提供商
+### 创建支持Reader功能的Jina提供商
 ```bash
 curl -X POST "https://api.example.com/api/v1/admin/model/providers" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "OpenAI",
-    "description": "OpenAI API提供商",
-    "api_url": "https://api.openai.com/v1",
-    "api_key": "sk-xxx...",
+    "name": "Jina",
+    "description": "Jina Reader API提供商",
+    "api_url": "https://r.jina.ai",
+    "api_key": "jina_xxx...",
     "config": {
+      "is_reader": true,
       "timeout": 30,
       "max_retries": 3
     }
   }'
+```
+
+### 查询支持Reader功能的提供商
+```bash
+curl -X GET "https://api.example.com/api/v1/admin/model/providers?is_reader=true&status=1" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 ### 创建 GPT-4 模型配置
@@ -615,19 +664,23 @@ curl -X PUT "https://api.example.com/api/v1/admin/ai/system/usage" \
   -H "Content-Type: application/json" \
   -d '{
     "chat": "config_456",
-    "embedding": "config_789"
+    "embedding": "config_789",
+    "reader": "provider_123"
   }'
 ```
+
+**注意**: Reader配置使用的是provider_id，而其他功能使用的是model_id。
 
 ## 前端开发指南
 
 基于此 API 文档，您可以使用 React 构建以下管理界面：
 
 ### 1. 提供商管理页面
-- 提供商列表展示
-- 创建/编辑提供商表单
+- 提供商列表展示（支持按Reader功能筛选）
+- 创建/编辑提供商表单（包含Reader功能配置）
 - 提供商状态切换
 - 删除确认对话框
+- Reader功能标识展示
 
 ### 2. 模型配置管理页面
 - 模型配置列表展示

@@ -81,10 +81,6 @@ func (l *CustomConfigLogic) GetCustomConfig(name string) (*types.CustomConfig, e
 		return nil, errors.New("CustomConfigLogic.GetCustomConfig.Get", i18n.ERROR_INTERNAL, err)
 	}
 
-	if config == nil {
-		return nil, errors.New("CustomConfigLogic.GetCustomConfig.NotFound", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNotFound)
-	}
-
 	return config, nil
 }
 
@@ -227,6 +223,12 @@ func (l *CustomConfigLogic) SetCustomConfigValue(name, category string, value in
 
 	_, err = l.UpsertCustomConfig(name, description, category, value, status)
 	return err
+}
+
+// BatchUpsertCustomConfigs 批量插入或更新自定义配置（事务安全）
+func (l *CustomConfigLogic) BatchUpsertCustomConfigs(configs []types.CustomConfig) error {
+	// 使用数据库事务来保证批量操作的原子性
+	return l.core.Store().CustomConfigStore().BatchUpsert(l.ctx, configs)
 }
 
 // EnableCustomConfig 启用自定义配置

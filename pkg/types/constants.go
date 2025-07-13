@@ -19,8 +19,8 @@ const (
 	MODEL_TYPE_COMPLETION = "completion"
 	MODEL_TYPE_VISION     = "vision"
 	MODEL_TYPE_RERANK     = "rerank"
-	MODEL_TYPE_READER     = "reader"
 	MODEL_TYPE_ENHANCE    = "enhance"
+	MODEL_TYPE_READER     = "reader" // 虚拟模型类型，用于标识Reader提供商
 )
 
 // AI使用配置描述

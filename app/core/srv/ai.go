@@ -290,6 +290,9 @@ func SetupAI(providers []types.ModelConfig, modelProviders []types.ModelProvider
 
 	// 设置模型配置
 	for _, v := range providers {
+		if v.Provider == nil {
+			continue
+		}
 		d := fusion.New(v.Provider.ApiKey, v.Provider.ApiUrl, v.ModelName)
 		switch v.ModelType {
 		case "chat":

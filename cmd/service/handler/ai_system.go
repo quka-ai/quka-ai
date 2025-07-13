@@ -146,12 +146,10 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 		})
 	}
 
-	// 保存配置（这里简化处理，实际应该是upsert操作）
-	for _, config := range configs {
-		if err := customLogic.SetCustomConfigValue(config.Name, config.Category, string(config.Value)); err != nil {
-			response.APIError(c, errors.New("UpdateAIUsage.SaveConfig", i18n.ERROR_INTERNAL, err))
-			return
-		}
+	// 批量保存配置（使用事务保证原子性）
+	if err := customLogic.BatchUpsertCustomConfigs(configs); err != nil {
+		response.APIError(c, errors.New("UpdateAIUsage.BatchSaveConfig", i18n.ERROR_INTERNAL, err))
+		return
 	}
 
 	response.APISuccess(c, map[string]interface{}{

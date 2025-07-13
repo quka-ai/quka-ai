@@ -278,6 +278,7 @@ type ModelConfigStore interface {
 type CustomConfigStore interface {
 	sqlstore.SqlCommons
 	Upsert(ctx context.Context, data types.CustomConfig) error
+	BatchUpsert(ctx context.Context, configs []types.CustomConfig) error
 	Get(ctx context.Context, name string) (*types.CustomConfig, error)
 	Delete(ctx context.Context, name string) error
 	List(ctx context.Context, opts types.ListCustomConfigOptions, page, pageSize uint64) ([]types.CustomConfig, error)

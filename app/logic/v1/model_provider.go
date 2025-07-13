@@ -239,7 +239,7 @@ func (l *ModelProviderLogic) DeleteProvider(id string) error {
 }
 
 // ListProviders 列出模型提供商
-func (l *ModelProviderLogic) ListProviders(name string, status *int) ([]types.ModelProvider, error) {
+func (l *ModelProviderLogic) ListProviders(name string, status *int, isReader *bool) ([]types.ModelProvider, error) {
 	opts := types.ListModelProviderOptions{
 		Name:   name,
 		Status: status,
@@ -248,6 +248,21 @@ func (l *ModelProviderLogic) ListProviders(name string, status *int) ([]types.Mo
 	providers, err := l.core.Store().ModelProviderStore().List(l.ctx, opts, 0, 0)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, errors.New("ModelProviderLogic.ListProviders.List", i18n.ERROR_INTERNAL, err)
+	}
+
+	// 根据is_reader过滤提供商
+	if isReader != nil {
+		filteredProviders := make([]types.ModelProvider, 0)
+		for _, provider := range providers {
+			var config types.ModelProviderConfig
+			if err := json.Unmarshal(provider.Config, &config); err != nil {
+				continue // 如果配置解析失败，跳过
+			}
+			if config.IsReader == *isReader {
+				filteredProviders = append(filteredProviders, provider)
+			}
+		}
+		providers = filteredProviders
 	}
 
 	// 不返回API密钥
@@ -259,7 +274,17 @@ func (l *ModelProviderLogic) ListProviders(name string, status *int) ([]types.Mo
 }
 
 // GetProviderTotal 获取提供商总数
-func (l *ModelProviderLogic) GetProviderTotal(name string, status *int) (int64, error) {
+func (l *ModelProviderLogic) GetProviderTotal(name string, status *int, isReader *bool) (int64, error) {
+	// 如果需要按Reader功能筛选，我们需要获取所有数据然后过滤
+	if isReader != nil {
+		providers, err := l.ListProviders(name, status, isReader)
+		if err != nil {
+			return 0, err
+		}
+		return int64(len(providers)), nil
+	}
+
+	// 否则直接从数据库获取统计数据
 	opts := types.ListModelProviderOptions{
 		Name:   name,
 		Status: status,

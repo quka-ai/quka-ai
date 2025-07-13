@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/quka-ai/quka-ai/app/core/srv"
@@ -81,7 +82,7 @@ func (s *Core) loadInitialAIConfig() srv.ApplyFunc {
 	
 	// 1. 从数据库获取启用的模型配置
 	statusEnabled := types.StatusEnabled
-	models, err := s.Store().ModelConfigStore().List(ctx, types.ListModelConfigOptions{
+	models, err := s.Store().ModelConfigStore().ListWithProvider(ctx, types.ListModelConfigOptions{
 		Status: &statusEnabled,
 	})
 	if err != nil {
@@ -92,7 +93,7 @@ func (s *Core) loadInitialAIConfig() srv.ApplyFunc {
 	// 2. 获取启用的模型提供商配置
 	modelProviders, err := s.Store().ModelProviderStore().List(ctx, types.ListModelProviderOptions{
 		Status: &statusEnabled,
-	}, 0, 0)
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil {
 		return srv.ApplyAI([]types.ModelConfig{}, []types.ModelProvider{}, srv.Usage{})
 	}
@@ -100,10 +101,14 @@ func (s *Core) loadInitialAIConfig() srv.ApplyFunc {
 	// 3. 获取使用配置
 	usage, err := s.loadAIUsageFromDB(ctx)
 	if err != nil {
-		return srv.ApplyAI(models, modelProviders, srv.Usage{})
+		return srv.ApplyAI(lo.Map(models, func(item *types.ModelConfig, _ int) types.ModelConfig {
+			return *item
+		}), modelProviders, srv.Usage{})
 	}
 
-	return srv.ApplyAI(models, modelProviders, usage)
+	return srv.ApplyAI(lo.Map(models, func(item *types.ModelConfig, _ int) types.ModelConfig {
+		return *item
+	}), modelProviders, usage)
 }
 
 // TODO: gen with redis
@@ -166,7 +171,7 @@ func (s *Core) Srv() *srv.Srv {
 func (s *Core) ReloadAI(ctx context.Context) error {
 	// 1. 从数据库获取启用的模型配置
 	statusEnabled := types.StatusEnabled
-	models, err := s.Store().ModelConfigStore().List(ctx, types.ListModelConfigOptions{
+	models, err := s.Store().ModelConfigStore().ListWithProvider(ctx, types.ListModelConfigOptions{
 		Status: &statusEnabled,
 	})
 	if err != nil {
@@ -188,7 +193,9 @@ func (s *Core) ReloadAI(ctx context.Context) error {
 	}
 
 	// 4. 热重载AI配置
-	return s.srv.ReloadAI(models, modelProviders, usage)
+	return s.srv.ReloadAI(lo.Map(models, func(item *types.ModelConfig, _ int) types.ModelConfig {
+		return *item
+	}), modelProviders, usage)
 }
 
 // loadAIUsageFromDB 从数据库加载使用配置

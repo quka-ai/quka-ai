@@ -66,16 +66,6 @@ func (l *ModelConfigLogic) CreateModel(req CreateModelRequest) (*types.ModelConf
 		return nil, errors.New("ModelConfigLogic.CreateModel.ModelType.Empty", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
 	}
 
-	// 验证模型类型
-	if req.ModelType != types.ModelTypeChat && req.ModelType != types.ModelTypeEmbedding && req.ModelType != types.ModelTypeCompletion {
-		return nil, errors.New("ModelConfigLogic.CreateModel.ModelType.Invalid", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
-	}
-
-	// 如果不是chat类型，IsMultiModal应该为false
-	if req.ModelType != types.ModelTypeChat && req.IsMultiModal {
-		return nil, errors.New("ModelConfigLogic.CreateModel.MultiModal.OnlyForChat", "多模态功能仅适用于chat类型模型", nil).Code(http.StatusBadRequest)
-	}
-
 	// 验证提供商是否存在
 	provider, err := l.core.Store().ModelProviderStore().Get(l.ctx, req.ProviderID)
 	if err != nil && err != sql.ErrNoRows {
@@ -154,28 +144,6 @@ func (l *ModelConfigLogic) UpdateModel(id string, req UpdateModelRequest) (*type
 
 	if existing == nil {
 		return nil, errors.New("ModelConfigLogic.UpdateModel.NotFound", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNotFound)
-	}
-
-	// 验证模型类型（如果更新了）
-	if req.ModelType != "" {
-		if req.ModelType != types.ModelTypeChat && req.ModelType != types.ModelTypeEmbedding && req.ModelType != types.ModelTypeCompletion {
-			return nil, errors.New("ModelConfigLogic.UpdateModel.ModelType.Invalid", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
-		}
-	}
-
-	// 检查多模态设置（如果更新了模型类型或多模态标志）
-	finalModelType := existing.ModelType
-	if req.ModelType != "" {
-		finalModelType = req.ModelType
-	}
-
-	finalIsMultiModal := existing.IsMultiModal
-	if req.IsMultiModal != nil {
-		finalIsMultiModal = *req.IsMultiModal
-	}
-
-	if finalModelType != types.ModelTypeChat && finalIsMultiModal {
-		return nil, errors.New("ModelConfigLogic.UpdateModel.MultiModal.OnlyForChat", "多模态功能仅适用于chat类型模型", nil).Code(http.StatusBadRequest)
 	}
 
 	// 检查模型名称冲突（如果更新了模型名称）
@@ -266,7 +234,91 @@ func (l *ModelConfigLogic) ListModelsWithProvider(providerID string) ([]*types.M
 		return nil, errors.New("ModelConfigLogic.ListModelsWithProvider.ListWithProvider", i18n.ERROR_INTERNAL, err)
 	}
 
-	return models, nil
+	// 添加支持Reader功能的提供商作为虚拟模型
+	readerModels, err := l.getReaderProviderAsModels(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 合并真实模型和Reader虚拟模型
+	allModels := make([]*types.ModelConfig, 0, len(models)+len(readerModels))
+	allModels = append(allModels, models...)
+	allModels = append(allModels, readerModels...)
+
+	return allModels, nil
+}
+
+// getReaderProviderAsModels 获取支持Reader功能的提供商，转换为虚拟模型
+func (l *ModelConfigLogic) getReaderProviderAsModels(providerID string) ([]*types.ModelConfig, error) {
+	// 构建查询条件
+	statusEnabled := types.StatusEnabled
+	providerOpts := types.ListModelProviderOptions{
+		Status: &statusEnabled,
+	}
+	if providerID != "" {
+		// 如果指定了特定的提供商ID，只查询该提供商
+		provider, err := l.core.Store().ModelProviderStore().Get(l.ctx, providerID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return []*types.ModelConfig{}, nil
+			}
+			return nil, errors.New("ModelConfigLogic.getReaderProviderAsModels.Get", i18n.ERROR_INTERNAL, err)
+		}
+
+		var config types.ModelProviderConfig
+		if err := json.Unmarshal(provider.Config, &config); err != nil {
+			return []*types.ModelConfig{}, nil
+		}
+
+		if !config.IsReader {
+			return []*types.ModelConfig{}, nil
+		}
+
+		return l.convertProviderToReaderModel([]*types.ModelProvider{provider}), nil
+	}
+
+	// 获取所有启用的提供商
+	providers, err := l.core.Store().ModelProviderStore().List(l.ctx, providerOpts, 0, 0)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("ModelConfigLogic.getReaderProviderAsModels.List", i18n.ERROR_INTERNAL, err)
+	}
+
+	// 过滤出支持Reader功能的提供商
+	readerProviders := make([]*types.ModelProvider, 0)
+	for i, provider := range providers {
+		var config types.ModelProviderConfig
+		if err := json.Unmarshal(provider.Config, &config); err != nil {
+			continue
+		}
+		if config.IsReader {
+			readerProviders = append(readerProviders, &providers[i])
+		}
+	}
+
+	return l.convertProviderToReaderModel(readerProviders), nil
+}
+
+// convertProviderToReaderModel 将支持Reader的提供商转换为虚拟模型配置
+func (l *ModelConfigLogic) convertProviderToReaderModel(providers []*types.ModelProvider) []*types.ModelConfig {
+	models := make([]*types.ModelConfig, 0, len(providers))
+
+	for _, provider := range providers {
+		model := &types.ModelConfig{
+			ID:          provider.ID, // 直接使用provider_id作为虚拟模型ID
+			ProviderID:  provider.ID,
+			ModelName:   provider.Name, // 使用提供商名称作为模型名称
+			DisplayName: provider.Name + " Reader",
+			ModelType:   types.MODEL_TYPE_READER, // 虚拟的reader类型
+			Status:      provider.Status,
+			Config:      provider.Config,
+			CreatedAt:   provider.CreatedAt,
+			UpdatedAt:   provider.UpdatedAt,
+			Provider:    provider,
+		}
+		models = append(models, model)
+	}
+
+	return models
 }
 
 // GetModelTotal 获取模型配置总数

@@ -58,16 +58,23 @@ func (s *HttpSrv) ListModelProviders(c *gin.Context) {
 		}
 	}
 
+	var isReader *bool
+	if readerStr := c.Query("is_reader"); readerStr != "" {
+		if readerBool, err := strconv.ParseBool(readerStr); err == nil {
+			isReader = &readerBool
+		}
+	}
+
 	name := c.Query("name")
 
 	logic := v1.NewModelProviderLogic(c.Request.Context(), s.Core)
-	providers, err := logic.ListProviders(name, status)
+	providers, err := logic.ListProviders(name, status, isReader)
 	if err != nil {
 		response.APIError(c, err)
 		return
 	}
 
-	total, err := logic.GetProviderTotal(name, status)
+	total, err := logic.GetProviderTotal(name, status, isReader)
 	if err != nil {
 		response.APIError(c, err)
 		return
