@@ -272,7 +272,7 @@ func SetupReader(s *AI, providers []types.ModelProvider) error {
 	return nil
 }
 
-func SetupAI(providers []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) (*AI, error) {
+func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) (*AI, error) {
 	a := &AI{
 		chatDrivers:    make(map[string]ChatAI),
 		chatUsage:      make(map[string]ChatAI),
@@ -289,7 +289,7 @@ func SetupAI(providers []types.ModelConfig, modelProviders []types.ModelProvider
 	}
 
 	// 设置模型配置
-	for _, v := range providers {
+	for _, v := range models {
 		if v.Provider == nil {
 			continue
 		}

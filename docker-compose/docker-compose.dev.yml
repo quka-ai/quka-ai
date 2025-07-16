@@ -18,6 +18,8 @@ services:
   #   volumes:
   #     - ./etc:/app/etc
   # 权限初始化容器
+  chunker: 
+    image: holdnowby/filechunker-service:latest
   postgres:
     user: "${UID}:${GID}"
     image: docker.1ms.run/pgvector/pgvector:pg17
@@ -74,24 +76,10 @@ services:
         /usr/bin/mc mb minio/$$MINIO_BUCKET;
         echo '✅ Bucket 创建成功: '$$MINIO_BUCKET;
       fi;
+      /usr/bin/mc cors set --json '{\"CORSRules\":[{\"AllowedOrigins\":[\"*\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"POST\",\"DELETE\"],\"AllowedHeaders\":[\"*\"]}]}' minio/$$MINIO_BUCKET;
       echo '🎉 MinIO 初始化完成！';
       echo '   - Bucket: '$$MINIO_BUCKET;
       echo '   - Web UI: http://localhost:9001';
       echo '   - 用户名: '$$MINIO_ROOT_USER;
       exit 0;
       "
-
-volumes:
-  # 如果你想指定命名卷的具体位置，可以使用以下配置：
-  postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /Users/boyan/.quka/postgres
-  minio_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /Users/boyan/.quka/minio

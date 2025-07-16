@@ -152,6 +152,12 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 		return
 	}
 
+	// 重新加载AI配置以应用更改
+	if err := s.Core.ReloadAI(c.Request.Context()); err != nil {
+		response.APIError(c, errors.New("UpdateAIUsage.ReloadAI", i18n.ERROR_INTERNAL, err))
+		return
+	}
+
 	response.APISuccess(c, map[string]interface{}{
 		"message": i18n.MESSAGE_AI_USAGE_UPDATE_SUCCESS,
 		"configs": configs,

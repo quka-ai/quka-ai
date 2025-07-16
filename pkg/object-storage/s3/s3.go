@@ -17,13 +17,14 @@ import (
 )
 
 type S3 struct {
-	Endpoint     string
-	Region       string
-	Bucket       string
-	ak           string
-	sk           string
-	cli          *s3.Client
-	UsePathStyle bool
+	Endpoint                 string
+	Region                   string
+	Bucket                   string
+	ak                       string
+	sk                       string
+	cli                      *s3.Client
+	UsePathStyle             bool
+	PreSignURLExpireDuration time.Duration
 }
 
 type S3Options func(*S3)
@@ -34,13 +35,20 @@ func WithPathStyle(usePathStyle bool) S3Options {
 	}
 }
 
+func WithPreSignURLExpireDuration(duration time.Duration) S3Options {
+	return func(s *S3) {
+		s.PreSignURLExpireDuration = duration
+	}
+}
+
 func NewS3Client(endpoint, region, bucket, ak, sk string, opts ...S3Options) *S3 {
 	cli := &S3{
-		Endpoint: endpoint,
-		Region:   region,
-		Bucket:   bucket,
-		ak:       ak,
-		sk:       sk,
+		Endpoint:                 endpoint,
+		Region:                   region,
+		Bucket:                   bucket,
+		ak:                       ak,
+		sk:                       sk,
+		PreSignURLExpireDuration: 24 * time.Hour * 31, // 默认预签名URL有效期为31天, 默认聊天记录是保存30天
 	}
 
 	for _, opt := range opts {
@@ -91,7 +99,7 @@ func (s *S3) GenGetObjectPreSignURL(filePath string) (string, error) {
 	req, err := s3PresignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(strings.TrimPrefix(filePath, "/")),
-	}, s3.WithPresignExpires(time.Minute*5))
+	}, s3.WithPresignExpires(s.PreSignURLExpireDuration))
 	if err != nil {
 		return "", err
 	}

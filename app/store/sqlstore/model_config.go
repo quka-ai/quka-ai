@@ -181,7 +181,7 @@ func (s *ModelConfigStore) ListWithProvider(ctx context.Context, opts types.List
 
 // getProvider 获取提供商信息（内部方法）
 func (s *ModelConfigStore) getProvider(ctx context.Context, providerIDs []string) ([]*types.ModelProvider, error) {
-	query := sq.Select("id", "name", "description", "api_url", "status", "config", "created_at", "updated_at").
+	query := sq.Select("id", "name", "description", "api_key", "api_url", "status", "config", "created_at", "updated_at").
 		From(types.TABLE_MODEL_PROVIDER.Name()).
 		Where(sq.Eq{"id": providerIDs})
 
