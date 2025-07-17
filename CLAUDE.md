@@ -1,3 +1,5 @@
+
+
 # QukaAI 项目说明
 
 ## 项目简介
@@ -146,6 +148,43 @@ go mod tidy
 - 使用 `go vet` 进行静态分析
 - 使用 `go test` 运行单元测试
 - 推荐使用 `golangci-lint` 进行综合代码检查
+
+## 项目文档管理规范
+
+### 重要提醒：每次制定修改计划都需要落入文档
+- **文档组织方式**: 按功能模块创建专门的文件夹
+- **命名规范**: 文件名使用英文，便于管理和国际化协作
+- **内容语言**: 文档内容使用中文，便于中国开发团队理解
+- **文档结构**: 每个重构计划都有专门的 markdown 文件
+
+### 文档目录结构
+```
+docs/
+├── refactoring-plans/          # 重构计划文档
+│   ├── knowledge-list-optimization.md
+│   ├── user-auth-enhancement.md
+│   └── ...
+├── api-design/                 # API 设计文档
+├── architecture/               # 架构设计文档
+└── deployment/                 # 部署相关文档
+```
+
+### Claude Code 工作流程
+1. 分析项目需求和数据结构
+2. 制定详细的改造计划
+3. **为每个计划创建专门的文档** (例如: `/docs/refactoring-plans/feature-name.md`)
+4. 等待用户 review 和确认
+5. 开始实施代码修改
+
+### 文档内容规范
+每个改造计划文档应包含:
+- 问题描述和背景
+- 改造目标和步骤
+- 详细的实施方案
+- 关键考虑点
+- 时间线和状态追踪
+- 需要确认的问题
+- 相关文件列表
 
 ## 相关链接
 - [主仓库](https://github.com/quka-ai/quka-ai)

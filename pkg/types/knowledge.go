@@ -201,16 +201,17 @@ func StringToKnowledgeContentType(str string) KnowledgeContentType {
 }
 
 type GetKnowledgeOptions struct {
-	ID         string
-	IDs        []string
-	Kind       []KnowledgeKind
-	SpaceID    string
-	UserID     string
-	Resource   *ResourceQuery
-	Stage      KnowledgeStage
-	RetryTimes int
-	Keywords   string
-	TimeRange  *struct {
+	ID          string
+	IDs         []string
+	Kind        []KnowledgeKind
+	ExcludeKind []KnowledgeKind
+	SpaceID     string
+	UserID      string
+	Resource    *ResourceQuery
+	Stage       KnowledgeStage
+	RetryTimes  int
+	Keywords    string
+	TimeRange   *struct {
 		St int64
 		Et int64
 	}
@@ -233,6 +234,9 @@ func (opts GetKnowledgeOptions) Apply(query *sq.SelectBuilder) {
 	}
 	if len(opts.Kind) > 0 {
 		*query = query.Where(sq.Eq{"kind": opts.Kind})
+	}
+	if len(opts.ExcludeKind) > 0 {
+		*query = query.Where(sq.NotEq{"kind": opts.ExcludeKind})
 	}
 	if opts.Stage > 0 {
 		*query = query.Where(sq.Eq{"stage": opts.Stage})

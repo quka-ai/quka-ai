@@ -232,3 +232,39 @@ func (s *Core) loadAIUsageFromDB(ctx context.Context) (srv.Usage, error) {
 func (s *Core) GetAIStatus() map[string]interface{} {
 	return s.srv.GetAIStatus()
 }
+
+func (s *Core) GetActiveModelConfig(ctx context.Context, modelType string) (*types.ModelConfig, error) {
+	// Get model ID from custom_config
+	modelConfig, err := s.Store().CustomConfigStore().Get(ctx, modelType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch %s model ID from custom_config: %w", modelType, err)
+	}
+
+	if modelConfig == nil || len(modelConfig.Value) == 0 {
+		return nil, fmt.Errorf("%s model not configured in custom_config", modelType)
+	}
+
+	var modelID string
+	if err := json.Unmarshal(modelConfig.Value, &modelID); err != nil {
+		return nil, fmt.Errorf("failed to parse %s model ID: %w", modelType, err)
+	}
+
+	// Fetch model configuration
+	model, err := s.Store().ModelConfigStore().Get(ctx, modelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch %s model details: %w", modelType, err)
+	}
+
+	if model == nil {
+		return nil, fmt.Errorf("%s model not found: %s", modelType, modelID)
+	}
+
+	// Fetch provider information
+	provider, err := s.Store().ModelProviderStore().Get(ctx, model.ProviderID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch %s model provider: %w", modelType, err)
+	}
+
+	model.Provider = provider
+	return model, nil
+}

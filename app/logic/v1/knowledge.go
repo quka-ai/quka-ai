@@ -124,12 +124,7 @@ func (l *KnowledgeLogic) GetTimeRangeLiteKnowledges(spaceID string, st, et time.
 	return data, nil
 }
 
-func (l *KnowledgeLogic) ListKnowledges(spaceID string, keywords string, resource *types.ResourceQuery, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
-	opts := types.GetKnowledgeOptions{
-		SpaceID:  spaceID,
-		Resource: resource,
-		Keywords: keywords,
-	}
+func (l *KnowledgeLogic) ListKnowledges(opts types.GetKnowledgeOptions, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
 	list, err := l.core.Store().KnowledgeStore().ListKnowledges(l.ctx, opts, page, pagesize)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, 0, errors.New("KnowledgeLogic.ListKnowledge.KnowledgeStore.ListKnowledge", i18n.ERROR_INTERNAL, err)
@@ -147,6 +142,45 @@ func (l *KnowledgeLogic) ListKnowledges(spaceID string, keywords string, resourc
 	}
 
 	return list, total, nil
+}
+
+// ListUserKnowledges 获取用户创建的知识（排除 chunk 类型）
+func (l *KnowledgeLogic) ListUserKnowledges(spaceID string, keywords string, resource *types.ResourceQuery, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
+	opts := types.GetKnowledgeOptions{
+		SpaceID:     spaceID,
+		Resource:    resource,
+		Keywords:    keywords,
+		ExcludeKind: []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
+	}
+	return l.ListKnowledges(opts, page, pagesize)
+}
+
+func (l *KnowledgeLogic) ListChunkKnowledges(spaceID string, resource *types.ResourceQuery, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
+	opts := types.GetKnowledgeOptions{
+		SpaceID:  spaceID,
+		Resource: resource,
+		Kind:     []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
+	}
+	return l.ListKnowledges(opts, page, pagesize)
+}
+
+func (l *KnowledgeLogic) GetTaskKnowledges(spaceID, taskID string, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
+	// 先获取 task 信息，通过 task 的 Resource 字段来查询对应的 knowledge
+	task, err := l.core.Store().ContentTaskStore().GetTask(l.ctx, taskID)
+	if err != nil {
+		return nil, 0, errors.New("KnowledgeLogic.GetTaskKnowledges.ContentTaskStore.GetTask", i18n.ERROR_INTERNAL, err)
+	}
+	
+	if task == nil || task.SpaceID != spaceID {
+		return nil, 0, errors.New("KnowledgeLogic.GetTaskKnowledges.TaskNotFound", i18n.ERROR_NOT_FOUND, nil)
+	}
+	
+	opts := types.GetKnowledgeOptions{
+		SpaceID:  spaceID,
+		Resource: &types.ResourceQuery{Include: []string{task.Resource}},
+		Kind:     []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
+	}
+	return l.ListKnowledges(opts, page, pagesize)
 }
 
 func (l *KnowledgeLogic) Delete(spaceID, id string) error {

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/quka-ai/quka-ai/app/core"
@@ -118,6 +120,13 @@ func setupHttpRouter(s *handler.HttpSrv) {
 
 			space.POST("", userLimit("modify_space"), s.CreateUserSpace)
 
+			editorSpace := space.Group("").Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionEdit))
+			editorSpace.POST("/task/file-chunk", aiLimit("file_chunk", core.WithLimit(10), core.WithRange(time.Hour)), s.CreateFileChunkTask)
+			editorSpace.GET("/task/list", s.GetFileChunkTaskList)
+			editorSpace.GET("/task/status", s.GetTaskStatus)
+			editorSpace.DELETE("/task/file-chunk", s.DeleteChunkTask)
+			editorSpace.POST("/invite", s.SpaceInvitation)
+
 			space.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionAdmin))
 			space.DELETE("/:spaceid", s.DeleteUserSpace)
 			space.PUT("/:spaceid", userLimit("modify_space"), s.UpdateSpace)
@@ -153,6 +162,8 @@ func setupHttpRouter(s *handler.HttpSrv) {
 				viewScope.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView))
 				viewScope.GET("", s.GetKnowledge)
 				viewScope.GET("/list", spaceLimit("knowledge_list"), s.ListKnowledge)
+				viewScope.GET("/chunk/list", spaceLimit("knowledge_list"), s.ListContentTask)
+				viewScope.GET("/chunk/knowledge", spaceLimit("knowledge_list"), s.GetTaskKnowledge)
 				viewScope.POST("/query", spaceLimit("chat_message"), s.Query)
 				viewScope.GET("/time/list", spaceLimit("knowledge_list"), s.GetDateCreatedKnowledge)
 			}

@@ -26,3 +26,8 @@ use_path_style = true
 
 [custom_config]
 encrypt_key="aaaaaaaaaaaaaaaa"
+
+[custom_config.chunk_service]
+enabled=true 
+address="chunker:53009"
+timeout=10

@@ -284,3 +284,50 @@ type CustomConfigStore interface {
 	List(ctx context.Context, opts types.ListCustomConfigOptions, page, pageSize uint64) ([]types.CustomConfig, error)
 	Total(ctx context.Context, opts types.ListCustomConfigOptions) (int64, error)
 }
+
+type SpaceInvitationStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.Invitation) error
+	Get(ctx context.Context, appid, inviterID, inviteeEmail string) (*types.Invitation, error)
+	GetByID(ctx context.Context, appid string, id int64) (*types.Invitation, error)
+	UpdateStatus(ctx context.Context, appid string, id int64, status types.SpaceInvitationStatus) error
+	Delete(ctx context.Context, appid string, id int64) error
+	List(ctx context.Context, appid, spaceID string, opts types.ListSpaceInvitationOptions, page, pageSize uint64) ([]types.Invitation, error)
+	Total(ctx context.Context, appid, spaceID string, opts types.ListSpaceInvitationOptions) (int64, error)
+}
+
+type ContentTaskStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.ContentTask) error
+	Update(ctx context.Context, taskID string, data types.ContentTask) error
+	GetTask(ctx context.Context, taskID string) (*types.ContentTask, error)
+	UpdateStep(ctx context.Context, taskID string, step int) error
+	ListTasks(ctx context.Context, spaceID string, page, pageSize uint64) ([]types.ContentTask, error)
+	Delete(ctx context.Context, taskID string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	UpdateAIFileID(ctx context.Context, taskID, aiFileID string) error
+	ListUnprocessedTasks(ctx context.Context, page, pageSize uint64) ([]*types.ContentTask, error)
+	SetRetryTimes(ctx context.Context, id string, retryTimes int) error
+	ListTasksStatus(ctx context.Context, taskIDs []string) ([]types.TaskStatus, error)
+	Total(ctx context.Context, spaceID string) (int64, error)
+}
+
+type KnowledgeMetaStore interface {
+	Create(ctx context.Context, data types.KnowledgeMeta) error
+	GetKnowledgeMeta(ctx context.Context, id string) (*types.KnowledgeMeta, error)
+	Update(ctx context.Context, id string, data types.KnowledgeMeta) error
+	Delete(ctx context.Context, id string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	ListKnowledgeMetas(ctx context.Context, ids []string) ([]*types.KnowledgeMeta, error)
+}
+
+type KnowledgeRelMetaStore interface {
+	Create(ctx context.Context, data types.KnowledgeRelMeta) error
+	BatchCreate(ctx context.Context, datas []types.KnowledgeRelMeta) error
+	Get(ctx context.Context, id string) (*types.KnowledgeRelMeta, error)
+	Update(ctx context.Context, id string, data types.KnowledgeRelMeta) error
+	Delete(ctx context.Context, id string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	ListKnowledgesMeta(ctx context.Context, knowledgeIDs []string) ([]*types.KnowledgeRelMeta, error)
+	ListRelMetaWithKnowledgeContent(ctx context.Context, opts []types.MergeDataQuery) ([]*types.RelMetaWithKnowledge, error)
+}

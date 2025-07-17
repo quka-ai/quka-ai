@@ -148,7 +148,7 @@ func (s *HttpSrv) ListKnowledge(c *gin.Context) {
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
-	list, total, err := v1.NewKnowledgeLogic(c, s.Core).ListKnowledges(spaceID, req.Keywords, resource, req.Page, req.PageSize)
+	list, total, err := v1.NewKnowledgeLogic(c, s.Core).ListUserKnowledges(spaceID, req.Keywords, resource, req.Page, req.PageSize)
 	if err != nil {
 		response.APIError(c, err)
 		return
@@ -161,6 +161,75 @@ func (s *HttpSrv) ListKnowledge(c *gin.Context) {
 	})
 
 	response.APISuccess(c, ListKnowledgeResponse{
+		List:  knowledgeList,
+		Total: total,
+	})
+}
+
+type ListContentTaskRequest struct {
+	Page     uint64 `json:"page" form:"page" binding:"required"`
+	PageSize uint64 `json:"pagesize" form:"pagesize" binding:"required,lte=50"`
+}
+
+type ListContentTaskResponse struct {
+	List  []v1.ChunkTaskDetail `json:"list"`
+	Total uint64               `json:"total"`
+}
+
+func (s *HttpSrv) ListContentTask(c *gin.Context) {
+	var req ListContentTaskRequest
+
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	spaceID, _ := v1.InjectSpaceID(c)
+	list, total, err := v1.NewAIFileDisposeLogic(c, s.Core).GetLongContentTaskList(spaceID, req.Page, req.PageSize)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	response.APISuccess(c, ListContentTaskResponse{
+		List:  list,
+		Total: uint64(total),
+	})
+}
+
+type GetTaskKnowledgeRequest struct {
+	TaskID string `json:"task_id" form:"task_id" binding:"required"`
+	Page   uint64 `json:"page" form:"page" binding:"required"`
+	PageSize uint64 `json:"pagesize" form:"pagesize" binding:"required,lte=50"`
+}
+
+type GetTaskKnowledgeResponse struct {
+	List  []*types.KnowledgeResponse `json:"list"`
+	Total uint64                     `json:"total"`
+}
+
+func (s *HttpSrv) GetTaskKnowledge(c *gin.Context) {
+	var req GetTaskKnowledgeRequest
+
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	spaceID, _ := v1.InjectSpaceID(c)
+	list, total, err := v1.NewKnowledgeLogic(c, s.Core).GetTaskKnowledges(spaceID, req.TaskID, req.Page, req.PageSize)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	knowledgeList := lo.Map(list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
+		liteContent := KnowledgeToKnowledgeResponseLite(item)
+		liteContent.Content = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(liteContent.Content, s.Core.Plugins.FileStorage())
+		return liteContent
+	})
+
+	response.APISuccess(c, GetTaskKnowledgeResponse{
 		List:  knowledgeList,
 		Total: total,
 	})

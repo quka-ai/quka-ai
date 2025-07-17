@@ -238,9 +238,9 @@ type Usage struct {
 	Vision    string `json:"vision"`
 	Rerank    string `json:"rerank"`
 	Enhance   string `json:"enhance"`
-	
+
 	// 提供商级别配置（指向provider_id）
-	Reader    string `json:"reader"`
+	Reader string `json:"reader"`
 }
 
 func SetupReader(s *AI, providers []types.ModelProvider) error {
@@ -249,12 +249,12 @@ func SetupReader(s *AI, providers []types.ModelProvider) error {
 		if err := json.Unmarshal(v.Config, &providerConfig); err != nil {
 			continue // 如果配置解析失败，跳过该提供商
 		}
-		
+
 		// 只有配置了is_reader为true的提供商才会设置Reader功能
 		if !providerConfig.IsReader {
 			continue
 		}
-		
+
 		switch v.Name {
 		case "jina":
 			var config jina.JinaConfig
@@ -311,7 +311,7 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 			a.visionDefault = d
 		}
 	}
-	
+
 	// 设置提供商级别的Reader配置
 	if err := SetupReader(a, modelProviders); err != nil {
 		return nil, err
@@ -341,7 +341,7 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 	if a.chatDefault == nil {
 		a.chatDefault = a.chatDrivers[usage.Chat]
 	}
-	
+
 	// 设置Reader usage配置（使用provider_id）
 	if usage.Reader != "" {
 		a.readerUsage["reader"] = a.readerDrivers[usage.Reader]

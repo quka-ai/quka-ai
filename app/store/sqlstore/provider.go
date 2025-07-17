@@ -55,6 +55,10 @@ type Stores struct {
 	store.ModelProviderStore
 	store.ModelConfigStore
 	store.CustomConfigStore
+	store.SpaceInvitationStore
+	store.ContentTaskStore
+	store.KnowledgeMetaStore
+	store.KnowledgeRelMetaStore
 }
 
 func (s *Provider) batchExecStoreFuncs(fname string) {
@@ -274,4 +278,20 @@ func (p *Provider) ModelConfigStore() store.ModelConfigStore {
 
 func (p *Provider) CustomConfigStore() store.CustomConfigStore {
 	return p.stores.CustomConfigStore
+}
+
+func (p *Provider) SpaceInvitationStore() store.SpaceInvitationStore {
+	return p.stores.SpaceInvitationStore
+}
+
+func (p *Provider) ContentTaskStore() store.ContentTaskStore {
+	return p.stores.ContentTaskStore
+}
+
+func (p *Provider) KnowledgeMetaStore() store.KnowledgeMetaStore {
+	return p.stores.KnowledgeMetaStore
+}
+
+func (p *Provider) KnowledgeRelMetaStore() store.KnowledgeRelMetaStore {
+	return p.stores.KnowledgeRelMetaStore
 }
