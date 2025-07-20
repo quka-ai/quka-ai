@@ -13,6 +13,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/response"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type HttpSrv struct {
@@ -97,7 +98,8 @@ func (s *HttpSrv) CreateKnowledge(c *gin.Context) {
 }
 
 type GetKnowledgeRequest struct {
-	ID string `json:"id" form:"id" binding:"required"`
+	ID          string `json:"id" form:"id" binding:"required"`
+	OnlyPreview bool   `json:"only_preview" form:"only_preview"`
 }
 
 func (s *HttpSrv) GetKnowledge(c *gin.Context) {
@@ -114,6 +116,11 @@ func (s *HttpSrv) GetKnowledge(c *gin.Context) {
 	knowledge, err := v1.NewKnowledgeLogic(c, s.Core).GetKnowledge(spaceID, req.ID)
 	if err != nil {
 		response.APIError(c, err)
+		return
+	}
+
+	if req.OnlyPreview {
+		response.APISuccess(c, KnowledgeToKnowledgeResponseLite(knowledge))
 		return
 	}
 
@@ -156,7 +163,7 @@ func (s *HttpSrv) ListKnowledge(c *gin.Context) {
 
 	knowledgeList := lo.Map(list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
 		liteContent := KnowledgeToKnowledgeResponseLite(item)
-		liteContent.Content = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(liteContent.Content, s.Core.Plugins.FileStorage())
+		liteContent.Content = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(liteContent.Content, s.Core.Plugins.FileStorage())
 		return liteContent
 	})
 
@@ -198,8 +205,8 @@ func (s *HttpSrv) ListContentTask(c *gin.Context) {
 }
 
 type GetTaskKnowledgeRequest struct {
-	TaskID string `json:"task_id" form:"task_id" binding:"required"`
-	Page   uint64 `json:"page" form:"page" binding:"required"`
+	TaskID   string `json:"task_id" form:"task_id" binding:"required"`
+	Page     uint64 `json:"page" form:"page" binding:"required"`
 	PageSize uint64 `json:"pagesize" form:"pagesize" binding:"required,lte=50"`
 }
 
@@ -225,7 +232,7 @@ func (s *HttpSrv) GetTaskKnowledge(c *gin.Context) {
 
 	knowledgeList := lo.Map(list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
 		liteContent := KnowledgeToKnowledgeResponseLite(item)
-		liteContent.Content = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(liteContent.Content, s.Core.Plugins.FileStorage())
+		liteContent.Content = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(liteContent.Content, s.Core.Plugins.FileStorage())
 		return liteContent
 	})
 
@@ -274,16 +281,17 @@ func KnowledgeToKnowledgeResponseLite(item *types.Knowledge) *types.KnowledgeRes
 	}
 
 	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		blocks, err := utils.ParseRawToBlocks(json.RawMessage(item.Content))
+		blocks, err := editorjs.ParseRawToBlocks(json.RawMessage(item.Content))
 		if err != nil {
 			slog.Error("Failed to parse editor blocks", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
 		}
 
-		if len(blocks) > 6 {
-			blocks = blocks[:6]
+		if len(blocks.Blocks) > 6 {
+			blocks.Blocks = blocks.Blocks[:6]
 		}
 
-		result.Content, err = utils.ConvertEditorJSBlocksToMarkdown(blocks)
+		result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
+		result.Content, err = editorjs.ConvertEditorJSBlocksToMarkdown(blocks.Blocks)
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
 		}

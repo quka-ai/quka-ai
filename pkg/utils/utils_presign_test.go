@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 // MockFileStorage 模拟文件存储接口用于测试
@@ -79,7 +81,7 @@ func TestShouldPresignURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := shouldPresignURL(tt.url)
+			result := editorjs.ShouldPresignURL(tt.url)
 			if result != tt.expected {
 				t.Errorf("shouldPresignURL(%q) = %v, want %v", tt.url, result, tt.expected)
 			}
@@ -137,7 +139,7 @@ func TestExtractObjectPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractObjectPath(tt.url)
+			result := editorjs.ExtractObjectPath(tt.url)
 			if result != tt.expected {
 				t.Errorf("extractObjectPath(%q) = %q, want %q", tt.url, result, tt.expected)
 			}
@@ -181,8 +183,8 @@ func TestReplaceMarkdownStaticResourcesWithPresignedURL(t *testing.T) {
 		},
 		{
 			name:     "Skip base64 data URLs",
-			content:  "![Data Image](" + PRESIGN_FAILURE_PLACEHOLDER_IMAGE + ")",
-			expected: "![Data Image](" + PRESIGN_FAILURE_PLACEHOLDER_IMAGE + ")",
+			content:  "![Data Image](" + editorjs.PRESIGN_FAILURE_PLACEHOLDER_IMAGE + ")",
+			expected: "![Data Image](" + editorjs.PRESIGN_FAILURE_PLACEHOLDER_IMAGE + ")",
 		},
 		{
 			name:       "Handle presign failure for markdown image",
@@ -194,7 +196,7 @@ func TestReplaceMarkdownStaticResourcesWithPresignedURL(t *testing.T) {
 			name:       "Handle presign failure for HTML img tag",
 			content:    `<img src="/image/space123/photo.jpg" alt="Test Image">`,
 			shouldFail: true,
-			contains:   []string{PRESIGN_FAILURE_PLACEHOLDER_IMAGE, "Resource unavailable"},
+			contains:   []string{editorjs.PRESIGN_FAILURE_PLACEHOLDER_IMAGE, "Resource unavailable"},
 		},
 		{
 			name:     "Mixed content with markdown and HTML",
@@ -335,7 +337,7 @@ func TestReplaceEditorJSBlocksStaticResourcesWithPresignedURL(t *testing.T) {
 				]
 			}`,
 			shouldFail: true,
-			contains:   []string{PRESIGN_FAILURE_PLACEHOLDER_IMAGE},
+			contains:   []string{editorjs.PRESIGN_FAILURE_PLACEHOLDER_IMAGE},
 		},
 		{
 			name: "Handle presign failure for video block",
@@ -437,7 +439,7 @@ func TestReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL_EdgeCases(t *t
 
 	// Test with JSON without blocks
 	result = ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(`{"version": "2.0"}`, mockStorage)
-	expected = `{"blocks":null}`
+	expected = `{"blocks":null,"version":"2.0"}`
 	if result != expected {
 		t.Errorf("With JSON without blocks, expected %q, got %q", expected, result)
 	}

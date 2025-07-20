@@ -1,4 +1,4 @@
-package utils
+package editorjs
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 
 var editorJSMarkdownEngine *goeditorjs.MarkdownEngine
 
+// SetupGlobalEditorJS 初始化全局EditorJS引擎
 func SetupGlobalEditorJS(staticDomain string) {
 	editorJSMarkdownEngine = goeditorjs.NewMarkdownEngine()
 	// Register the handlers you wish to use
@@ -30,24 +31,14 @@ func SetupGlobalEditorJS(staticDomain string) {
 	)
 }
 
+// ConvertEditorJSRawToMarkdown 将EditorJS原始数据转换为Markdown
 func ConvertEditorJSRawToMarkdown(blockString json.RawMessage) (string, error) {
 	return editorJSMarkdownEngine.GenerateMarkdownWithUnknownBlock(string(blockString))
 }
 
-type EditorJS struct {
-	Blocks []goeditorjs.EditorJSBlock `json:"blocks"`
-}
-
-func ParseRawToBlocks(blockString json.RawMessage) ([]goeditorjs.EditorJSBlock, error) {
-	var blocks EditorJS
-	if err := json.Unmarshal(blockString, &blocks); err != nil {
-		return nil, err
-	}
-	return blocks.Blocks, nil
-}
-
-func RemoveFileBlockHost(blocks []goeditorjs.EditorJSBlock) []goeditorjs.EditorJSBlock {
-	for _, block := range blocks {
+// RemoveFileBlockHost 移除块中文件的主机名
+func RemoveFileBlockHost(blocks []goeditorjs.EditorJSBlock, bucketName string) []goeditorjs.EditorJSBlock {
+	for i, block := range blocks {
 		switch block.Type {
 		case "image":
 			image := &EditorImage{}
@@ -55,18 +46,16 @@ func RemoveFileBlockHost(blocks []goeditorjs.EditorJSBlock) []goeditorjs.EditorJ
 				continue
 			}
 			u, _ := url.Parse(image.File.URL)
-			u.Host = ""
-			image.File.URL = u.String()
-			block.Data, _ = json.Marshal(image)
+			image.File.URL = lo.If(bucketName != "" && strings.HasPrefix(u.Path, "/"+bucketName), u.Path[len(bucketName)+1:]).Else(u.Path)
+			blocks[i].Data, _ = json.Marshal(image)
 		case "video":
 			video := &EditorVideo{}
 			if err := json.Unmarshal(block.Data, video); err != nil {
 				continue
 			}
 			u, _ := url.Parse(video.File.URL)
-			u.Host = ""
-			video.File.URL = u.String()
-			block.Data, _ = json.Marshal(video)
+			video.File.URL = lo.If(bucketName != "" && strings.HasPrefix(u.Path, "/"+bucketName), u.Path[len(bucketName)+1:]).Else(u.Path)
+			blocks[i].Data, _ = json.Marshal(video)
 		default:
 			continue
 		}
@@ -74,6 +63,7 @@ func RemoveFileBlockHost(blocks []goeditorjs.EditorJSBlock) []goeditorjs.EditorJ
 	return blocks
 }
 
+// ConvertEditorJSBlocksToMarkdown 将EditorJS块转换为Markdown
 func ConvertEditorJSBlocksToMarkdown(blocks []goeditorjs.EditorJSBlock) (string, error) {
 	results := []string{}
 	for _, block := range blocks {
@@ -86,22 +76,6 @@ func ConvertEditorJSBlocksToMarkdown(blocks []goeditorjs.EditorJSBlock) (string,
 		}
 	}
 	return strings.Join(results, "\n\n"), nil
-}
-
-// list represents list data from EditorJS
-type listv2 struct {
-	Style string       `json:"style"`
-	Items []listv2Item `json:"items"`
-}
-
-type listv2Item struct {
-	Content string          `json:"content"`
-	Items   json.RawMessage `json:"items"`
-	Meta    listV2ItemMeta  `json:"meta"`
-}
-
-type listV2ItemMeta struct {
-	Checked bool `json:"checked,omitempty"`
 }
 
 // ListV2Handler is the default ListV2Handler for EditorJS HTML generation
@@ -205,20 +179,6 @@ func (h *ListV2Handler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock)
 	return renderListv2Markdown(list.Style, 0, list.Items)
 }
 
-// image represents image data from EditorJS
-type EditorVideo struct {
-	File           EditorVideoFile `json:"file"`
-	Caption        string          `json:"caption"`
-	WithBorder     bool            `json:"withBorder"`
-	WithBackground bool            `json:"withBackground"`
-	Stretched      bool            `json:"stretched"`
-}
-
-type EditorVideoFile struct {
-	Type string `json:"type"`
-	URL  string `json:"url"`
-}
-
 type VideoHandler struct {
 	StaticDomain string
 }
@@ -262,13 +222,6 @@ func (h *VideoHandler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock) 
 	return h.GenerateHTML(editorJSBlock)
 }
 
-// Line
-type line struct {
-	Style         string `json:"style"`
-	LineThickness int    `json:"lineThickness"`
-	LineWidth     int    `json:"lineWidth"`
-}
-
 type LineHandler struct{}
 
 func (*LineHandler) parse(editorJSBlock goeditorjs.EditorJSBlock) (*line, error) {
@@ -307,18 +260,6 @@ func (h *LineHandler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock) (
 	}
 
 	return renderLineMarkdown(list)
-}
-
-type EditorImage struct {
-	File           EditorImageFile `json:"file"`
-	Caption        string          `json:"caption"`
-	WithBorder     bool            `json:"withBorder"`
-	WithBackground bool            `json:"withBackground"`
-	Stretched      bool            `json:"stretched"`
-}
-
-type EditorImageFile struct {
-	URL string `json:"url"`
 }
 
 type ImageHandler struct {
@@ -372,11 +313,7 @@ func (h *ImageHandler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock) 
 		return h.generateHTML(image)
 	}
 
-	res, _ := url.Parse(image.File.URL)
-	if res.Host == "" {
-		res.Host = h.StaticDomain
-	}
-	return fmt.Sprintf("![alt text](%s)  \n%s", res.RawPath, lo.If(image.Caption != "", image.Caption+"  \n").Else("")), nil
+	return fmt.Sprintf("![alt text](%s)  \n%s", image.File.URL, lo.If(image.Caption != "", image.Caption+"  \n").Else("")), nil
 
 }
 
@@ -410,12 +347,6 @@ func (h *ImageHandler) generateHTML(image *EditorImage) (string, error) {
 	url := res.RawPath
 
 	return fmt.Sprintf(`<img src="%s" alt="%s" %s/>`, url, image.Caption, class), nil
-}
-
-type quote struct {
-	Alignment string `json:"alignment"`
-	Caption   string `json:"caption"`
-	Text      string `json:"text"`
 }
 
 type QuoteHandler struct{}
@@ -456,9 +387,4 @@ func (h *QuoteHandler) GenerateMarkdown(editorJSBlock goeditorjs.EditorJSBlock) 
 	}
 
 	return renderQuoteMarkdown(data)
-}
-
-type EditorParagraph struct {
-	Text      string `json:"text"`
-	Alignment string `json:"alignment"`
 }

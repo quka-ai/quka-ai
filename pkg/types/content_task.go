@@ -15,7 +15,7 @@ const (
 )
 
 // ContentTask 数据表结构
-// 该结构体表示与 bw_content_task 表相关的记录
+// 该结构体表示与 quka_content_task 表相关的记录
 type ContentTask struct {
 	TaskID     string `json:"task_id" db:"task_id"`       // 任务ID，32字符字符串类型，唯一标识任务
 	SpaceID    string `json:"space_id" db:"space_id"`     // 空间ID，标识任务归属的空间
@@ -26,7 +26,7 @@ type ContentTask struct {
 	FileName   string `json:"file_name" db:"file_name"`   // 文件名，任务需要处理的文件名称
 	AIFileID   string `json:"ai_file_id" db:"ai_file_id"` // AI 服务中对应该文件的id
 	Step       int    `json:"step" db:"step"`             // 任务的当前阶段，例如：1-待处理，2-处理中，3-已完成等
-	TaskType   string `json:"task_type" db:"task_type"`   // 任务类型，表示任务的目的或用途，例如：'文本切割'，'数据清洗'等
+	TaskType   string `json:"task_type" db:"task_type"`   // 任务类型，表示任务的目的或用途
 	CreatedAt  int64  `json:"created_at" db:"created_at"` // 任务创建时间，时间戳格式
 	UpdatedAt  int64  `json:"updated_at" db:"updated_at"` // 任务创建时间，时间戳格式
 	RetryTimes int    `json:"retry_times" db:"retry_times"`

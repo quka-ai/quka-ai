@@ -338,3 +338,126 @@ func UseLimit(appCore *core.Core, operation string, genKeyFunc func(c *gin.Conte
 		}
 	}
 }
+
+// VerifyUserRole 验证用户是否拥有指定角色的通用中间件
+func VerifyUserRole(core *core.Core, requiredRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, exists := c.Get(v1.TOKEN_CONTEXT_KEY)
+		if !exists {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.GetToken", i18n.ERROR_UNAUTHORIZED, nil).Code(http.StatusUnauthorized))
+			c.Abort()
+			return
+		}
+
+		tokenClaims, ok := claims.(security.TokenClaims)
+		if !ok {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.TokenClaims", i18n.ERROR_UNAUTHORIZED, nil).Code(http.StatusUnauthorized))
+			c.Abort()
+			return
+		}
+
+		// 获取用户信息
+		user, err := core.Store().UserStore().GetUser(c, tokenClaims.Appid, tokenClaims.User)
+		if err != nil {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.GetUser", i18n.ERROR_INTERNAL, err))
+			c.Abort()
+			return
+		}
+
+		// 获取用户的全局角色
+		userRole, err := getUserGlobalRole(core, user)
+		if err != nil {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.GetGlobalRole", i18n.ERROR_INTERNAL, err))
+			c.Abort()
+			return
+		}
+
+		// 检查用户角色是否匹配任意一个要求的角色
+		hasPermission := false
+		for _, requiredRole := range requiredRoles {
+			if userRole == requiredRole {
+				hasPermission = true
+				break
+			}
+			// 使用RBAC检查角色继承关系
+			if core.Srv().RBAC().CheckPermission(userRole, requiredRole) {
+				hasPermission = true
+				break
+			}
+		}
+
+		if !hasPermission {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.Check", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden))
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// VerifyAdminPermission 验证管理员权限（admin或chief角色）
+func VerifyAdminPermission(core *core.Core) gin.HandlerFunc {
+	return VerifyUserRole(core, types.GlobalRoleAdmin, types.GlobalRoleChief)
+}
+
+// getUserGlobalRole 获取用户的全局角色
+func getUserGlobalRole(core *core.Core, user *types.User) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	// 首先查询用户全局角色表
+	globalRole, err := core.Store().UserGlobalRoleStore().GetUserRole(ctx, user.Appid, user.ID)
+	if err != nil {
+		return "", err
+	}
+
+	// 如果找到全局角色记录，直接返回
+	if globalRole != nil {
+		return globalRole.Role, nil
+	}
+
+	// 如果没有全局角色记录，执行兜底逻辑
+	// 这里可以根据业务需要设置默认规则
+	defaultRole := types.DefaultGlobalRole
+
+	// 兜底规则1: 检查是否为系统第一个用户（管理员）
+	var userCount int
+	err = core.Store().GetMaster().Get(&userCount,
+		"SELECT COUNT(*) FROM "+types.TABLE_USER.Name()+" WHERE appid = ? AND created_at <= ?",
+		user.Appid, user.CreatedAt)
+
+	if err != nil {
+		return "", err
+	}
+
+	// 如果是第一个用户，设为超级管理员
+	if userCount <= 1 {
+		defaultRole = types.GlobalRoleChief
+		// 自动为第一个用户创建全局角色记录
+		_ = createUserGlobalRole(core, user.Appid, user.ID, defaultRole)
+	} else if user.Source == "admin_created" {
+		// 兜底规则2: 管理员创建的用户默认为普通用户
+		defaultRole = types.GlobalRoleMember
+		// 自动创建全局角色记录
+		_ = createUserGlobalRole(core, user.Appid, user.ID, defaultRole)
+	}
+
+	return defaultRole, nil
+}
+
+// createUserGlobalRole 创建用户全局角色记录（辅助函数）
+func createUserGlobalRole(core *core.Core, appid, userID, role string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	globalRole := types.UserGlobalRole{
+		UserID:    userID,
+		Appid:     appid,
+		Role:      role,
+		CreatedAt: time.Now().Unix(),
+		UpdatedAt: time.Now().Unix(),
+	}
+
+	return core.Store().UserGlobalRoleStore().Create(ctx, globalRole)
+}

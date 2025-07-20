@@ -479,7 +479,7 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 
 				if len(v.Delta.ToolCalls) > 0 {
 					for _, toolCall := range v.Delta.ToolCalls {
-						if len(toolCalls) == 0 || len(toolCalls) < *toolCall.Index+1 {
+						if len(toolCalls) == 0 {
 							toolCalls = append(toolCalls, &toolCall)
 							continue
 						}

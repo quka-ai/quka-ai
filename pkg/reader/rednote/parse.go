@@ -17,6 +17,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type Knowledge struct {
@@ -47,7 +48,7 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 		}
 	}
 
-	var imageBlocks []utils.EditorImage
+	var imageBlocks []editorjs.EditorImage
 	for url, data := range images {
 		ct := strings.Split(data.ContentType, "/")
 		fileName := fmt.Sprintf("%s.%s", utils.MD5(url), ct[len(ct)-1])
@@ -57,14 +58,14 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 		}
 
 		fullURL := fmt.Sprintf("https://%s/%s", objectStorage.GetStaticDomain(), strings.TrimPrefix(filepath.Join(filePath, fileName), "/"))
-		imageBlocks = append(imageBlocks, utils.EditorImage{
-			File: utils.EditorImageFile{
+		imageBlocks = append(imageBlocks, editorjs.EditorImage{
+			File: editorjs.EditorImageFile{
 				URL: fullURL,
 			},
 		})
 	}
 
-	var videoBlocks []utils.EditorVideo
+	var videoBlocks []editorjs.EditorVideo
 
 	videos := make(map[string]*FileWithContentType)
 	for _, v := range detail.Videos {
@@ -87,8 +88,8 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 		}
 
 		fullURL := fmt.Sprintf("https://%s/%s", objectStorage.GetStaticDomain(), strings.TrimPrefix(filepath.Join(filePath, fileName), "/"))
-		videoBlocks = append(videoBlocks, utils.EditorVideo{
-			File: utils.EditorVideoFile{
+		videoBlocks = append(videoBlocks, editorjs.EditorVideo{
+			File: editorjs.EditorVideoFile{
 				URL: fullURL,
 			},
 		})
@@ -98,7 +99,7 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 	knowledgeContent.Blocks = append(knowledgeContent.Blocks, goeditorjs.EditorJSBlock{
 		Type: "paragraph",
 		Data: func() json.RawMessage {
-			raw, _ := json.Marshal(utils.EditorParagraph{
+			raw, _ := json.Marshal(editorjs.EditorParagraph{
 				Text: detail.Content,
 			})
 			return raw
@@ -106,7 +107,7 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 	})
 
 	if len(imageBlocks) > 0 {
-		knowledgeContent.Blocks = lo.Map(imageBlocks, func(item utils.EditorImage, index int) goeditorjs.EditorJSBlock {
+		knowledgeContent.Blocks = lo.Map(imageBlocks, func(item editorjs.EditorImage, index int) goeditorjs.EditorJSBlock {
 			raw, _ := json.Marshal(item)
 			return goeditorjs.EditorJSBlock{
 				Type: "image",
@@ -116,7 +117,7 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 	}
 
 	if len(videoBlocks) > 0 {
-		knowledgeContent.Blocks = lo.Map(videoBlocks, func(item utils.EditorVideo, index int) goeditorjs.EditorJSBlock {
+		knowledgeContent.Blocks = lo.Map(videoBlocks, func(item editorjs.EditorVideo, index int) goeditorjs.EditorJSBlock {
 			raw, _ := json.Marshal(item)
 			return goeditorjs.EditorJSBlock{
 				Type: "video",

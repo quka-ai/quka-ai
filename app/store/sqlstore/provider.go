@@ -38,6 +38,7 @@ type Stores struct {
 	store.VectorStore
 	store.AccessTokenStore
 	store.UserSpaceStore
+	store.UserGlobalRoleStore
 	store.SpaceStore
 	store.ResourceStore
 	store.UserStore
@@ -206,6 +207,10 @@ func (p *Provider) AccessTokenStore() store.AccessTokenStore {
 
 func (p *Provider) UserSpaceStore() store.UserSpaceStore {
 	return p.stores.UserSpaceStore
+}
+
+func (p *Provider) UserGlobalRoleStore() store.UserGlobalRoleStore {
+	return p.stores.UserGlobalRoleStore
 }
 
 func (p *Provider) SpaceStore() store.SpaceStore {

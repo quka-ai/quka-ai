@@ -126,6 +126,17 @@ type UserStore interface {
 	BatchUpdateUserPlan(ctx context.Context, appid string, ids []string, planID string) error
 }
 
+// UserGlobalRoleStore 全局用户角色存储接口
+type UserGlobalRoleStore interface {
+	sqlstore.SqlCommons // 继承通用SQL操作
+	Create(ctx context.Context, data types.UserGlobalRole) error
+	GetUserRole(ctx context.Context, appid, userID string) (*types.UserGlobalRole, error)
+	UpdateUserRole(ctx context.Context, appid, userID, role string) error
+	Delete(ctx context.Context, appid, userID string) error
+	ListUsersByRole(ctx context.Context, opts types.ListUserGlobalRoleOptions, page, pageSize uint64) ([]types.UserGlobalRole, error)
+	Total(ctx context.Context, opts types.ListUserGlobalRoleOptions) (int64, error)
+}
+
 type ChatSessionStore interface {
 	sqlstore.SqlCommons // 继承通用SQL操作
 	Create(ctx context.Context, data types.ChatSession) error

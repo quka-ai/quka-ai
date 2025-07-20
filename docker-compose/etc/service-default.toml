@@ -29,5 +29,5 @@ encrypt_key="aaaaaaaaaaaaaaaa"
 
 [custom_config.chunk_service]
 enabled=true 
-address="chunker:53009"
+address="localhost:50051"
 timeout=10

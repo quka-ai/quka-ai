@@ -21,6 +21,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 func NewSingleLock() *SingleLock {
@@ -266,7 +267,20 @@ func (s *SelfHostPlugin) DecryptData(data []byte) ([]byte, error) {
 }
 
 func (s *SelfHostPlugin) DeleteSpace(ctx context.Context, spaceID string) error {
-	return nil
+	return s.core.Store().Transaction(ctx, func(ctx context.Context) error {
+		if err := s.core.Store().ContentTaskStore().DeleteAll(ctx, spaceID); err != nil {
+			return err
+		}
+
+		if err := s.core.Store().KnowledgeRelMetaStore().DeleteAll(ctx, spaceID); err != nil {
+			return err
+		}
+
+		if err := s.core.Store().KnowledgeMetaStore().DeleteAll(ctx, spaceID); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo, knowledges []*types.Knowledge) ([]*types.PassageInfo, error) {
@@ -290,14 +304,14 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 	for _, v := range knowledges {
 		content := string(v.Content)
 		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			if content, err = utils.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content)); err != nil {
+			if content, err = editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content)); err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue
 			}
 		}
 
 		// 对所有转换后的markdown内容进行预签名URL替换
-		content = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(content, s.FileStorage())
+		content = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(content, s.FileStorage())
 
 		sw := mark.NewSensitiveWork()
 		docs = append(docs, &types.PassageInfo{

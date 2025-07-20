@@ -15,7 +15,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/types"
-	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 func EnhanceChatQuery(ctx context.Context, core *core.Core, query string, spaceID, sessionID, messageID string) (ai.EnhanceQueryResult, error) {
@@ -195,7 +195,7 @@ func GetQueryRelevanceKnowledges(core *core.Core, spaceID, userID, query string,
 		}
 
 		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			content, err := utils.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
+			content, err := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
 			if err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue

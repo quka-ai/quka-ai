@@ -16,7 +16,6 @@ func init() {
 	})
 }
 
-// UserStore 处理bw_user表的操作
 type UserStore struct {
 	CommonFields // CommonFields 是定义在该代码所在包内的，所以可以直接使用
 }

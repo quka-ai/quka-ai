@@ -48,7 +48,7 @@ func NewS3Client(endpoint, region, bucket, ak, sk string, opts ...S3Options) *S3
 		Bucket:                   bucket,
 		ak:                       ak,
 		sk:                       sk,
-		PreSignURLExpireDuration: 24 * time.Hour * 31, // 默认预签名URL有效期为31天, 默认聊天记录是保存30天
+		PreSignURLExpireDuration: 24 * time.Hour * 7,
 	}
 
 	for _, opt := range opts {

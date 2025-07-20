@@ -25,6 +25,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 const CONTEXT_SCENE_PROMPT = `
@@ -86,12 +87,12 @@ func (l *KnowledgeLogic) GetKnowledge(spaceID, id string) (*types.Knowledge, err
 		contentStr := string(data.Content)
 		switch data.ContentType {
 		case types.KNOWLEDGE_CONTENT_TYPE_BLOCKS:
-			contentStr = utils.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(
+			contentStr = editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(
 				contentStr,
 				l.core.Plugins.FileStorage(),
 			)
 		default:
-			contentStr = utils.ReplaceMarkdownStaticResourcesWithPresignedURL(
+			contentStr = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(
 				contentStr,
 				l.core.Plugins.FileStorage(),
 			)
@@ -170,11 +171,11 @@ func (l *KnowledgeLogic) GetTaskKnowledges(spaceID, taskID string, page, pagesiz
 	if err != nil {
 		return nil, 0, errors.New("KnowledgeLogic.GetTaskKnowledges.ContentTaskStore.GetTask", i18n.ERROR_INTERNAL, err)
 	}
-	
+
 	if task == nil || task.SpaceID != spaceID {
 		return nil, 0, errors.New("KnowledgeLogic.GetTaskKnowledges.TaskNotFound", i18n.ERROR_NOT_FOUND, nil)
 	}
-	
+
 	opts := types.GetKnowledgeOptions{
 		SpaceID:  spaceID,
 		Resource: &types.ResourceQuery{Include: []string{task.Resource}},
@@ -231,12 +232,12 @@ func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeAr
 	}
 
 	if args.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		blocks, err := utils.ParseRawToBlocks(json.RawMessage(args.Content))
+		blocks, err := editorjs.ParseRawToBlocks(json.RawMessage(args.Content))
 		if err != nil {
 			return errors.New("KnowledgeLogic.Update.ConvertEditorJSBlocksToRaw", i18n.ERROR_INTERNAL, err)
 		}
 
-		blocks = utils.RemoveFileBlockHost(blocks)
+		blocks.Blocks = editorjs.RemoveFileBlockHost(blocks.Blocks, lo.If(l.core.Cfg().ObjectStorage.S3.UsePathStyle, l.core.Cfg().ObjectStorage.S3.Bucket).Else(""))
 		args.Content, err = json.Marshal(blocks)
 		if err != nil {
 			return errors.New("KnowledgeLogic.Update.ConvertEditorJSBlocksToRaw", i18n.ERROR_INTERNAL, err)
@@ -403,7 +404,7 @@ func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query stri
 		}
 
 		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			content, err := utils.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
+			content, err := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
 			if err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue
@@ -651,13 +652,13 @@ func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, ki
 	}
 
 	if contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		blocks, err := utils.ParseRawToBlocks(json.RawMessage(content))
+		block, err := editorjs.ParseRawToBlocks(json.RawMessage(content))
 		if err != nil {
 			return "", errors.New("KnowledgeLogic.insertContent.ParseRawToBlocks", i18n.ERROR_INTERNAL, err)
 		}
 
-		blocks = utils.RemoveFileBlockHost(blocks)
-		content, err = json.Marshal(blocks)
+		block.Blocks = editorjs.RemoveFileBlockHost(block.Blocks, lo.If(l.core.Cfg().ObjectStorage.S3.UsePathStyle, l.core.Cfg().ObjectStorage.S3.Bucket).Else(""))
+		content, err = json.Marshal(block)
 		if err != nil {
 			return "", errors.New("KnowledgeLogic.insertContent.RemoveFileBlockHost", i18n.ERROR_INTERNAL, err)
 		}

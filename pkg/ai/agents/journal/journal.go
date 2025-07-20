@@ -15,7 +15,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/types"
-	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type JournalAgent struct {
@@ -123,7 +123,7 @@ func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) ([]*types.Mess
 			if err != nil {
 				return nil, err
 			}
-			md, err := utils.ConvertEditorJSRawToMarkdown(content)
+			md, err := editorjs.ConvertEditorJSRawToMarkdown(content)
 			if err != nil {
 				return nil, err
 			}

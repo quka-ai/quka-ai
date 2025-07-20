@@ -16,7 +16,6 @@ func init() {
 	})
 }
 
-// ResourceStore 处理 bw_resource 表的操作
 type ResourceStore struct {
 	CommonFields
 }

@@ -16,7 +16,6 @@ func init() {
 	})
 }
 
-// ButlerStore 处理 bw_butler 表的操作
 type ButlerStore struct {
 	CommonFields // CommonFields 是定义在该代码所在包内的，所以可以直接使用，不用加types.来引用
 }

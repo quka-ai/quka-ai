@@ -382,7 +382,7 @@ func requestAIWithTools(ctx context.Context, core *core.Core, opts AIRequestOpti
 				return nil, nil
 			}
 			if msg.Error != nil {
-				return nil, err
+				return nil, msg.Error
 			}
 
 			// raw, _ := json.Marshal(msg)
@@ -390,7 +390,6 @@ func requestAIWithTools(ctx context.Context, core *core.Core, opts AIRequestOpti
 
 			if msg.Message != "" {
 				if err := receiveFunc(&types.TextMessage{Text: msg.Message}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
-					fmt.Println("receiveFunc error", err)
 					return nil, errors.New("ChatGPTLogic.RequestChatGPT.for.respChan.receive", i18n.ERROR_INTERNAL, err)
 				}
 			}

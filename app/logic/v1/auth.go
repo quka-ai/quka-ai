@@ -43,18 +43,33 @@ func (l *AuthLogic) InitAdminUser(appid string) (string, error) {
 	userID := utils.GenRandomID()
 	var accessToken string
 	l.core.Store().Transaction(l.ctx, func(ctx context.Context) error {
+		// 创建管理员用户
 		err := l.core.Store().UserStore().Create(l.ctx, types.User{
-			ID:     userID,
-			Appid:  appid,
-			Name:   "Admin",
-			Avatar: "/avatar/default.png",
-			PlanID: types.USER_PLAN_ULTRA,
+			ID:        userID,
+			Appid:     appid,
+			Name:      "Admin",
+			Avatar:    "/avatar/default.png",
+			PlanID:    types.USER_PLAN_ULTRA,
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
 		})
 		if err != nil {
 			return errors.New("AuthLogic.InitAdminUser.CreateUser", i18n.ERROR_INTERNAL, err)
 		}
 
-		// 创建默认的空间
+		// 创建管理员的全局角色记录（设为超级管理员）
+		globalRole := types.UserGlobalRole{
+			UserID:    userID,
+			Appid:     appid,
+			Role:      types.GlobalRoleChief,
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
+		}
+		if err := l.core.Store().UserGlobalRoleStore().Create(l.ctx, globalRole); err != nil {
+			return errors.New("AuthLogic.InitAdminUser.CreateGlobalRole", i18n.ERROR_INTERNAL, err)
+		}
+
+		// 创建AccessToken
 		tokenStore := l.core.Store().AccessTokenStore()
 	REGEN:
 		accessToken = utils.RandomStr(100)
@@ -75,6 +90,7 @@ func (l *AuthLogic) InitAdminUser(appid string) (string, error) {
 			Token:     accessToken,
 			ExpiresAt: time.Now().AddDate(999, 0, 0).Unix(),
 			Info:      "Admin user token",
+			CreatedAt: time.Now().Unix(),
 		})
 
 		if err != nil {

@@ -136,7 +136,7 @@ type ChunkTaskDetail struct {
 	UserAvatar    string `json:"user_avatar"`
 	UserEmail     string `json:"user_email"`
 	Status        int    `json:"status" db:"status"`
-	TaskType      string `json:"task_type" db:"task_type"`   // 任务类型，表示任务的目的或用途，例如：'文本切割'，'数据清洗'等
+	TaskType      string `json:"task_type" db:"task_type"`   // 任务类型，表示任务的目的或用途
 	CreatedAt     int64  `json:"created_at" db:"created_at"` // 任务创建时间，时间戳格式
 	UpdatedAt     int64  `json:"updated_at" db:"updated_at"` // 任务创建时间，时间戳格式
 	RetryTimes    int    `json:"retry_times" db:"retry_times"`

@@ -19,7 +19,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/store"
 	"github.com/quka-ai/quka-ai/app/store/sqlstore"
 	"github.com/quka-ai/quka-ai/pkg/types"
-	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type Core struct {
@@ -62,7 +62,7 @@ func MustSetupCore(cfg CoreConfig) *Core {
 		httpEngine: gin.New(),
 		prompt:     cfg.Prompt,
 	}
-	utils.SetupGlobalEditorJS(cfg.ObjectStorage.StaticDomain)
+	editorjs.SetupGlobalEditorJS(cfg.ObjectStorage.StaticDomain)
 
 	// setup store
 	setupSqlStore(core)

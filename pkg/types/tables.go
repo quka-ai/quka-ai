@@ -16,6 +16,7 @@ const (
 	TABLE_VECTORS            = TableName("vectors")
 	TABLE_ACCESS_TOKEN       = TableName("access_token")
 	TABLE_USER_SPACE         = TableName("user_space")
+	TABLE_USER_GLOBAL_ROLE   = TableName("user_global_role")
 	TABLE_SPACE              = TableName("space")
 	TABLE_RESOURCE           = TableName("resource")
 	TABLE_USER               = TableName("user")

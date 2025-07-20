@@ -222,6 +222,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 
 		// 管理员路由（需要管理员权限）
 		admin := authed.Group("/admin")
+		admin.Use(middleware.VerifyAdminPermission(s.Core))
 		{
 			// 模型提供商管理
 			providers := admin.Group("/model/providers")
@@ -250,6 +251,15 @@ func setupHttpRouter(s *handler.HttpSrv) {
 				aiSystem.GET("/status", s.GetAIStatus)     // 获取AI系统状态
 				aiSystem.PUT("/usage", s.UpdateAIUsage)    // 更新AI使用配置
 				aiSystem.GET("/usage", s.GetAIUsage)       // 获取AI使用配置
+			}
+
+			// 用户管理
+			users := admin.Group("/users")
+			{
+				users.POST("", s.AdminCreateUser)                  // 创建单个用户
+				users.GET("", s.AdminListCreatedUsers)             // 获取用户列表
+				users.POST("/batch", s.AdminBatchCreateUsers)      // 批量创建用户
+				users.POST("/token", s.AdminRegenerateAccessToken) // 重新生成AccessToken
 			}
 		}
 	}
