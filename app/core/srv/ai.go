@@ -3,6 +3,9 @@ package srv
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
 
 	"github.com/samber/lo"
 	oai "github.com/sashabaranov/go-openai"
@@ -247,6 +250,7 @@ func SetupReader(s *AI, providers []types.ModelProvider) error {
 	for _, v := range providers {
 		var providerConfig types.ModelProviderConfig
 		if err := json.Unmarshal(v.Config, &providerConfig); err != nil {
+			slog.Error("Failed to unmarshal provider config for SetupReader", slog.String("provider_id", v.ID), slog.Any("error", err))
 			continue // 如果配置解析失败，跳过该提供商
 		}
 
@@ -255,13 +259,10 @@ func SetupReader(s *AI, providers []types.ModelProvider) error {
 			continue
 		}
 
-		switch v.Name {
-		case "jina":
-			var config jina.JinaConfig
-			if err := json.Unmarshal(v.Config, &config); err != nil {
-				return err
-			}
-			driver := jina.New(config.Token, config.Endpoint)
+		switch strings.ToLower(v.Name) {
+		case strings.ToLower(jina.NAME):
+			fmt.Println("init jina reader driver", v.ID, v.ApiKey, v.ApiUrl)
+			driver := jina.New(v.ApiKey, v.ApiUrl)
 			// 使用provider_id作为key，不是固定的"jina"
 			s.readerDrivers[v.ID] = driver
 			if s.readerDefault == nil {
@@ -293,6 +294,7 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 		if v.Provider == nil {
 			continue
 		}
+
 		d := fusion.New(v.Provider.ApiKey, v.Provider.ApiUrl, v.ModelName)
 		switch v.ModelType {
 		case "chat":
@@ -311,7 +313,6 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 			a.visionDefault = d
 		}
 	}
-
 	// 设置提供商级别的Reader配置
 	if err := SetupReader(a, modelProviders); err != nil {
 		return nil, err

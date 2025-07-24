@@ -125,7 +125,7 @@ func (s *UserGlobalRoleStore) ListUsersByRole(ctx context.Context, opts types.Li
 	return roles, nil
 }
 
-// Total 获取符合条件的用户角色总数
+// Total 获取符合条件的用户总数
 func (s *UserGlobalRoleStore) Total(ctx context.Context, opts types.ListUserGlobalRoleOptions) (int64, error) {
 	query := sq.Select("COUNT(*)").From(s.GetTable())
 
@@ -143,4 +143,38 @@ func (s *UserGlobalRoleStore) Total(ctx context.Context, opts types.ListUserGlob
 	}
 
 	return count, nil
+}
+
+// ListUserIDsByRole 根据角色获取用户ID列表
+func (s *UserGlobalRoleStore) ListUserIDsByRole(ctx context.Context, appid, role string) ([]string, error) {
+	query := sq.Select("user_id").
+		From(s.GetTable()).
+		Where(sq.Eq{"appid": appid, "role": role})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, ErrorSqlBuild(err)
+	}
+
+	var userIDs []string
+	err = s.GetReplica(ctx).Select(&userIDs, queryString, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	return userIDs, nil
+}
+
+// DeleteAll 删除指定租户下的所有用户全局角色记录
+func (s *UserGlobalRoleStore) DeleteAll(ctx context.Context, appid string) error {
+	query := sq.Delete(s.GetTable()).
+		Where(sq.Eq{"appid": appid})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return ErrorSqlBuild(err)
+	}
+
+	_, err = s.GetMaster(ctx).Exec(queryString, args...)
+	return err
 }

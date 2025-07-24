@@ -8,11 +8,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/quka-ai/quka-ai/pkg/testutils"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
 func newClient() *S3 {
-	return NewS3Client(os.Getenv("TEST_QUKA_SELFHOST_S3_ENDPOINT"), os.Getenv("TEST_QUKA_SELFHOST_S3_REGION"), os.Getenv("TEST_QUKA_SELFHOST_S3_BUCKET"), os.Getenv("TEST_QUKA_SELFHOST_S3_ACCESS_KEY"), os.Getenv("TEST_QUKA_SELFHOST_S3_SECRET_KEY"))
+	testutils.LoadEnvOrPanic()
+	return NewS3Client(
+		os.Getenv("TEST_QUKA_SELFHOST_S3_ENDPOINT"),
+		os.Getenv("TEST_QUKA_SELFHOST_S3_REGION"),
+		os.Getenv("TEST_QUKA_SELFHOST_S3_BUCKET"),
+		os.Getenv("TEST_QUKA_SELFHOST_S3_ACCESS_KEY"),
+		os.Getenv("TEST_QUKA_SELFHOST_S3_SECRET_KEY"),
+		WithPathStyle(os.Getenv("TEST_QUKA_SELFHOST_S3_PATH_STYLE") == "true"), // MinIO需要路径样式URL
+	)
 }
 
 func Test_UploadKey(t *testing.T) {
@@ -29,7 +38,7 @@ func Test_UploadKey(t *testing.T) {
 func Test_GenGetPreSignKey(t *testing.T) {
 	s3 := newClient()
 
-	resp, err := s3.GenGetObjectPreSignURL("")
+	resp, err := s3.GenGetObjectPreSignURL("/assets/s3/gPyofSEORU0ZskWmPh9CLUfv5PWjmXBZ/knowledge/20250723/a0f91d468c918b98892aed5947e42423.pdf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,14 +50,14 @@ func Test_GetObject(t *testing.T) {
 	cli := newClient()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	res, err := cli.GetObject(ctx, "/test_tmp/test.docx")
+	res, err := cli.GetObject(ctx, "/assets/s3/gPyofSEORU0ZskWmPh9CLUfv5PWjmXBZ/knowledge/20250723/a0f91d468c918b98892aed5947e42423.pdf")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Log(string(res.FileType))
 
-	file, err := os.Create("./test.docx")
+	file, err := os.Create("./test.pdf")
 	if err != nil {
 		t.Fatal(err)
 	}

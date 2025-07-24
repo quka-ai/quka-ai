@@ -63,7 +63,7 @@ func (s *UserStore) GetUser(ctx context.Context, appid, id string) (*types.User,
 	return &res, nil
 }
 
-// GetUser 根据ID获取用户
+// GetByEmail 根据邮箱获取用户
 func (s *UserStore) GetByEmail(ctx context.Context, appid, email string) (*types.User, error) {
 	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"appid": appid, "email": email})
 
@@ -79,7 +79,7 @@ func (s *UserStore) GetByEmail(ctx context.Context, appid, email string) (*types
 	return &res, nil
 }
 
-// Update 更新用户信息
+// UpdateUserProfile 更新用户信息
 func (s *UserStore) UpdateUserProfile(ctx context.Context, appid, id, userName, email, avatar string) error {
 	query := sq.Update(s.GetTable()).
 		Set("name", userName).
@@ -97,7 +97,7 @@ func (s *UserStore) UpdateUserProfile(ctx context.Context, appid, id, userName, 
 	return err
 }
 
-// Update 更新用户密码
+// UpdateUserPassword 更新用户密码
 func (s *UserStore) UpdateUserPassword(ctx context.Context, appid, id, salt, password string) error {
 	query := sq.Update(s.GetTable()).
 		Set("salt", salt).
@@ -114,7 +114,7 @@ func (s *UserStore) UpdateUserPassword(ctx context.Context, appid, id, salt, pas
 	return err
 }
 
-// Update 更新用户计划
+// UpdateUserPlan 更新用户计划
 func (s *UserStore) UpdateUserPlan(ctx context.Context, appid, id, planID string) error {
 	query := sq.Update(s.GetTable()).
 		Set("plan_id", planID).
@@ -130,6 +130,7 @@ func (s *UserStore) UpdateUserPlan(ctx context.Context, appid, id, planID string
 	return err
 }
 
+// BatchUpdateUserPlan 批量更新用户计划
 func (s *UserStore) BatchUpdateUserPlan(ctx context.Context, appid string, ids []string, planID string) error {
 	query := sq.Update(s.GetTable()).
 		Set("plan_id", planID).
@@ -160,7 +161,7 @@ func (s *UserStore) Delete(ctx context.Context, appid, id string) error {
 
 // ListUsers 分页获取用户列表
 func (s *UserStore) ListUsers(ctx context.Context, opts types.ListUserOptions, page, pageSize uint64) ([]types.User, error) {
-	query := sq.Select(s.GetAllColumns()...).From(s.GetTable())
+	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).OrderBy("created_at DESC, id DESC")
 	if page != 0 || pageSize != 0 {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
@@ -179,6 +180,7 @@ func (s *UserStore) ListUsers(ctx context.Context, opts types.ListUserOptions, p
 	return res, nil
 }
 
+// Total 获取符合条件的用户总数
 func (s *UserStore) Total(ctx context.Context, opts types.ListUserOptions) (int64, error) {
 	query := sq.Select("COUNT(*)").From(s.GetTable())
 
@@ -194,4 +196,112 @@ func (s *UserStore) Total(ctx context.Context, opts types.ListUserOptions) (int6
 		return 0, err
 	}
 	return res, nil
+}
+
+// ListUsersWithGlobalRole 获取用户列表，支持全局角色过滤（使用JOIN查询避免SQL长度限制）
+func (s *UserStore) ListUsersWithGlobalRole(ctx context.Context, opts types.ListUserOptions, globalRole string, page, pageSize uint64) ([]types.UserWithRole, error) {
+	// 基础查询：用户表 + 全局角色表
+	query := sq.Select(
+		"u.id", "u.appid", "u.name", "u.avatar", "u.email", "u.plan_id", "u.updated_at", "u.created_at",
+		"COALESCE(r.role, $1) as global_role",
+	).From(s.GetTable() + " u").
+		LeftJoin(types.TABLE_USER_GLOBAL_ROLE.Name() + " r ON u.id = r.user_id AND u.appid = r.appid").
+		OrderBy("u.created_at DESC, u.id DESC").PlaceholderFormat(sq.Dollar)
+
+	// 应用全局角色过滤
+	if globalRole != "" {
+		if globalRole == types.DefaultGlobalRole {
+			// 对于默认角色，查找没有角色记录的用户
+			query = query.Where("r.user_id IS NULL")
+		} else {
+			// 对于指定角色，查找匹配的角色记录
+			query = query.Where("r.role = $2", globalRole)
+		}
+	}
+
+	// 应用其他过滤条件
+	if opts.Appid != "" {
+		query = query.Where(sq.Eq{"u.appid": opts.Appid})
+	}
+	if len(opts.IDs) > 0 {
+		query = query.Where(sq.Eq{"u.id": opts.IDs})
+	}
+	if opts.Email != "" {
+		query = query.Where(sq.Eq{"u.email": opts.Email})
+	}
+	if opts.Name != "" {
+		query = query.Where(sq.Like{"u.name": "%" + opts.Name + "%"})
+	}
+	if opts.EmailLike != "" {
+		query = query.Where(sq.Like{"u.email": "%" + opts.EmailLike + "%"})
+	}
+
+	// 分页
+	if page > 0 && pageSize > 0 {
+		offset := (page - 1) * pageSize
+		query = query.Offset(offset).Limit(pageSize)
+	}
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, ErrorSqlBuild(err)
+	}
+
+	// 将默认角色值添加到参数中
+	args = append([]interface{}{types.DefaultGlobalRole}, args...)
+
+	var res []types.UserWithRole
+	if err = s.GetReplica(ctx).Select(&res, queryString, args...); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// TotalWithGlobalRole 获取符合条件的用户总数（支持全局角色过滤）
+func (s *UserStore) TotalWithGlobalRole(ctx context.Context, opts types.ListUserOptions, globalRole string) (int64, error) {
+	// 基础计数查询：用户表 + 全局角色表
+	query := sq.Select("COUNT(u.id)").
+		From(s.GetTable() + " u").
+		LeftJoin(types.TABLE_USER_GLOBAL_ROLE.Name() + " r ON u.id = r.user_id AND u.appid = r.appid")
+
+	// 应用全局角色过滤
+	if globalRole != "" {
+		if globalRole == types.DefaultGlobalRole {
+			// 对于默认角色，查找没有角色记录的用户
+			query = query.Where("r.user_id IS NULL")
+		} else {
+			// 对于指定角色，查找匹配的角色记录
+			query = query.Where("r.role = $1", globalRole)
+		}
+	}
+
+	// 应用其他过滤条件
+	if opts.Appid != "" {
+		query = query.Where(sq.Eq{"u.appid": opts.Appid})
+	}
+	if len(opts.IDs) > 0 {
+		query = query.Where(sq.Eq{"u.id": opts.IDs})
+	}
+	if opts.Email != "" {
+		query = query.Where(sq.Eq{"u.email": opts.Email})
+	}
+	if opts.Name != "" {
+		query = query.Where(sq.Like{"u.name": "%" + opts.Name + "%"})
+	}
+	if opts.EmailLike != "" {
+		query = query.Where(sq.Like{"u.email": "%" + opts.EmailLike + "%"})
+	}
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return 0, ErrorSqlBuild(err)
+	}
+
+	var count int64
+	if err = s.GetReplica(ctx).Get(&count, queryString, args...); err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }

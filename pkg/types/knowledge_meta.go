@@ -16,9 +16,9 @@ type MergeDataQuery struct {
 
 // RelMetaWithKnowledge 关联元数据与知识内容的结构
 type RelMetaWithKnowledge struct {
-	MetaID      string              `json:"meta_id" db:"meta_id"`
-	ChunkIndex  int                 `json:"chunk_index" db:"chunk_index"`
-	Content     KnowledgeContent    `json:"content" db:"content"`
+	MetaID      string               `json:"meta_id" db:"meta_id"`
+	ChunkIndex  int                  `json:"chunk_index" db:"chunk_index"`
+	Content     KnowledgeContent     `json:"content" db:"content"`
 	ContentType KnowledgeContentType `json:"content_type" db:"content_type"`
 }
 

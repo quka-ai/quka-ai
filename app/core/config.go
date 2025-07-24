@@ -69,8 +69,6 @@ type CoreConfig struct {
 	bytes []byte `toml:"-"`
 }
 
-
-
 type ObjectStorageDriver struct {
 	StaticDomain string    `toml:"static_domain"`
 	Driver       string    `toml:"driver"`

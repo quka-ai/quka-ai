@@ -148,10 +148,10 @@ func (l *KnowledgeLogic) ListKnowledges(opts types.GetKnowledgeOptions, page, pa
 // ListUserKnowledges 获取用户创建的知识（排除 chunk 类型）
 func (l *KnowledgeLogic) ListUserKnowledges(spaceID string, keywords string, resource *types.ResourceQuery, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
 	opts := types.GetKnowledgeOptions{
-		SpaceID:     spaceID,
-		Resource:    resource,
-		Keywords:    keywords,
-		ExcludeKind: []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
+		SpaceID:  spaceID,
+		Resource: resource,
+		Keywords: keywords,
+		// ExcludeKind: []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
 	}
 	return l.ListKnowledges(opts, page, pagesize)
 }
@@ -361,8 +361,8 @@ func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query stri
 		highScoreKnowledge []types.QueryResult
 	)
 
-	if len(refs) > 10 && refs[0].Cos < 0.5 {
-		cosLimit = refs[0].Cos - 0.1
+	if len(refs) > 10 && refs[0].Cos > 0.5 {
+		cosLimit = refs[0].Cos - 0.15
 	}
 	for i, v := range refs {
 		if i > 0 && (v.Cos < cosLimit && v.OriginalLength > 200) {

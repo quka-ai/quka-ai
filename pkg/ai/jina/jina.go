@@ -53,7 +53,7 @@ type ReaderResponse struct {
 }
 
 func (s *Driver) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error) {
-	slog.Debug("Reader", slog.String("driver", NAME))
+	slog.Debug("Reader", slog.String("driver", NAME), slog.String("full_path", s.endpoint+"/"+endpoint))
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.endpoint+"/"+endpoint, nil)
 	s.applyBaseHeader(req)

@@ -166,11 +166,10 @@ func (p *ContentTaskProcess) chunkByGRPC(task *types.ContentTask) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
 	defer cancel()
-	{
-		ok, err := p.core.AppCore.Plugins.TryLock(ctx, fmt.Sprintf("task:chunk:%s", task.TaskID))
-		if err != nil || !ok {
-			return err
-		}
+
+	ok, err := p.core.AppCore.Plugins.TryLock(ctx, fmt.Sprintf("task:chunk:%s", task.TaskID))
+	if err != nil || !ok {
+		return err
 	}
 
 	// check task exist
@@ -200,22 +199,22 @@ func (p *ContentTaskProcess) chunkByGRPC(task *types.ContentTask) error {
 		}
 
 		// Determine MIME type based on file extension
-		mimeType := "application/octet-stream"
-		if ext := filepath.Ext(task.FileName); ext != "" {
-			switch ext {
-			case ".pdf":
-				mimeType = "application/pdf"
-			case ".docx":
-				mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-			case ".txt":
-				mimeType = "text/plain"
-			case ".md":
-				mimeType = "text/markdown"
-			}
-		}
+		// mimeType := "application/octet-stream"
+		// if ext := filepath.Ext(task.FileName); ext != "" {
+		// 	switch ext {
+		// 	case ".pdf":
+		// 		mimeType = "application/pdf"
+		// 	case ".docx":
+		// 		mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		// 	case ".txt":
+		// 		mimeType = "text/plain"
+		// 	case ".md":
+		// 		mimeType = "text/markdown"
+		// 	}
+		// }
 
 		// Get enhance model configuration
-		enhanceModel, err := p.core.AppCore.GetActiveModelConfig(ctx, types.MODEL_TYPE_ENHANCE)
+		enhanceModel, err := p.core.AppCore.GetActiveModelConfig(ctx, types.AI_USAGE_ENHANCE)
 		if err != nil {
 			slog.Error("Failed to get enhance model configuration", slog.String("error", err.Error()))
 			return err
@@ -225,8 +224,8 @@ func (p *ContentTaskProcess) chunkByGRPC(task *types.ContentTask) error {
 		grpcReq := &pb.ChunkFileRequest{
 			FileContent: res.File,
 			Filename:    task.FileName,
-			MimeType:    mimeType,
-			Strategy:    pb.GenieStrategy_SLUMBER, // Use LLM-driven semantic chunking
+			// MimeType:    mimeType,
+			Strategy: pb.GenieStrategy_SLUMBER, // Use LLM-driven semantic chunking
 			Config: &pb.GenieConfig{
 				LlmProvider:     pb.LLMProvider_OPENAI,
 				ModelName:       enhanceModel.ModelName,

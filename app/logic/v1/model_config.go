@@ -85,7 +85,7 @@ func (l *ModelConfigLogic) CreateModel(req CreateModelRequest) (*types.ModelConf
 	}
 
 	for _, model := range existingModels {
-		if model.ModelName == req.ModelName {
+		if model.ModelName == req.ModelName && model.ModelType == req.ModelType {
 			return nil, errors.New("ModelConfigLogic.CreateModel.ModelExists", "该提供商下已存在同名模型", nil).Code(http.StatusBadRequest)
 		}
 	}

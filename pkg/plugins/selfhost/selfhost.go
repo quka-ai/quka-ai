@@ -1,4 +1,4 @@
-package plugins
+package selfhost
 
 import (
 	"context"
@@ -18,6 +18,9 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/mark"
+	"github.com/quka-ai/quka-ai/pkg/plugins"
+	"github.com/quka-ai/quka-ai/pkg/plugins/selfhost/logic/v1/process"
+	"github.com/quka-ai/quka-ai/pkg/plugins/selfhost/srv"
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
@@ -28,10 +31,6 @@ func NewSingleLock() *SingleLock {
 	return &SingleLock{
 		locks: make(map[string]bool),
 	}
-}
-
-type SelfHostCustomConfig struct {
-	EncryptKey string `toml:"encrypt_key"`
 }
 
 type SingleLock struct {
@@ -45,6 +44,7 @@ func (s *SingleLock) TryLock(ctx context.Context, key string) (bool, error) {
 	if s.locks[key] {
 		return false, nil
 	}
+	s.locks[key] = true
 	go safe.Run(func() {
 		select {
 		case <-ctx.Done():
@@ -54,6 +54,10 @@ func (s *SingleLock) TryLock(ctx context.Context, key string) (bool, error) {
 		}
 	})
 	return true, nil
+}
+
+func init() {
+	plugins.RegisterProvider("selfhost", newSelfHostMode())
 }
 
 var _ core.Plugins = (*SelfHostPlugin)(nil)
@@ -80,13 +84,11 @@ func (c *Cache) Get(ctx context.Context, key string) (string, error) {
 }
 
 type SelfHostPlugin struct {
-	core       *core.Core
+	core       *srv.PluginCore
 	Appid      string
 	singleLock *SingleLock
 	storage    core.FileStorage
 	cache      *Cache
-
-	customConfig SelfHostCustomConfig
 }
 
 func (s *SelfHostPlugin) RegisterHTTPEngine(e *gin.Engine) {
@@ -102,19 +104,22 @@ func (s *SelfHostPlugin) DefaultAppid() string {
 }
 
 func (s *SelfHostPlugin) Install(c *core.Core) error {
-	s.core = c
 	fmt.Println("Start initialize.")
 	utils.SetupIDWorker(1)
 
-	customConfig := core.NewCustomConfigPayload[SelfHostCustomConfig]()
-	if err := s.core.Cfg().LoadCustomConfig(&customConfig); err != nil {
-		return fmt.Errorf("Failed to install custom config, %w", err)
+	var err error
+	if s.core, err = srv.NewPluginCore(c); err != nil {
+		return err
 	}
-	s.customConfig = customConfig.CustomConfig
+
 	s.cache = &Cache{}
 
+	defer func() {
+		process.SetupProcess(s.core)
+	}()
+
 	var tokenCount int
-	if err := s.core.Store().GetMaster().Get(&tokenCount, "SELECT COUNT(*) FROM "+types.TABLE_ACCESS_TOKEN.Name()+" WHERE true"); err != nil {
+	if err := s.core.AppCore.Store().GetMaster().Get(&tokenCount, "SELECT COUNT(*) FROM "+types.TABLE_ACCESS_TOKEN.Name()+" WHERE true"); err != nil {
 		return fmt.Errorf("Initialize sql error: %w", err)
 	}
 
@@ -129,11 +134,10 @@ func (s *SelfHostPlugin) Install(c *core.Core) error {
 	var (
 		token   string
 		spaceID string
-		err     error
 	)
 
-	err = s.core.Store().Transaction(ctx, func(ctx context.Context) error {
-		authLogic := v1.NewAuthLogic(ctx, s.core)
+	err = s.core.AppCore.Store().Transaction(ctx, func(ctx context.Context) error {
+		authLogic := v1.NewAuthLogic(ctx, s.core.AppCore)
 		token, err = authLogic.InitAdminUser(s.Appid)
 		if err != nil {
 			return err
@@ -149,7 +153,7 @@ func (s *SelfHostPlugin) Install(c *core.Core) error {
 			return err
 		}
 		ctx = context.WithValue(ctx, v1.TOKEN_CONTEXT_KEY, claims)
-		spaceID, err = v1.NewSpaceLogic(ctx, s.core).CreateUserSpace("default", "default", "", "")
+		spaceID, err = v1.NewSpaceLogic(ctx, s.core.AppCore).CreateUserSpace("default", "default", "", "")
 		if err != nil {
 			return err
 		}
@@ -163,6 +167,7 @@ func (s *SelfHostPlugin) Install(c *core.Core) error {
 	fmt.Println("Appid:", s.Appid)
 	fmt.Println("Access token:", token)
 	fmt.Println("Space id:", spaceID)
+
 	return nil
 }
 
@@ -176,7 +181,7 @@ func (s *SelfHostPlugin) TryLock(ctx context.Context, key string) (bool, error) 
 
 type AIChatLogic struct {
 	core *core.Core
-	Assistant
+	plugins.Assistant
 }
 
 func (a *AIChatLogic) GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error) {
@@ -200,18 +205,18 @@ func (s *SelfHostPlugin) AIChatLogic(agentType string) core.AIChatLogic {
 	switch agentType {
 	case types.AGENT_TYPE_BUTLER:
 		return &AIChatLogic{
-			core:      s.core,
-			Assistant: v1.NewBulterAssistant(s.core, agentType),
+			core:      s.core.AppCore,
+			Assistant: v1.NewBulterAssistant(s.core.AppCore, agentType),
 		}
 	case types.AGENT_TYPE_JOURNAL:
 		return &AIChatLogic{
-			core:      s.core,
-			Assistant: v1.NewJournalAssistant(s.core, agentType),
+			core:      s.core.AppCore,
+			Assistant: v1.NewJournalAssistant(s.core.AppCore, agentType),
 		}
 	default:
 		return &AIChatLogic{
-			core:      s.core,
-			Assistant: v1.NewNormalAssistant(s.core, agentType),
+			core:      s.core.AppCore,
+			Assistant: v1.NewNormalAssistant(s.core.AppCore, agentType),
 		}
 	}
 }
@@ -241,7 +246,7 @@ func (s *SelfHostPlugin) FileStorage() core.FileStorage {
 		return s.storage
 	}
 
-	s.storage = SetupObjectStorage(s.core.Cfg().ObjectStorage)
+	s.storage = plugins.SetupObjectStorage(s.core.AppCore.Cfg().ObjectStorage)
 
 	return s.storage
 }
@@ -251,32 +256,32 @@ func (s *SelfHostPlugin) CreateUserDefaultPlan(ctx context.Context, appid, userI
 }
 
 func (s *SelfHostPlugin) EncryptData(data []byte) ([]byte, error) {
-	if s.customConfig.EncryptKey == "" {
+	if s.core.Cfg.EncryptKey == "" {
 		return data, nil
 	}
 
-	return utils.EncryptCFB(data, []byte(s.customConfig.EncryptKey))
+	return utils.EncryptCFB(data, []byte(s.core.Cfg.EncryptKey))
 }
 
 func (s *SelfHostPlugin) DecryptData(data []byte) ([]byte, error) {
-	if s.customConfig.EncryptKey == "" {
+	if s.core.Cfg.EncryptKey == "" {
 		return data, nil
 	}
 
-	return utils.DecryptCFB(data, []byte(s.customConfig.EncryptKey))
+	return utils.DecryptCFB(data, []byte(s.core.Cfg.EncryptKey))
 }
 
 func (s *SelfHostPlugin) DeleteSpace(ctx context.Context, spaceID string) error {
-	return s.core.Store().Transaction(ctx, func(ctx context.Context) error {
-		if err := s.core.Store().ContentTaskStore().DeleteAll(ctx, spaceID); err != nil {
+	return s.core.AppCore.Store().Transaction(ctx, func(ctx context.Context) error {
+		if err := s.core.AppCore.Store().ContentTaskStore().DeleteAll(ctx, spaceID); err != nil {
 			return err
 		}
 
-		if err := s.core.Store().KnowledgeRelMetaStore().DeleteAll(ctx, spaceID); err != nil {
+		if err := s.core.AppCore.Store().KnowledgeRelMetaStore().DeleteAll(ctx, spaceID); err != nil {
 			return err
 		}
 
-		if err := s.core.Store().KnowledgeMetaStore().DeleteAll(ctx, spaceID); err != nil {
+		if err := s.core.AppCore.Store().KnowledgeMetaStore().DeleteAll(ctx, spaceID); err != nil {
 			return err
 		}
 		return nil
@@ -291,7 +296,7 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 	spaceID := knowledges[0].SpaceID
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	spaceResources, err := s.core.Store().ResourceStore().ListResources(ctx, spaceID, types.NO_PAGINATION, types.NO_PAGINATION)
+	spaceResources, err := s.core.AppCore.Store().ResourceStore().ListResources(ctx, spaceID, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil {
 		slog.Error("Failed to get space resources", slog.String("space_id", spaceID), slog.String("error", err.Error()))
 		return docs, err
@@ -330,7 +335,7 @@ func (s *SelfHostPlugin) Rerank(query string, knowledges []*types.Knowledge) ([]
 	defer cancel()
 
 	if len(knowledges) > 10 {
-		res, usage, err := s.core.Srv().AI().Rerank(ctx, query, lo.Map(knowledges, func(item *types.Knowledge, _ int) *ai.RerankDoc {
+		res, usage, err := s.core.AppCore.Srv().AI().Rerank(ctx, query, lo.Map(knowledges, func(item *types.Knowledge, _ int) *ai.RerankDoc {
 			sw := mark.NewSensitiveWork()
 			content := sw.Do(lo.If(item.ContentType == types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN, string(item.Content)).Else(item.Content.String()))
 			return &ai.RerankDoc{
@@ -348,8 +353,11 @@ func (s *SelfHostPlugin) Rerank(query string, knowledges []*types.Knowledge) ([]
 
 		firstScore := res[0].Score
 		latestScore := firstScore - 0.2
+		if firstScore < 0.3 {
+			return nil, usage, nil
+		}
 		if firstScore < 0.5 {
-			latestScore = firstScore - 0.1
+			latestScore = firstScore - 0.05
 		}
 
 		docsMap := lo.SliceToMap(knowledges, func(item *types.Knowledge) (string, *types.Knowledge) {

@@ -3,7 +3,6 @@ package v1
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/types"
-	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 type ResourceLogic struct {
@@ -31,9 +29,6 @@ func NewResourceLogic(ctx context.Context, core *core.Core) *ResourceLogic {
 }
 
 func (l *ResourceLogic) CreateResource(spaceID, id, title, desc, tag string, cycle int) error {
-	if !utils.IsAlphabetic(id) {
-		return errors.New("ResourceLogic.CreateResource.ID.IsAlphabetic", i18n.ERROR_INVALIDARGUMENT, fmt.Errorf("resource id is not alphabetic")).Code(http.StatusBadRequest)
-	}
 	if title == "" {
 		title = id
 	}

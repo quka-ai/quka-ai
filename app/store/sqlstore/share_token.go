@@ -112,3 +112,18 @@ func (s *ShareTokenStoreImpl) Delete(ctx context.Context, token string) error {
 	_, err = s.GetMaster(ctx).Exec(sql, args...)
 	return err
 }
+
+// DeleteBySpace 删除指定空间下的所有分享令牌
+func (s *ShareTokenStoreImpl) DeleteBySpace(ctx context.Context, spaceID string) error {
+	query := sq.Delete(s.GetTable()).
+		Where(sq.Eq{"space_id": spaceID}).
+		PlaceholderFormat(sq.Dollar)
+
+	sql, args, err := query.ToSql()
+	if err != nil {
+		return ErrorSqlBuild(err)
+	}
+
+	_, err = s.GetMaster(ctx).Exec(sql, args...)
+	return err
+}

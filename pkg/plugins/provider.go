@@ -26,10 +26,6 @@ func Setup(install func(p core.Plugins), mode string) {
 
 var provider = make(map[string]core.SetupFunc)
 
-func init() {
-	RegisterProvider("selfhost", newSelfHostMode())
-}
-
 func RegisterProvider(key string, p core.Plugins) {
 	provider[key] = func() core.Plugins {
 		return p

@@ -120,7 +120,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 
 			space.POST("", userLimit("modify_space"), s.CreateUserSpace)
 
-			editorSpace := space.Group("").Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionEdit))
+			editorSpace := space.Group("/:spaceid").Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionEdit))
 			editorSpace.POST("/task/file-chunk", aiLimit("file_chunk", core.WithLimit(10), core.WithRange(time.Hour)), s.CreateFileChunkTask)
 			editorSpace.GET("/task/list", s.GetFileChunkTaskList)
 			editorSpace.GET("/task/status", s.GetTaskStatus)
@@ -257,9 +257,9 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			users := admin.Group("/users")
 			{
 				users.POST("", s.AdminCreateUser)                  // 创建单个用户
-				users.GET("", s.AdminListCreatedUsers)             // 获取用户列表
-				users.POST("/batch", s.AdminBatchCreateUsers)      // 批量创建用户
+				users.GET("", s.AdminListUsers)                    // 获取用户列表
 				users.POST("/token", s.AdminRegenerateAccessToken) // 重新生成AccessToken
+				users.DELETE("", s.AdminDeleteUser)                // 删除用户
 			}
 		}
 	}

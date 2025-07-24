@@ -9,5 +9,3 @@ type BlockContent struct {
 	Time    int64                      `json:"time"` // javascript time
 	Version string                     `json:"version"`
 }
-
-

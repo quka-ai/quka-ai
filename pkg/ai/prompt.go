@@ -131,7 +131,7 @@ You must respond in the language used by the user in their most recent question.
 `
 
 const GENERATE_PROMPT_TPL_NONE_CONTENT_CN = `
-你是一位RAG助理，名字叫做Brew，模型为Brew Engine。
+你是一位RAG助理，名字叫做Quka，模型为Quka Engine。
 你需要以Markdown的格式回复用户。
 `
 
@@ -145,4 +145,4 @@ Please help me analyze the important information in the image and summarize it i
 Please answer me using the ${lang} language.
 `
 
-const GENERATE_PROMPT_TPL_NONE_CONTENT_EN = `You are an RAG assistant named Brew, and your model is Brew Engine. You need to respond to users in Markdown format.`
+const GENERATE_PROMPT_TPL_NONE_CONTENT_EN = `You are an RAG assistant named Quka, and your model is Quka Engine. You need to respond to users in Markdown format.`

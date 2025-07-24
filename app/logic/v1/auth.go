@@ -48,7 +48,7 @@ func (l *AuthLogic) InitAdminUser(appid string) (string, error) {
 			ID:        userID,
 			Appid:     appid,
 			Name:      "Admin",
-			Avatar:    "/avatar/default.png",
+			Avatar:    "",
 			PlanID:    types.USER_PLAN_ULTRA,
 			CreatedAt: time.Now().Unix(),
 			UpdatedAt: time.Now().Unix(),

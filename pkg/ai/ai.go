@@ -447,9 +447,6 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 			// slog.Debug("ai stream response", slog.Any("msg", msg))
 			if err == io.EOF {
 				flushResponse()
-				respChan <- ResponseChoice{
-					Error: err,
-				}
 				return
 			}
 
@@ -483,8 +480,12 @@ func HandleAIStream(ctx context.Context, resp *openai.ChatCompletionStream, mark
 							toolCalls = append(toolCalls, &toolCall)
 							continue
 						}
-						toolCalls[*toolCall.Index].Function.Name += toolCall.Function.Name
-						toolCalls[*toolCall.Index].Function.Arguments += toolCall.Function.Arguments
+						var toolCallIndex int
+						if toolCall.Index != nil {
+							toolCallIndex = *toolCall.Index
+						}
+						toolCalls[toolCallIndex].Function.Name += toolCall.Function.Name
+						toolCalls[toolCallIndex].Function.Arguments += toolCall.Function.Arguments
 					}
 				}
 

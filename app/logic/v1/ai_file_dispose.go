@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/samber/lo"
@@ -82,13 +83,18 @@ func (l *AIFileDisposeLogic) CreateLongContentTask(spaceID, resource, meta, file
 		meta = fileName
 	}
 
+	if l.core.Cfg().ObjectStorage.S3.UsePathStyle {
+		bucketName := l.core.Cfg().ObjectStorage.S3.Bucket
+		parsedUrl.Path = lo.If(bucketName != "" && strings.HasPrefix(parsedUrl.Path, "/"+bucketName), parsedUrl.Path[len(bucketName)+1:]).Else(parsedUrl.Path)
+	}
+
 	err = l.core.Store().ContentTaskStore().Create(l.ctx, types.ContentTask{
 		TaskID:    taskID,
 		SpaceID:   spaceID,
 		Resource:  resource,
 		MetaInfo:  meta,
 		UserID:    l.GetUserInfo().User,
-		FileURL:   parsedUrl.RequestURI(),
+		FileURL:   parsedUrl.Path,
 		FileName:  fileName,
 		Step:      types.LONG_CONTENT_STEP_CREATE_CHUNK,
 		TaskType:  "chunk",

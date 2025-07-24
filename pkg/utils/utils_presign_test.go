@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	
+
 	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 

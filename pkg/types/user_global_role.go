@@ -34,7 +34,7 @@ func (opts ListUserGlobalRoleOptions) Apply(query *sq.SelectBuilder) {
 // 全局角色常量
 const (
 	GlobalRoleChief  = "role-chief"  // 超级管理员
-	GlobalRoleAdmin  = "role-admin"  // 管理员  
+	GlobalRoleAdmin  = "role-admin"  // 管理员
 	GlobalRoleMember = "role-member" // 普通用户
 )
 

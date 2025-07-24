@@ -650,4 +650,3 @@ func ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocks []goeditorjs.Ed
 func ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON string, fileStorage FileStorageInterface) string {
 	return editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON, fileStorage)
 }
-

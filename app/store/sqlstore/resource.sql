@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS quka_resource (
     space_id VARCHAR(32) NOT NULL,       -- 资源所属空间ID
     tag VARCHAR(255) NOT NULL,            -- 资源标签
     cycle int NOT NULL,                  -- cycle
-    prompt TEXT NOT NULL,                -- 自定义prompt
     description TEXT,                    -- 资源描述信息
     created_at BIGINT NOT NULL          -- 资源创建时间，UNIX时间戳
 );
@@ -20,7 +19,6 @@ COMMENT ON COLUMN quka_resource.user_id IS '用户ID';
 COMMENT ON COLUMN quka_resource.space_id IS '资源所属空间ID';
 COMMENT ON COLUMN quka_resource.description IS '资源描述信息';
 COMMENT ON COLUMN quka_resource.cycle IS '资源周期';
-COMMENT ON COLUMN quka_resource.prompt IS '自定义prompt';
 COMMENT ON COLUMN quka_resource.created_at IS '资源创建时间，UNIX时间戳';
 
 -- 添加表注释

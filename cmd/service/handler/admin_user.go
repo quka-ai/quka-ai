@@ -74,50 +74,65 @@ func (s *HttpSrv) AdminCreateUser(c *gin.Context) {
 	})
 }
 
-// AdminListCreatedUsersRequest 获取管理员创建用户列表请求
-// @Description 分页参数
+// AdminListUsersRequest 获取用户列表请求
+// @Description 分页和搜索参数
 // @Description page: 页码，从1开始
 // @Description pagesize: 每页数量，最大50
-type AdminListCreatedUsersRequest struct {
-	Page     uint64 `json:"page" form:"page" binding:"required,min=1"`
-	PageSize uint64 `json:"pagesize" form:"pagesize" binding:"required,min=1,max=50"`
+// @Description name: 用户名模糊搜索（可选）
+// @Description email: 邮箱模糊搜索（可选）
+// @Description global_role: 全局角色过滤（可选），如 "role-chief", "role-admin", "role-member" 等
+type AdminListUsersRequest struct {
+	Page       uint64 `json:"page" form:"page" binding:"required,min=1"`
+	PageSize   uint64 `json:"pagesize" form:"pagesize" binding:"required,min=1,max=50"`
+	Name       string `json:"name" form:"name"`           // 用户名模糊搜索
+	Email      string `json:"email" form:"email"`         // 邮箱模糊搜索
+	GlobalRole string `json:"global_role" form:"global_role"` // 全局角色过滤
 }
 
-// AdminListCreatedUsersResponse 获取管理员创建用户列表响应
-// @Description 用户列表和总数
-type AdminListCreatedUsersResponse struct {
-	List  []types.User `json:"list"`
-	Total int64        `json:"total"`
+// AdminListUsersResponse 获取用户列表响应
+// @Description 用户列表和总数，包含每个用户的全局角色
+type AdminListUsersResponse struct {
+	List  []types.UserWithRole `json:"list"`
+	Total int64                `json:"total"`
 }
 
-// AdminListCreatedUsers 获取管理员创建的用户列表
-// @Summary 获取管理员创建的用户列表
-// @Description 管理员可以查看自己创建的用户列表，支持分页
+// AdminListUsers 管理员获取用户列表
+// @Summary 管理员获取用户列表
+// @Description 管理员可以查看所有用户列表，支持分页和搜索，可按全局角色过滤
 // @Tags 管理员
 // @Accept json
 // @Produce json
 // @Param page query int true "页码" minimum(1)
 // @Param pagesize query int true "每页数量" minimum(1) maximum(50)
-// @Success 200 {object} response.APIResponse{data=AdminListCreatedUsersResponse}
+// @Param name query string false "用户名模糊搜索"
+// @Param email query string false "邮箱模糊搜索"
+// @Param global_role query string false "全局角色过滤" Enums(role-chief,role-admin,role-member)
+// @Success 200 {object} response.APIResponse{data=AdminListUsersResponse}
 // @Failure 403 {object} response.APIResponse
 // @Failure 500 {object} response.APIResponse
 // @Router /api/v1/admin/users [get]
-func (s *HttpSrv) AdminListCreatedUsers(c *gin.Context) {
-	var req AdminListCreatedUsersRequest
+func (s *HttpSrv) AdminListUsers(c *gin.Context) {
+	var req AdminListUsersRequest
 	if err := utils.BindArgsWithGin(c, &req); err != nil {
 		response.APIError(c, err)
 		return
 	}
 
+	// 构建搜索条件
+	opts := types.ListUserOptions{
+		Name:      req.Name,   // 用户名模糊搜索
+		EmailLike: req.Email,  // 邮箱模糊搜索
+	}
+
 	// 复用logic实例
 	logic := v1.NewAdminUserLogic(c, s.Core)
-	users, total, err := logic.GetCreatedUsers(req.Page, req.PageSize)
+	users, total, err := logic.GetUsers(opts, req.GlobalRole, req.Page, req.PageSize)
 	if err != nil {
 		response.APIError(c, err)
 		return
 	}
 
-	response.APISuccess(c, AdminListCreatedUsersResponse{
+	response.APISuccess(c, AdminListUsersResponse{
 		List:  users,
 		Total: total,
 	})
@@ -168,88 +183,47 @@ func (s *HttpSrv) AdminRegenerateAccessToken(c *gin.Context) {
 	})
 }
 
-// AdminBatchCreateUsersRequest 批量创建用户请求
-type AdminBatchCreateUsersRequest struct {
-	Users []v1.CreateUserRequest `json:"users" binding:"required,min=1,max=100"`
+// AdminDeleteUserRequest 删除用户请求
+type AdminDeleteUserRequest struct {
+	UserID string `json:"user_id" binding:"required"`
 }
 
-// AdminBatchCreateUsersResponse 批量创建用户响应
-type AdminBatchCreateUsersResponse struct {
-	SuccessCount int                          `json:"success_count"`
-	FailedCount  int                          `json:"failed_count"`
-	Results      []AdminBatchCreateUserResult `json:"results"`
-	Errors       []AdminBatchCreateUserError  `json:"errors"`
+// AdminDeleteUserResponse 删除用户响应
+type AdminDeleteUserResponse struct {
+	UserID  string `json:"user_id"`
+	Message string `json:"message"`
 }
 
-type AdminBatchCreateUserResult struct {
-	Name        string `json:"name"`
-	Email       string `json:"email"`
-	UserID      string `json:"user_id"`
-	AccessToken string `json:"access_token"`
-	Status      string `json:"status"`
-}
-
-type AdminBatchCreateUserError struct {
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Error  string `json:"error"`
-	Status string `json:"status"`
-}
-
-// AdminBatchCreateUsers 批量创建用户
-// @Summary 批量创建用户
-// @Description 管理员可以批量创建用户，最多100个。使用优化的批量处理逻辑
+// AdminDeleteUser 管理员删除用户
+// @Summary 管理员删除用户
+// @Description 管理员可以删除用户及其所有相关数据，包括空间、知识库、聊天记录等
 // @Tags 管理员
 // @Accept json
 // @Produce json
-// @Param request body AdminBatchCreateUsersRequest true "批量创建用户请求"
-// @Success 200 {object} response.APIResponse{data=AdminBatchCreateUsersResponse}
+// @Param request body AdminDeleteUserRequest true "删除用户请求"
+// @Success 200 {object} response.APIResponse{data=AdminDeleteUserResponse}
 // @Failure 400 {object} response.APIResponse
 // @Failure 403 {object} response.APIResponse
+// @Failure 404 {object} response.APIResponse
 // @Failure 500 {object} response.APIResponse
-// @Router /api/v1/admin/users/batch [post]
-func (s *HttpSrv) AdminBatchCreateUsers(c *gin.Context) {
-	var req AdminBatchCreateUsersRequest
+// @Router /api/v1/admin/users [delete]
+func (s *HttpSrv) AdminDeleteUser(c *gin.Context) {
+	var req AdminDeleteUserRequest
 	if err := utils.BindArgsWithGin(c, &req); err != nil {
 		response.APIError(c, err)
 		return
 	}
 
+	// 复用logic实例
 	logic := v1.NewAdminUserLogic(c, s.Core)
-
-	// 使用优化的批量创建逻辑
-	result, err := logic.BatchCreateUsers(req.Users)
+	err := logic.DeleteUser(req.UserID)
 	if err != nil {
 		response.APIError(c, err)
 		return
 	}
 
-	// 转换结果格式以匹配API响应结构
-	apiResults := make([]AdminBatchCreateUserResult, len(result.Results))
-	for i, r := range result.Results {
-		apiResults[i] = AdminBatchCreateUserResult{
-			Name:        r.Name,
-			Email:       r.Email,
-			UserID:      r.UserID,
-			AccessToken: r.AccessToken,
-			Status:      "success",
-		}
-	}
-
-	apiErrors := make([]AdminBatchCreateUserError, len(result.Errors))
-	for i, e := range result.Errors {
-		apiErrors[i] = AdminBatchCreateUserError{
-			Name:   e.Name,
-			Email:  e.Email,
-			Error:  e.Error,
-			Status: e.Status,
-		}
-	}
-
-	response.APISuccess(c, AdminBatchCreateUsersResponse{
-		SuccessCount: result.SuccessCount,
-		FailedCount:  result.FailedCount,
-		Results:      apiResults,
-		Errors:       apiErrors,
+	response.APISuccess(c, AdminDeleteUserResponse{
+		UserID:  req.UserID,
+		Message: "User deleted successfully",
 	})
 }

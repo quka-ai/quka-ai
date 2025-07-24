@@ -379,11 +379,6 @@ func VerifyUserRole(core *core.Core, requiredRoles ...string) gin.HandlerFunc {
 				hasPermission = true
 				break
 			}
-			// 使用RBAC检查角色继承关系
-			if core.Srv().RBAC().CheckPermission(userRole, requiredRole) {
-				hasPermission = true
-				break
-			}
 		}
 
 		if !hasPermission {
@@ -412,38 +407,14 @@ func getUserGlobalRole(core *core.Core, user *types.User) (string, error) {
 		return "", err
 	}
 
+	fmt.Println(*globalRole)
+
 	// 如果找到全局角色记录，直接返回
-	if globalRole != nil {
-		return globalRole.Role, nil
+	if globalRole == nil {
+		return types.GlobalRoleMember, nil
 	}
 
-	// 如果没有全局角色记录，执行兜底逻辑
-	// 这里可以根据业务需要设置默认规则
-	defaultRole := types.DefaultGlobalRole
-
-	// 兜底规则1: 检查是否为系统第一个用户（管理员）
-	var userCount int
-	err = core.Store().GetMaster().Get(&userCount,
-		"SELECT COUNT(*) FROM "+types.TABLE_USER.Name()+" WHERE appid = ? AND created_at <= ?",
-		user.Appid, user.CreatedAt)
-
-	if err != nil {
-		return "", err
-	}
-
-	// 如果是第一个用户，设为超级管理员
-	if userCount <= 1 {
-		defaultRole = types.GlobalRoleChief
-		// 自动为第一个用户创建全局角色记录
-		_ = createUserGlobalRole(core, user.Appid, user.ID, defaultRole)
-	} else if user.Source == "admin_created" {
-		// 兜底规则2: 管理员创建的用户默认为普通用户
-		defaultRole = types.GlobalRoleMember
-		// 自动创建全局角色记录
-		_ = createUserGlobalRole(core, user.Appid, user.ID, defaultRole)
-	}
-
-	return defaultRole, nil
+	return globalRole.Role, nil
 }
 
 // createUserGlobalRole 创建用户全局角色记录（辅助函数）

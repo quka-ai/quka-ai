@@ -42,7 +42,6 @@ func NewClient(token, endpoint string) *openai.Client {
 }
 
 func New(token, endpoint string, model string) *Driver {
-	fmt.Println("New", token, endpoint, model)
 	cfg := openai.DefaultConfig(token)
 
 	if endpoint != "" {

@@ -12,7 +12,6 @@
 - ✅ 输出：新生成的AccessToken
 - ✅ 创建用户后自动生成AccessToken
 - ✅ Token可直接用于登录系统
-- ✅ 支持管理员批量创建用户
 
 ### 非功能需求
 - 🔒 严格的权限验证
@@ -234,28 +233,11 @@ admin.Use(middleware.VerifyAdminPermission(s.Core))
 
 ### 10. 扩展功能
 
-#### 10.1 批量创建
-支持通过CSV文件批量创建用户：
-```json
-POST /api/v1/admin/users/batch
-{
-  "users": [
-    {"name": "张三", "email": "zhangsan@example.com"},
-    {"name": "李四", "email": "lisi@example.com"}
-  ]
-}
-```
-
-#### 10.2 用户管理
+#### 10.1 用户管理
 - 查看已创建用户列表
 - 禁用/启用用户
 - 重新生成AccessToken
 - 修改用户信息
-
-#### 10.3 通知机制
-- 创建用户后发送通知邮件
-- 包含AccessToken和使用说明
-- 支持自定义欢迎消息
 
 ### 11. 测试方案
 
@@ -277,13 +259,3 @@ POST /api/v1/admin/users/batch
 - 不影响现有用户系统
 - 向后兼容
 - 无破坏性变更
-
-#### 12.2 性能优化
-- 数据库索引优化
-- 缓存策略
-- 批量操作优化
-
-#### 12.3 监控
-- 用户创建统计
-- 错误率监控
-- 性能指标监控

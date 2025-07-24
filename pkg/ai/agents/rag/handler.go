@@ -41,7 +41,7 @@ func searchKnowledge(args ToolContext, funcCall openai.FunctionCall) ([]*types.M
 	toolID := utils.GenUniqIDStr()
 	args.ReceiveFunc(&types.ToolTips{
 		ID:       toolID,
-		ToolName: "SearchKnowledge",
+		ToolName: FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
 		Status:   types.TOOL_STATUS_RUNNING,
 		Content:  "Retrieving your knowledge...",
 	}, types.MESSAGE_PROGRESS_GENERATING)
@@ -50,7 +50,7 @@ func searchKnowledge(args ToolContext, funcCall openai.FunctionCall) ([]*types.M
 	defer func() {
 		args.ReceiveFunc(&types.ToolTips{
 			ID:       toolID,
-			ToolName: "SearchKnowledge",
+			ToolName: FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
 			Status:   types.TOOL_STATUS_SUCCESS,
 			Content:  fmt.Sprintf("%d knowledges reviewed", reviewedKnowledges),
 		}, types.MESSAGE_PROGRESS_GENERATING)
@@ -95,7 +95,7 @@ func searchKnowledge(args ToolContext, funcCall openai.FunctionCall) ([]*types.M
 	return []*types.MessageContext{
 		{
 			Role:    types.USER_ROLE_SYSTEM,
-			Content: ai.BuildRAGPrompt(ai.GENERATE_PROMPT_TPL_CN, ai.NewDocs(docs.Docs), args.Core.Srv().AI()),
+			Content: fmt.Sprintf("Tool '%s' Response:\n", FUNCTION_NAME_SEARCH_USER_KNOWLEDGES) + ai.BuildRAGPrompt(ai.GENERATE_PROMPT_TPL_CN, ai.NewDocs(docs.Docs), args.Core.Srv().AI()),
 		},
 	}, nil
 }

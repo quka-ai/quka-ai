@@ -108,6 +108,7 @@ type ResourceStore interface {
 	GetResource(ctx context.Context, spaceID, id string) (*types.Resource, error)
 	Update(ctx context.Context, spaceID, id, title, desc, prompt string, cycle int) error
 	Delete(ctx context.Context, spaceID, id string) error
+	DeleteAll(ctx context.Context, spaceID string) error
 	ListResources(ctx context.Context, spaceID string, page, pageSize uint64) ([]types.Resource, error)
 	ListUserResources(ctx context.Context, userID string, page, pageSize uint64) ([]types.Resource, error)
 }
@@ -122,6 +123,8 @@ type UserStore interface {
 	Delete(ctx context.Context, appid, id string) error
 	ListUsers(ctx context.Context, opts types.ListUserOptions, page, pageSize uint64) ([]types.User, error)
 	Total(ctx context.Context, opts types.ListUserOptions) (int64, error)
+	ListUsersWithGlobalRole(ctx context.Context, opts types.ListUserOptions, globalRole string, page, pageSize uint64) ([]types.UserWithRole, error)
+	TotalWithGlobalRole(ctx context.Context, opts types.ListUserOptions, globalRole string) (int64, error)
 	UpdateUserPlan(ctx context.Context, appid, id, planID string) error
 	BatchUpdateUserPlan(ctx context.Context, appid string, ids []string, planID string) error
 }
@@ -135,6 +138,8 @@ type UserGlobalRoleStore interface {
 	Delete(ctx context.Context, appid, userID string) error
 	ListUsersByRole(ctx context.Context, opts types.ListUserGlobalRoleOptions, page, pageSize uint64) ([]types.UserGlobalRole, error)
 	Total(ctx context.Context, opts types.ListUserGlobalRoleOptions) (int64, error)
+	ListUserIDsByRole(ctx context.Context, appid, role string) ([]string, error)
+	DeleteAll(ctx context.Context, appid string) error
 }
 
 type ChatSessionStore interface {
@@ -200,6 +205,8 @@ type FileManagementStore interface {
 	GetByID(ctx context.Context, spaceID, file string) (*types.FileManagement, error)
 	UpdateStatus(ctx context.Context, spaceID string, files []string, status int) error
 	Delete(ctx context.Context, spaceID, file string) error
+	ListBySpace(ctx context.Context, spaceID string) ([]types.FileManagement, error)
+	DeleteAll(ctx context.Context, spaceID string) error
 }
 
 type AITokenUsageStore interface {
@@ -219,6 +226,7 @@ type ShareTokenStore interface {
 	GetByToken(ctx context.Context, token string) (*types.ShareToken, error)
 	UpdateExpireTime(ctx context.Context, id, expireAt int64) error
 	Delete(ctx context.Context, token string) error
+	DeleteBySpace(ctx context.Context, spaceID string) error
 }
 
 type JournalStore interface {
