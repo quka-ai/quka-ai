@@ -181,7 +181,7 @@ func (b *ButlerAgent) Query(userID string, reqMsg *types.ChatMessage) ([]openai.
 					Role:    item.Role.String(),
 					Content: item.Message,
 				})
-				for i, v := range reqMsg.Attach.ToMultiContent(reqMsg.Message) {
+				for i, v := range reqMsg.Attach.ToMultiContent(reqMsg.Message, b.core.FileStorage()) {
 					if v.Type != openai.ChatMessagePartTypeImageURL {
 						continue
 					}
@@ -206,7 +206,7 @@ func (b *ButlerAgent) Query(userID string, reqMsg *types.ChatMessage) ([]openai.
 
 			req = append(req, openai.ChatCompletionMessage{
 				Role:         item.Role.String(),
-				MultiContent: item.Attach.ToMultiContent(""),
+				MultiContent: item.Attach.ToMultiContent("", b.core.FileStorage()),
 			},
 				openai.ChatCompletionMessage{
 					Role:    item.Role.String(),

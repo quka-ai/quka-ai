@@ -20,6 +20,8 @@ type Plugins interface {
 	FileStorage() FileStorage
 	CreateUserDefaultPlan(ctx context.Context, appid, userID string) (string, error)
 	AIChatLogic(agentType string) AIChatLogic
+	GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error)
+	GenMessageID() string
 	EncryptData(data []byte) ([]byte, error)
 	DecryptData(data []byte) ([]byte, error)
 	DeleteSpace(ctx context.Context, spaceID string) error
@@ -56,8 +58,6 @@ type Cache interface {
 type AIChatLogic interface {
 	InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error)
 	RequestAssistant(ctx context.Context, reqMsgInfo *types.ChatMessage, receiver types.Receiver, opts *types.AICallOptions) error
-	GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error)
-	GenMessageID() string
 }
 
 type UploadFileMeta struct {

@@ -9,7 +9,6 @@ import (
 	crand "crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
@@ -18,6 +17,7 @@ import (
 	"math/rand"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,16 +26,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidscottmills/goeditorjs"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/holdno/snowFlakeByGo"
+	"github.com/samber/lo"
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
 
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
-	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 const ()
@@ -564,12 +563,6 @@ func IsValidFileTypeForLLM(contentType string) bool {
 	return false
 }
 
-// ParseRawToBlocks 已迁移到 editorjs 包
-// Deprecated: 请使用 editorjs.ParseRawToBlocks
-func ParseRawToBlocks(blockString json.RawMessage) (*editorjs.BlockContent, error) {
-	return editorjs.ParseRawToBlocks(blockString)
-}
-
 // GetFileInfo 获取文件的基本信息
 func GetFileInfo(filePath string) (FileInfo, error) {
 	info := FileInfo{}
@@ -629,24 +622,7 @@ type FileInfo struct {
 	ModTime        time.Time `json:"mod_time,omitempty"`
 }
 
-// FileStorageInterface 文件存储接口定义
-// Deprecated: 请使用 editorjs.FileStorageInterface
-type FileStorageInterface = editorjs.FileStorageInterface
-
-// ReplaceMarkdownStaticResourcesWithPresignedURL 替换markdown中的静态资源URL为预签名URL
-// Deprecated: 请使用 editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL
-func ReplaceMarkdownStaticResourcesWithPresignedURL(content string, fileStorage FileStorageInterface) string {
-	return editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(content, fileStorage)
-}
-
-// ReplaceEditorJSBlocksStaticResourcesWithPresignedURL 替换EditorJS blocks中的静态资源URL为预签名URL
-// Deprecated: 请使用 editorjs.ReplaceEditorJSBlocksStaticResourcesWithPresignedURL
-func ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocks []goeditorjs.EditorJSBlock, fileStorage FileStorageInterface) []goeditorjs.EditorJSBlock {
-	return editorjs.ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocks, fileStorage)
-}
-
-// ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL 替换EditorJS blocks中的静态资源URL为预签名URL
-// Deprecated: 请使用 editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL
-func ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON string, fileStorage FileStorageInterface) string {
-	return editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON, fileStorage)
+func RemoveAttacheURLHost(fileURL, bucketName string) string {
+	u, _ := url.Parse(fileURL)
+	return lo.If(bucketName != "" && strings.HasPrefix(u.Path, "/"+bucketName), u.Path[len(bucketName)+1:]).Else(u.Path)
 }

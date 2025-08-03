@@ -345,7 +345,7 @@ func (l *AdminUserLogic) DeleteUser(userID string) error {
 func (l *AdminUserLogic) deleteUserAccessTokens(ctx context.Context, userID string) error {
 	// 这里假设AccessTokenStore有DeleteByUser方法，如果没有需要实现
 	// return l.core.Store().AccessTokenStore().DeleteByUser(ctx, userID)
-	
+
 	// 临时实现：由于现有代码结构限制，记录日志但不删除AccessToken
 	// 在生产环境中应该删除用户的所有AccessToken
 	return nil
@@ -368,7 +368,7 @@ func (l *AdminUserLogic) deleteUserSpaces(ctx context.Context, userID string) er
 			if err := l.deleteSpaceData(ctx, userSpace.SpaceID); err != nil {
 				return fmt.Errorf("failed to delete space %s data: %w", userSpace.SpaceID, err)
 			}
-			
+
 			// 删除空间本身
 			if err := l.core.Store().SpaceStore().Delete(ctx, userSpace.SpaceID); err != nil {
 				return fmt.Errorf("failed to delete space %s: %w", userSpace.SpaceID, err)
@@ -530,7 +530,7 @@ func (l *AdminUserLogic) deleteUserChatData(ctx context.Context, userID string) 
 	// if err != nil {
 	//     return fmt.Errorf("failed to list user chat sessions: %w", err)
 	// }
-	
+
 	// for _, session := range sessions {
 	//     // 删除会话相关的所有消息
 	//     if err := l.core.Store().ChatMessageStore().DeleteBySession(ctx, session.ID); err != nil {
@@ -552,7 +552,7 @@ func (l *AdminUserLogic) deleteUserKnowledge(ctx context.Context, userID string)
 	// if err != nil {
 	//     return fmt.Errorf("failed to list user knowledge: %w", err)
 	// }
-	
+
 	// for _, knowledge := range knowledges {
 	//     if err := l.deleteKnowledgeData(ctx, knowledge.ID); err != nil {
 	//         return fmt.Errorf("failed to delete knowledge %s: %w", knowledge.ID, err)
@@ -566,7 +566,7 @@ func (l *AdminUserLogic) deleteUserKnowledge(ctx context.Context, userID string)
 func (l *AdminUserLogic) deleteUserPersonalData(ctx context.Context, userID string) error {
 	// 删除用户的日志、butler、文件管理等个人数据
 	// 这里需要根据具体的Store接口来实现各种个人数据的删除
-	
+
 	// 删除用户的分享令牌
 	// if err := l.core.Store().ShareTokenStore().DeleteByUser(ctx, userID); err != nil {
 	//     return fmt.Errorf("failed to delete user share tokens: %w", err)

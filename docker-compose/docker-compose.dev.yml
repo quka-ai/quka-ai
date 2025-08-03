@@ -3,6 +3,8 @@ version: '3.8'
 services:
   nginx:
     image: docker.1ms.run/library/nginx:alpine
+    networks:
+      - quka-network
     ports:
       - "33001:80"
     volumes:
@@ -20,12 +22,16 @@ services:
   # 权限初始化容器
   chunker: 
     image: holdnowby/filechunk-service:v0.2.0
+    networks:
+      - quka-network
     ports:
       - "33003:35051"
     command: python scripts/start_server.py --host 0.0.0.0 --port 35051
   postgres:
     user: "${UID}:${GID}"
     image: docker.1ms.run/pgvector/pgvector:pg17
+    networks:
+      - quka-network
     restart: always
     ports:
       - "33004:5432"
@@ -41,6 +47,8 @@ services:
   minio:
     user: "${UID}:${GID}"
     image: quay.io/minio/minio:latest
+    networks:
+      - quka-network
     ports:
       - "33005:9000"
       - "33006:9001"
@@ -86,3 +94,7 @@ services:
       echo '   - 用户名: '$$MINIO_ROOT_USER;
       exit 0;
       "
+
+networks:
+  quka-network:
+    driver: bridge

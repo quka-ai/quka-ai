@@ -1,9 +1,12 @@
 package types
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
+	"github.com/quka-ai/quka-ai/pkg/object-storage/s3"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 	"github.com/samber/lo"
 	"github.com/sashabaranov/go-openai"
@@ -27,13 +30,57 @@ type ChatMessage struct {
 
 type ChatMessageAttach []ChatAttach
 
-func (s ChatMessageAttach) ToMultiContent(text string) []openai.ChatMessagePart {
+func (s ChatMessageAttach) ToMultiContent(text string, fileReader interface {
+	DownloadFile(ctx context.Context, filePath string) (*s3.GetObjectResult, error)
+}) []openai.ChatMessagePart {
 	return lo.Map(s, func(item ChatAttach, _ int) openai.ChatMessagePart {
+		var (
+			base64Image string
+			err         error
+		)
+		if item.SignURL != "" {
+			base64Image, err = utils.FileToBase64(lo.If(item.SignURL != "", item.SignURL).Else(item.URL))
+			if err != nil {
+				slog.Error("Failed to convert file to base64", "error", err, "file", lo.If(item.SignURL != "", item.SignURL).Else(item.URL))
+				return openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: fmt.Sprintf("Failed to download file: %s", item.URL),
+				}
+			}
+		} else {
+			if fileReader != nil {
+				res, err := fileReader.DownloadFile(context.Background(), item.URL)
+				if err != nil {
+					slog.Error("Failed to download file", "error", err, "file", item.URL)
+					return openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeText,
+						Text: fmt.Sprintf("Failed to download file: %s", item.URL),
+					}
+				}
+
+				if base64Image, err = utils.FileBytesToBase64(res.File, res.FileType); err != nil {
+					slog.Error("Failed to convert file bytes to base64", "error", err, "file", item.URL)
+					return openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeText,
+						Text: fmt.Sprintf("Failed to convert file bytes to base64: %s", item.URL),
+					}
+				}
+			} else {
+				base64Image, err = utils.FileToBase64(item.URL)
+				if err != nil {
+					slog.Error("Failed to convert file to base64", "error", err, "file", item.URL)
+					return openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeText,
+						Text: fmt.Sprintf("Failed to convert file to base64: %s", item.URL),
+					}
+				}
+			}
+		}
 		return openai.ChatMessagePart{
 			Type: openai.ChatMessagePartTypeImageURL,
 			Text: text,
 			ImageURL: &openai.ChatMessageImageURL{
-				URL: lo.If(item.SignURL != "", item.SignURL).Else(item.URL),
+				URL: base64Image,
 			},
 		}
 	})

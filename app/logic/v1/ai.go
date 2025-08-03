@@ -326,7 +326,16 @@ type AIRequestOptions struct {
 
 func requestAIWithTools(ctx context.Context, core *core.Core, opts AIRequestOptions, receiveFunc types.ReceiveFunc, done types.DoneFunc) ([]*openai.ToolCall, error) {
 	// slog.Debug("request to ai", slog.Any("context", sessionContext.MessageContext), slog.String("prompt", sessionContext.Prompt))
-	tool := core.Srv().AI().NewQuery(ctx, opts.SessionContext.MessageContext)
+	_, isVL := lo.Find(opts.SessionContext.MessageContext, func(item *types.MessageContext) bool {
+		return len(item.MultiContent) > 0
+	})
+
+	var tool *ai.QueryOptions
+	if isVL {
+		tool = core.Srv().AI().NewVisionQuery(ctx, opts.SessionContext.MessageContext)
+	} else {
+		tool = core.Srv().AI().NewQuery(ctx, opts.SessionContext.MessageContext)
+	}
 
 	if opts.SessionContext.Prompt == "" {
 		opts.SessionContext.Prompt = core.Cfg().Prompt.Base
@@ -575,12 +584,11 @@ func (s *NormalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 		}
 	} else {
 		var userChatMessage []*types.MessageContext
-
 		if len(reqMsg.Attach) > 0 {
 			item := &types.MessageContext{
 				Role: types.USER_ROLE_USER,
 			}
-			item.MultiContent = reqMsg.Attach.ToMultiContent("")
+			item.MultiContent = reqMsg.Attach.ToMultiContent("", s.core.FileStorage())
 			userChatMessage = append(userChatMessage, item)
 		}
 
@@ -791,7 +799,7 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.C
 		Role: types.USER_ROLE_USER.String(),
 	}
 	if len(reqMsg.Attach) > 0 {
-		userChatMessage.MultiContent = reqMsg.Attach.ToMultiContent(reqMsg.Message)
+		userChatMessage.MultiContent = reqMsg.Attach.ToMultiContent(reqMsg.Message, s.core.FileStorage())
 	} else {
 		userChatMessage.Content = reqMsg.Message
 	}
@@ -1075,7 +1083,7 @@ ReGen:
 			item := &types.MessageContext{
 				Role: types.USER_ROLE_USER,
 			}
-			item.MultiContent = v.Attach.ToMultiContent("")
+			item.MultiContent = v.Attach.ToMultiContent("", core.FileStorage())
 			reqMsg = append(reqMsg, item)
 		}
 

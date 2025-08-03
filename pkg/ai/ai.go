@@ -355,8 +355,9 @@ func (s *QueryOptions) QueryStream() (*openai.ChatCompletionStream, error) {
 		},
 		Messages: lo.Map(s.query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 			return openai.ChatCompletionMessage{
-				Role:    item.Role.String(),
-				Content: item.Content,
+				Role:         item.Role.String(),
+				Content:      item.Content,
+				MultiContent: item.MultiContent,
 			}
 		}),
 		StreamOptions: &openai.StreamOptions{

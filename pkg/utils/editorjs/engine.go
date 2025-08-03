@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/davidscottmills/goeditorjs"
+	"github.com/quka-ai/quka-ai/pkg/utils"
 	"github.com/samber/lo"
 )
 
@@ -45,16 +46,15 @@ func RemoveFileBlockHost(blocks []goeditorjs.EditorJSBlock, bucketName string) [
 			if err := json.Unmarshal(block.Data, image); err != nil {
 				continue
 			}
-			u, _ := url.Parse(image.File.URL)
-			image.File.URL = lo.If(bucketName != "" && strings.HasPrefix(u.Path, "/"+bucketName), u.Path[len(bucketName)+1:]).Else(u.Path)
+
+			image.File.URL = utils.RemoveAttacheURLHost(image.File.URL, bucketName)
 			blocks[i].Data, _ = json.Marshal(image)
 		case "video":
 			video := &EditorVideo{}
 			if err := json.Unmarshal(block.Data, video); err != nil {
 				continue
 			}
-			u, _ := url.Parse(video.File.URL)
-			video.File.URL = lo.If(bucketName != "" && strings.HasPrefix(u.Path, "/"+bucketName), u.Path[len(bucketName)+1:]).Else(u.Path)
+			video.File.URL = utils.RemoveAttacheURLHost(video.File.URL, bucketName)
 			blocks[i].Data, _ = json.Marshal(video)
 		default:
 			continue

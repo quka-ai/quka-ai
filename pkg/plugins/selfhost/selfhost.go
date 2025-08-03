@@ -184,10 +184,10 @@ type AIChatLogic struct {
 	plugins.Assistant
 }
 
-func (a *AIChatLogic) GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error) {
+func (s *SelfHostPlugin) GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	latestChat, err := a.core.Store().ChatMessageStore().GetSessionLatestMessage(ctx, spaceID, sessionID)
+	latestChat, err := s.core.AppCore.Store().ChatMessageStore().GetSessionLatestMessage(ctx, spaceID, sessionID)
 	if err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
@@ -197,7 +197,7 @@ func (a *AIChatLogic) GetChatSessionSeqID(ctx context.Context, spaceID, sessionI
 	return latestChat.Sequence + 1, nil
 }
 
-func (s *AIChatLogic) GenMessageID() string {
+func (s *SelfHostPlugin) GenMessageID() string {
 	return utils.GenRandomID()
 }
 
@@ -213,10 +213,15 @@ func (s *SelfHostPlugin) AIChatLogic(agentType string) core.AIChatLogic {
 			core:      s.core.AppCore,
 			Assistant: v1.NewJournalAssistant(s.core.AppCore, agentType),
 		}
-	default:
+	case types.AGENT_TYPE_NORMAL:
 		return &AIChatLogic{
 			core:      s.core.AppCore,
 			Assistant: v1.NewNormalAssistant(s.core.AppCore, agentType),
+		}
+	default:
+		return &AIChatLogic{
+			core:      s.core.AppCore,
+			Assistant: v1.NewAutoAssistant(s.core.AppCore, agentType),
 		}
 	}
 }
