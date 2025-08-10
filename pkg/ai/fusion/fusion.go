@@ -146,7 +146,7 @@ func (s *Driver) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 		return false
 	}
 
-	return tokenNum > 8000
+	return tokenNum > 80000
 }
 
 func (s *Driver) EnhanceQuery(ctx context.Context, messages []openai.ChatCompletionMessage) (ai.EnhanceQueryResult, error) {

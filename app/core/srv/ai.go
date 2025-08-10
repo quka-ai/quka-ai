@@ -3,7 +3,6 @@ package srv
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -54,6 +53,8 @@ type AIDriver interface {
 	VisionAI
 	RerankAI
 	DescribeImage(ctx context.Context, lang, imageURL string) (*oai.ChatCompletionResponse, error)
+
+	GetConfig(modelType string) types.ModelConfig
 }
 
 type AIConfig struct {
@@ -102,6 +103,27 @@ type AI struct {
 	readerDefault  ReaderAI
 	visionDefault  VisionAI
 	rerankDefault  RerankAI
+
+	allModels map[string]types.ModelConfig
+	usage     Usage
+}
+
+func (s *AI) GetConfig(modelType string) types.ModelConfig {
+	switch modelType {
+	case types.ModelTypeChat:
+		return s.allModels[s.usage.Chat]
+	case types.ModelTypeEmbedding:
+		return s.allModels[s.usage.Embedding]
+	case types.MODEL_TYPE_ENHANCE:
+		return s.allModels[s.usage.Enhance]
+	case types.MODEL_TYPE_VISION:
+		return s.allModels[s.usage.Vision]
+	case types.MODEL_TYPE_RERANK:
+		return s.allModels[s.usage.Rerank]
+	case types.MODEL_TYPE_READER:
+		return s.allModels[s.usage.Reader]
+	}
+	return types.ModelConfig{}
 }
 
 func (s *AI) DescribeImage(ctx context.Context, lang, imageURL string) (*oai.ChatCompletionResponse, error) {
@@ -261,7 +283,6 @@ func SetupReader(s *AI, providers []types.ModelProvider) error {
 
 		switch strings.ToLower(v.Name) {
 		case strings.ToLower(jina.NAME):
-			fmt.Println("init jina reader driver", v.ID, v.ApiKey, v.ApiUrl)
 			driver := jina.New(v.ApiKey, v.ApiUrl)
 			// 使用provider_id作为key，不是固定的"jina"
 			s.readerDrivers[v.ID] = driver
@@ -287,6 +308,11 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 		visionUsage:    make(map[string]VisionAI),
 		rerankDrivers:  make(map[string]RerankAI),
 		rerankUsage:    make(map[string]RerankAI),
+
+		allModels: lo.SliceToMap(models, func(item types.ModelConfig) (string, types.ModelConfig) {
+			return item.ID, item
+		}),
+		usage: usage,
 	}
 
 	// 设置模型配置

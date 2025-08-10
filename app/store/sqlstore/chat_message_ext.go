@@ -27,7 +27,7 @@ func NewChatMessageExtStore(provider SqlProviderAchieve) *ChatMessageExtStore {
 	store := &ChatMessageExtStore{}
 	store.SetProvider(provider)
 	store.SetTable(types.TABLE_CHAT_MESSAGE_EXT)
-	store.SetAllColumns("message_id", "space_id", "session_id", "evaluate", "generation_status", "rel_docs", "created_at", "updated_at")
+	store.SetAllColumns("message_id", "space_id", "session_id", "evaluate", "generation_status", "rel_docs", "tool_name", "tool_args", "created_at", "updated_at")
 	return store
 }
 
@@ -42,8 +42,8 @@ func (s *ChatMessageExtStore) Create(ctx context.Context, data types.ChatMessage
 	}
 
 	query := sq.Insert(s.GetTable()).
-		Columns("message_id", "space_id", "session_id", "evaluate", "generation_status", "rel_docs", "created_at", "updated_at").
-		Values(data.MessageID, data.SpaceID, data.SessionID, data.Evaluate, data.GenerationStatus, pq.Array(data.RelDocs), data.CreatedAt, data.UpdatedAt)
+		Columns("message_id", "space_id", "session_id", "evaluate", "generation_status", "rel_docs", "tool_name", "tool_args", "created_at", "updated_at").
+		Values(data.MessageID, data.SpaceID, data.SessionID, data.Evaluate, data.GenerationStatus, pq.Array(data.RelDocs), data.ToolName, data.ToolArgs, data.CreatedAt, data.UpdatedAt)
 
 	queryString, args, err := query.ToSql()
 	if err != nil {

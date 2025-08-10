@@ -72,7 +72,7 @@ func (l *ModelConfigLogic) CreateModel(req CreateModelRequest) (*types.ModelConf
 		return nil, errors.New("ModelConfigLogic.CreateModel.GetProvider", i18n.ERROR_INTERNAL, err)
 	}
 	if provider == nil {
-		return nil, errors.New("ModelConfigLogic.CreateModel.ProviderNotFound", "指定的提供商不存在", nil).Code(http.StatusBadRequest)
+		return nil, errors.New("ModelConfigLogic.CreateModel.ProviderNotFound", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusBadRequest)
 	}
 
 	// 检查模型名称在该提供商下是否已存在
@@ -86,7 +86,7 @@ func (l *ModelConfigLogic) CreateModel(req CreateModelRequest) (*types.ModelConf
 
 	for _, model := range existingModels {
 		if model.ModelName == req.ModelName && model.ModelType == req.ModelType {
-			return nil, errors.New("ModelConfigLogic.CreateModel.ModelExists", "该提供商下已存在同名模型", nil).Code(http.StatusBadRequest)
+			return nil, errors.New("ModelConfigLogic.CreateModel.ModelExists", i18n.ERROR_EXIST, nil).Code(http.StatusBadRequest)
 		}
 	}
 
@@ -157,8 +157,8 @@ func (l *ModelConfigLogic) UpdateModel(id string, req UpdateModelRequest) (*type
 		}
 
 		for _, model := range existingModels {
-			if model.ModelName == req.ModelName && model.ID != id {
-				return nil, errors.New("ModelConfigLogic.UpdateModel.ModelExists", "该提供商下已存在同名模型", nil).Code(http.StatusBadRequest)
+			if model.ModelName == req.ModelName && model.ID != id && model.ModelType == req.ModelType {
+				return nil, errors.New("ModelConfigLogic.UpdateModel.ModelExists", i18n.ERROR_EXIST, nil).Code(http.StatusBadRequest)
 			}
 		}
 	}

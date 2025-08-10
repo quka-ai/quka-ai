@@ -9,6 +9,7 @@ import (
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
+
 	"github.com/quka-ai/quka-ai/pkg/errors"
 )
 
@@ -17,9 +18,10 @@ type LoggerCallback struct {
 }
 
 func (cb *LoggerCallback) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
-	fmt.Println("==================")
+	fmt.Println("=========[OnStart]==========")
 	inputStr, _ := json.MarshalIndent(input, "", "  ") // nolint: byted_s_returned_err_check
-	fmt.Printf("[OnStart] %s\n", string(inputStr))
+	fmt.Printf("%s\n", string(inputStr))
+	fmt.Println("=========[OnStart End]==========")
 	return ctx
 }
 
@@ -27,12 +29,14 @@ func (cb *LoggerCallback) OnEnd(ctx context.Context, info *callbacks.RunInfo, ou
 	fmt.Println("=========[OnEnd]=========")
 	outputStr, _ := json.MarshalIndent(output, "", "  ") // nolint: byted_s_returned_err_check
 	fmt.Println(string(outputStr))
+	fmt.Println("=========[OnEnd End]==========")
 	return ctx
 }
 
 func (cb *LoggerCallback) OnError(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
 	fmt.Println("=========[OnError]=========")
 	fmt.Println(err)
+	fmt.Println("=========[OnError End]==========")
 	return ctx
 }
 
@@ -51,6 +55,7 @@ func (cb *LoggerCallback) OnEndWithStreamOutput(ctx context.Context, info *callb
 		defer output.Close() // remember to close the stream in defer
 
 		fmt.Println("=========[OnEndStream]=========")
+		defer fmt.Println("=========[OnEndStream End]=========")
 		for {
 			frame, err := output.Recv()
 			if errors.Is(err, io.EOF) {

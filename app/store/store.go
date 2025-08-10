@@ -161,16 +161,16 @@ type ChatMessageStore interface {
 	sqlstore.SqlCommons // 继承通用SQL操作
 	Create(ctx context.Context, data *types.ChatMessage) error
 	GetOne(ctx context.Context, id string) (*types.ChatMessage, error)
-	RewriteMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete int32) error
-	AppendMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete int32) error
-	UpdateMessageCompleteStatus(ctx context.Context, sessionID, id string, complete int32) error
+	RewriteMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete types.MessageProgress) error
+	AppendMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete types.MessageProgress) error
+	UpdateMessageCompleteStatus(ctx context.Context, sessionID, id string, complete types.MessageProgress) error
 	UpdateMessageAttach(ctx context.Context, sessionID, id string, attach types.ChatMessageAttach) error
 	DeleteMessage(ctx context.Context, id string) error
 	DeleteAll(ctx context.Context, spaceID string) error
 	DeleteSessionMessage(ctx context.Context, spaceID, sessionID string) error
-	ListSessionMessageUpToGivenID(ctx context.Context, spaceID, sessionID, msgID string, page, pageSize uint64) ([]*types.ChatMessage, error)
-	ListSessionMessage(ctx context.Context, spaceID, sessionID, afterMsgID string, page, pageSize uint64) ([]*types.ChatMessage, error)
-	TotalSessionMessage(ctx context.Context, spaceID, sessionID, afterMsgID string) (int64, error)
+	ListSessionMessageUpToGivenID(ctx context.Context, spaceID, sessionID string, msgSequence int64, page, pageSize uint64) ([]*types.ChatMessage, error)
+	ListSessionMessage(ctx context.Context, spaceID, sessionID string, msgSequence int64, page, pageSize uint64) ([]*types.ChatMessage, error)
+	TotalSessionMessage(ctx context.Context, spaceID, sessionID string, msgSequence int64) (int64, error)
 	Exist(ctx context.Context, spaceID, sessionID, msgID string) (bool, error)
 	GetMessagesByIDs(ctx context.Context, msgIDs []string) ([]*types.ChatMessage, error)
 	GetSessionLatestMessage(ctx context.Context, spaceID, sessionID string) (*types.ChatMessage, error)

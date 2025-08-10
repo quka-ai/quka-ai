@@ -261,7 +261,7 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 		return nil, errors.New("ShareLogic.GetSessionByShareToken.ChatSessionStore.GetChatSession.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNoContent)
 	}
 
-	messageList, err := l.core.Store().ChatMessageStore().ListSessionMessage(l.ctx, link.SpaceID, link.ObjectID, "", types.NO_PAGINATION, types.NO_PAGINATION)
+	messageList, err := l.core.Store().ChatMessageStore().ListSessionMessage(l.ctx, link.SpaceID, link.ObjectID, 0, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, errors.New("ShareLogic.GetSessionByShareToken.ChatMessageStore.ListSessionMessage", i18n.ERROR_INTERNAL, err)
 	}

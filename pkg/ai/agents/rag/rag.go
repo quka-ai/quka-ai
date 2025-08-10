@@ -18,11 +18,11 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
-func EnhanceChatQuery(ctx context.Context, core *core.Core, query string, spaceID, sessionID, messageID string) (ai.EnhanceQueryResult, error) {
-	histories, err := core.Store().ChatMessageStore().ListSessionMessageUpToGivenID(ctx, spaceID, sessionID, messageID, 1, 6)
+func EnhanceChatQuery(ctx context.Context, core *core.Core, query string, spaceID, sessionID string, msgSequence int64) (ai.EnhanceQueryResult, error) {
+	histories, err := core.Store().ChatMessageStore().ListSessionMessageUpToGivenID(ctx, spaceID, sessionID, msgSequence, 1, 6)
 	if err != nil {
 		slog.Error("Failed to get session message history", slog.String("space_id", spaceID), slog.String("session_id", sessionID),
-			slog.String("message_id", messageID), slog.String("error", err.Error()))
+			slog.Int64("message_sequence", msgSequence), slog.String("error", err.Error()))
 	}
 
 	if len(histories) <= 1 {

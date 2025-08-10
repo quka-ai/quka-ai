@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/samber/lo"
 	"github.com/sashabaranov/go-openai"
 
@@ -29,41 +30,26 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
+func nopReceiveFunc(message types.MessageContent, progressStatus types.MessageProgress) error {
+	return nil
+}
+
+func nopDoneFunc(_ error) error {
+	return nil
+}
+
 // handleAssistantMessage 通过ws通知前端开始响应用户请求
 func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter SendedCounter, msg *types.ChatMessage) types.ReceiveFunc {
+	if msg == nil {
+		return nopReceiveFunc
+	}
 	imTopic := protocol.GenIMTopic(msg.SessionID)
 	return func(message types.MessageContent, progressStatus types.MessageProgress) error {
-		assistantStatus := types.WS_EVENT_ASSISTANT_CONTINUE
+		defer sendedCounter.Add(message.Bytes())
+		msg.Message += string(message.Bytes())
 		switch message.Type() {
 		case types.MESSAGE_TYPE_TEXT:
-			if msg.Message == "" {
-				msg.Message = string(message.Bytes())
-			}
-
-			defer sendedCounter.Add(message.Bytes())
-
-			switch progressStatus {
-			case types.MESSAGE_PROGRESS_CANCELED:
-				assistantStatus = types.WS_EVENT_ASSISTANT_DONE
-				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, int32(progressStatus)); err != nil {
-					slog.Error("failed to finished ai answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-						slog.String("error", err.Error()))
-				}
-			case types.MESSAGE_PROGRESS_FAILED:
-				assistantStatus = types.WS_EVENT_ASSISTANT_FAILED
-				if err := core.Store().ChatMessageStore().RewriteMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), int32(progressStatus)); err != nil {
-					slog.Error("failed to rewrite ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-						slog.String("error", err.Error()))
-					return err
-				}
-			default:
-				// todo retry
-				if err := core.Store().ChatMessageStore().AppendMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), int32(progressStatus)); err != nil {
-					slog.Error("failed to append ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-						slog.String("error", err.Error()))
-					return err
-				}
-			}
+			assistantStatus := types.WS_EVENT_ASSISTANT_CONTINUE
 
 			if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
 				MessageID: msg.ID,
@@ -77,7 +63,35 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 				return err
 			}
 
+			switch progressStatus {
+			case types.MESSAGE_PROGRESS_CANCELED:
+				assistantStatus = types.WS_EVENT_ASSISTANT_DONE
+				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, progressStatus); err != nil {
+					slog.Error("failed to finished ai answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+				}
+			case types.MESSAGE_PROGRESS_FAILED:
+				assistantStatus = types.WS_EVENT_ASSISTANT_FAILED
+				if err := core.Store().ChatMessageStore().RewriteMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), progressStatus); err != nil {
+					slog.Error("failed to rewrite ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
+			default:
+				// todo retry
+				raw := message.Bytes()
+				if len(raw) == 0 {
+					break
+				}
+				if err := core.Store().ChatMessageStore().AppendMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, raw, progressStatus); err != nil {
+					slog.Error("failed to append ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
+			}
+
 		case types.MESSAGE_TYPE_TOOL_TIPS:
+			assistantStatus := types.WS_EVENT_TOOL_CONTINUE
 			if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
 				MessageID: msg.ID,
 				SessionID: msg.SessionID,
@@ -88,6 +102,35 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 			}); err != nil {
 				slog.Error("failed to publish ai answer", slog.String("imtopic", imTopic), slog.String("error", err.Error()))
 				return err
+			}
+
+			switch progressStatus {
+			case types.MESSAGE_PROGRESS_COMPLETE:
+				fallthrough
+			case types.MESSAGE_PROGRESS_CANCELED:
+				assistantStatus = types.WS_EVENT_TOOL_DONE
+				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, progressStatus); err != nil {
+					slog.Error("failed to finished ai answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+				}
+			case types.MESSAGE_PROGRESS_FAILED:
+				assistantStatus = types.WS_EVENT_TOOL_FAILED
+				if err := core.Store().ChatMessageStore().RewriteMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), progressStatus); err != nil {
+					slog.Error("failed to rewrite ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
+			default:
+				// todo retry
+				raw := message.Bytes()
+				if len(raw) == 0 {
+					break
+				}
+				if err := core.Store().ChatMessageStore().RewriteMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, raw, progressStatus); err != nil {
+					slog.Error("failed to append ai answer message to db", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
 			}
 
 		default:
@@ -101,42 +144,45 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 
 // handleAssistantMessage 通过ws通知前端智能助理完成用户请求
 func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCounter, msg *types.ChatMessage, callback func(msg *types.ChatMessage)) types.DoneFunc {
+	if msg == nil {
+		return nopDoneFunc
+	}
 	imTopic := protocol.GenIMTopic(msg.SessionID)
 	return func(err error) error {
 		// todo retry
-		assistantStatus := types.WS_EVENT_ASSISTANT_DONE
+		assistantStatus := lo.If(msg.MsgType == types.MESSAGE_TYPE_TOOL_TIPS, types.WS_EVENT_TOOL_DONE).Else(types.WS_EVENT_ASSISTANT_DONE)
 		completeStatus := types.MESSAGE_PROGRESS_COMPLETE
 		message := ""
 
 		if err != nil {
 			if err == context.Canceled {
-				assistantStatus = types.WS_EVENT_ASSISTANT_DONE
 				completeStatus = types.MESSAGE_PROGRESS_CANCELED
+			} else {
+				completeStatus = types.MESSAGE_PROGRESS_FAILED
+			}
+			if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, completeStatus); err != nil {
+				slog.Error("failed to finished assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+					slog.String("error", err.Error()))
+				return err
+			}
 
-				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, int32(completeStatus)); err != nil {
-					slog.Error("failed to finished assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-						slog.String("error", err.Error()))
-					return err
-				}
-
-				if callback != nil {
-					callback(msg)
-				}
+			if callback != nil {
+				callback(msg)
 			}
 		} else {
 			if strCounter.Get() == 0 {
 				message = types.AssistantFailedMessage
-				assistantStatus = types.WS_EVENT_ASSISTANT_FAILED
+				assistantStatus = lo.If(msg.MsgType == types.MESSAGE_TYPE_TOOL_TIPS, types.WS_EVENT_TOOL_FAILED).Else(types.WS_EVENT_ASSISTANT_FAILED)
 				completeStatus = types.MESSAGE_PROGRESS_FAILED
 				slog.Error("assistant response is empty, will delete assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID))
 				// 返回了0个字符就完成的情况一般是assistant服务异常，无响应，服务端删除该消息，避免数据库存在空记录
-				// if err := core.Store().ChatMessageStore().DeleteMessage(ctx, msg.ID); err != nil {
-				// 	slog.Error("failed to delete assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
-				// 		slog.String("error", err.Error()))
-				// 	return err
-				// }
+				if err := core.Store().ChatMessageStore().DeleteMessage(ctx, msg.ID); err != nil {
+					slog.Error("failed to delete assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+					return err
+				}
 			} else {
-				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, int32(types.MESSAGE_PROGRESS_COMPLETE)); err != nil {
+				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, types.MESSAGE_PROGRESS_COMPLETE); err != nil {
 					slog.Error("failed to finished assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
 						slog.String("error", err.Error()))
 					return err
@@ -179,12 +225,16 @@ type FireTowerMessager struct {
 func (s *FireTowerMessager) PublishMessage(_type types.WsEventType, data any) error {
 	switch _type {
 	case types.WS_EVENT_ASSISTANT_INIT:
-		if err := s.tower.PublishStreamMessageWithSubject(s.topic, "on_message_init", types.WS_EVENT_ASSISTANT_INIT, data); err != nil {
+		fallthrough
+	case types.WS_EVENT_TOOL_INIT:
+		if err := s.tower.PublishStreamMessageWithSubject(s.topic, "on_message_init", _type, data); err != nil {
 			slog.Error("failed to publish ai message builded event", slog.String("im_topic", s.topic), slog.String("error", err.Error()))
 			return err
 		}
 	case types.WS_EVENT_ASSISTANT_CONTINUE:
-		if err := s.tower.PublishStreamMessageWithSubject(s.topic, "on_message", types.WS_EVENT_ASSISTANT_INIT, data); err != nil {
+		fallthrough
+	case types.WS_EVENT_TOOL_CONTINUE:
+		if err := s.tower.PublishStreamMessageWithSubject(s.topic, "on_message", _type, data); err != nil {
 			slog.Error("failed to publish ai message stream", slog.String("im_topic", s.topic), slog.String("error", err.Error()))
 			return err
 		}
@@ -455,11 +505,13 @@ func (s *NormalAssistant) GenSessionContext(ctx context.Context, prompt string, 
 	return GenChatSessionContextAndSummaryIfExceedsTokenLimit(ctx, s.core, prompt, reqMsgWithDocs, normalGenMessageCondition, types.GEN_CONTEXT)
 }
 
-func NewChatReceiver(ctx context.Context, core *core.Core, msger types.Messager) types.Receiver {
+func NewChatReceiver(ctx context.Context, core *core.Core, msger types.Messager, reqMessage *types.ChatMessage) types.Receiver {
 	return &ChatReceiveHandler{
 		ctx:           ctx,
 		core:          core,
 		Messager:      msger,
+		userReqMsg:    reqMessage,
+		messageID:     core.GenMessageID(),
 		sendedCounter: &sendedCounter{},
 	}
 }
@@ -485,6 +537,9 @@ type ChatReceiveHandler struct {
 	ctx  context.Context
 	core *core.Core
 	types.Messager
+
+	messageID     string
+	userReqMsg    *types.ChatMessage
 	receiveMsg    *types.ChatMessage
 	sendedCounter *sendedCounter
 }
@@ -493,22 +548,56 @@ func (s *ChatReceiveHandler) IsStream() bool {
 	return true
 }
 
-func (s *ChatReceiveHandler) RecvMessageInit(userReqMsg *types.ChatMessage, msgID string, seqID int64, ext types.ChatMessageExt) error {
+func (s *ChatReceiveHandler) MessageID() string {
+	return s.messageID
+}
+
+func (s *ChatReceiveHandler) RecvMessageInit(ext types.ChatMessageExt) error {
 	ctx, cancel := context.WithTimeout(s.ctx, time.Second*5)
 	defer cancel()
 	var err error
-	s.receiveMsg, err = initAssistantMessage(ctx, s.core, msgID, seqID, userReqMsg, ext)
+	seqID, err := s.core.GetChatSessionSeqID(ctx, s.userReqMsg.SpaceID, s.userReqMsg.SessionID)
 	if err != nil {
 		return err
 	}
-	return s.PublishMessage(types.WS_EVENT_ASSISTANT_INIT, chatMsgToTextMsg(s.receiveMsg))
+
+	s.receiveMsg, err = initAssistantMessage(ctx, s.core, s.messageID, seqID, s.userReqMsg, ext)
+	if err != nil {
+		return err
+	}
+
+	return s.PublishMessage(lo.If(s.receiveMsg.Role == types.USER_ROLE_TOOL, types.WS_EVENT_TOOL_INIT).Else(types.WS_EVENT_ASSISTANT_INIT), chatMsgToTextMsg(s.receiveMsg))
+}
+
+func (s *ChatReceiveHandler) Copy() types.Receiver {
+	c := *s
+	c.receiveMsg = nil
+	c.messageID = s.core.GenMessageID()
+	c.sendedCounter = &sendedCounter{}
+	return &c
 }
 
 func (s *ChatReceiveHandler) GetReceiveFunc() types.ReceiveFunc {
+	if s.receiveMsg == nil {
+		s.receiveMsg = &types.ChatMessage{
+			ID:        s.messageID,
+			SpaceID:   s.userReqMsg.SpaceID,
+			SessionID: s.userReqMsg.SessionID,
+			UserID:    s.userReqMsg.UserID,
+		}
+	}
 	return getStreamReceiveFunc(s.ctx, s.core, s.sendedCounter, s.receiveMsg)
 }
 
 func (s *ChatReceiveHandler) GetDoneFunc(callback func(msg *types.ChatMessage)) types.DoneFunc {
+	if s.receiveMsg == nil {
+		s.receiveMsg = &types.ChatMessage{
+			ID:        s.messageID,
+			SpaceID:   s.userReqMsg.SpaceID,
+			SessionID: s.userReqMsg.SessionID,
+			UserID:    s.userReqMsg.UserID,
+		}
+	}
 	return getStreamDoneFunc(s.ctx, s.core, s.sendedCounter, s.receiveMsg, callback)
 }
 
@@ -528,11 +617,20 @@ type QueryReceiveHandler struct {
 	sendedLength int64
 }
 
+func (s *QueryReceiveHandler) MessageID() string {
+	return s.MessageID()
+}
+
+func (s *QueryReceiveHandler) Copy() types.Receiver {
+	c := *s
+	return &c
+}
+
 func (s *QueryReceiveHandler) IsStream() bool {
 	return false
 }
 
-func (s *QueryReceiveHandler) RecvMessageInit(userReqMsg *types.ChatMessage, msgID string, seqID int64, ext types.ChatMessageExt) error {
+func (s *QueryReceiveHandler) RecvMessageInit(ext types.ChatMessageExt) error {
 	return nil
 }
 
@@ -820,7 +918,6 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.C
 	receiveFunc(&types.ToolTips{
 		ID:       toolID,
 		ToolName: "SearchJournal",
-		Status:   types.TOOL_STATUS_RUNNING,
 		Content:  "Searching your journals...",
 	}, types.MESSAGE_PROGRESS_GENERATING)
 
@@ -830,7 +927,6 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.C
 			receiveFunc(&types.ToolTips{
 				ID:       toolID,
 				ToolName: "SearchJournal",
-				Status:   types.TOOL_STATUS_SUCCESS,
 				Content:  "Searching your journals done",
 			}, types.MESSAGE_PROGRESS_GENERATING)
 		})
@@ -947,7 +1043,10 @@ func createChatSessionKnowledgePin(core *core.Core, recvMsgInfo *types.ChatMessa
 func initAssistantMessage(ctx context.Context, core *core.Core, msgID string, seqID int64, userReqMsg *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error) {
 	// pre-generate response messages
 	answerMsg := genUncompleteAIMessage(userReqMsg.SpaceID, userReqMsg.SessionID, msgID, seqID)
-
+	if ext.ToolName != "" {
+		answerMsg.Role = types.USER_ROLE_TOOL
+		answerMsg.MsgType = types.MESSAGE_TYPE_TOOL_TIPS
+	}
 	answerMsg.MsgBlock = userReqMsg.MsgBlock
 	answerMsg.UserID = userReqMsg.UserID // ai answer message is also belong to user
 
@@ -988,14 +1087,14 @@ func genUncompleteAIMessage(spaceID, sessionID, msgID string, seqID int64) *type
 	}
 }
 
-type messageCondition func(historyMsgID, inputMsgID string) bool
+type messageCondition func(historyMsgSequence, inputMsgSequence int64) bool
 
-func normalGenMessageCondition(historyMsgID, inputMsgID string) bool {
-	return historyMsgID > inputMsgID
+func normalGenMessageCondition(historyMsgSequence, inputMsgSequence int64) bool {
+	return historyMsgSequence > inputMsgSequence
 }
 
-func reGenMessageCondition(historyMsgID, inputMsgID string) bool {
-	return historyMsgID >= inputMsgID
+func reGenMessageCondition(historyMsgSequence, inputMsgSequence int64) bool {
+	return historyMsgSequence >= inputMsgSequence
 }
 
 func appendSummaryToPromptMsg(msg *types.MessageContext, summary *types.ChatSummary) {
@@ -1038,19 +1137,19 @@ ReGen:
 	}
 
 	// 获取比summary msgid更大的聊天内容组成上下文
-	msgList, err := core.Store().ChatMessageStore().ListSessionMessage(ctx, reqMsgWithDocs.SpaceID, reqMsgWithDocs.SessionID, summary.MessageID, types.NO_PAGINATION, types.NO_PAGINATION)
+	msgList, err := core.Store().ChatMessageStore().ListSessionMessage(ctx, reqMsgWithDocs.SpaceID, reqMsgWithDocs.SessionID, summary.Sequence, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil {
 		return nil, errors.New("genDialogContextAndSummaryIfExceedsTokenLimit.ChatMessageStore.ListSessionMessage", i18n.ERROR_INTERNAL, err)
 	}
 
 	// 对消息按msgid进行排序
 	sort.Slice(msgList, func(i, j int) bool {
-		return msgList[i].ID < msgList[j].ID
+		return msgList[i].Sequence < msgList[j].Sequence
 	})
 
 	var (
 		summaryMessageCutRange int
-		summaryMessageID       string
+		summaryMessageSeqID    int64
 		contextIndex           int
 	)
 
@@ -1072,7 +1171,7 @@ ReGen:
 			continue
 		}
 
-		if msgCondition(v.ID, reqMsgWithDocs.ID) {
+		if msgCondition(v.Sequence, reqMsgWithDocs.Sequence) {
 			// 当前逻辑回复的是 msgID, 所以上下文中不应该出现晚于 msgID 出现的消息，多人场景会有此情况
 			break
 		}
@@ -1085,12 +1184,32 @@ ReGen:
 			}
 			item.MultiContent = v.Attach.ToMultiContent("", core.FileStorage())
 			reqMsg = append(reqMsg, item)
+		} else {
+			if v.Role == types.USER_ROLE_TOOL {
+				ext, err := core.Store().ChatMessageExtStore().GetChatMessageExt(ctx, reqMsgWithDocs.SpaceID, reqMsgWithDocs.SessionID, v.ID)
+				if err != nil {
+					slog.Error("failed to get tool call message ext", slog.Any("error", err))
+					continue
+				}
+				reqMsg = append(reqMsg, &types.MessageContext{
+					Role:    types.USER_ROLE_ASSISTANT,
+					Content: "",
+					ToolCalls: []openai.ToolCall{
+						{
+							Type: openai.ToolTypeFunction,
+							Function: openai.FunctionCall{
+								Name:      ext.ToolName,
+								Arguments: ext.ToolArgs.String,
+							},
+						},
+					},
+				})
+			}
+			reqMsg = append(reqMsg, &types.MessageContext{
+				Role:    v.Role,
+				Content: v.Message,
+			})
 		}
-
-		reqMsg = append(reqMsg, &types.MessageContext{
-			Role:    types.USER_ROLE_USER,
-			Content: v.Message,
-		})
 
 		// if v.ID == reqMsgWithDocs.ID {
 		// 	userChatMessage := &types.MessageContext{
@@ -1118,7 +1237,7 @@ ReGen:
 		} else {
 			summaryMessageCutRange = 1
 		}
-		summaryMessageID = msgList[contextIndex-summaryMessageCutRange].ID
+		summaryMessageSeqID = msgList[contextIndex-summaryMessageCutRange].Sequence
 	}
 
 	// 计算token是否超出限额，超出20条记录自动做一次总结
@@ -1142,7 +1261,7 @@ ReGen:
 
 		reGen = true
 		// 生成新的总结
-		if err = genChatSessionContextSummary(ctx, core, reqMsgWithDocs.SessionID, summaryMessageID, summaryReq); err != nil {
+		if err = GenChatSessionContextSummary(ctx, core, reqMsgWithDocs.SpaceID, reqMsgWithDocs.SessionID, summaryMessageSeqID, summaryReq); err != nil {
 			return nil, errors.Trace("genDialogContextAndSummaryIfExceedsTokenLimit.genDialogContextSummary", err)
 		}
 		if justGenSummary == types.GEN_SUMMARY_ONLY {
@@ -1166,36 +1285,51 @@ type SessionContext struct {
 	Tempature      *float32
 }
 
-// genChatSessionContextSummary 生成dialog上下文总结
-func genChatSessionContextSummary(ctx context.Context, core *core.Core, sessionID, summaryMessageID string, reqMsg []*types.MessageContext) error {
-	slog.Debug("start generating context summary", slog.String("session_id", sessionID), slog.String("msg_id", summaryMessageID), slog.Any("request_message", reqMsg))
+// GenChatSessionContextSummary 生成dialog上下文总结
+func GenChatSessionContextSummary(ctx context.Context, core *core.Core, spaceID, sessionID string, summaryMessageSeqID int64, reqMsg []*types.MessageContext) error {
+	// slog.Debug("start generating context summary", slog.String("session_id", sessionID), slog.String("msg_id", summaryMessageID), slog.Any("request_message", reqMsg))
 	prompt := core.Cfg().Prompt.ChatSummary
 	if prompt == "" {
-		prompt = ai.PROMPT_SUMMARY_DEFAULT_EN
+		prompt = ai.PROMPT_SUMMARY_DEFAULT_CN
 	}
 
-	queryOpts := core.Srv().AI().NewQuery(ctx, reqMsg)
-	queryOpts.WithPrompt(prompt)
-
-	// 总结仍然使用v3来生成
-	resp, err := queryOpts.Query()
-	if err != nil || len(resp.Choices) == 0 {
-		slog.Error("failed to generate dialog context summary", slog.String("error", err.Error()), slog.Any("response", resp))
-		return errors.New("genDialogContextSummary.gptSrv.Chat", i18n.ERROR_INTERNAL, err)
+	cfg := core.Srv().AI().GetConfig(types.ModelTypeChat)
+	// raw, _ := json.Marshal(cfg)
+	// fmt.Println(222, string(raw))
+	model, err := GetToolCallingModel(&types.AgentContext{
+		Context:        ctx,
+		EnableThinking: false,
+	}, cfg)
+	if err != nil {
+		return err
 	}
 
-	if len(resp.Choices) > 1 {
-		slog.Warn("chat method response multi line content", slog.Any("response", resp))
+	messages := lo.Map(reqMsg, func(item *types.MessageContext, i int) *schema.Message {
+		if i == 0 {
+			return schema.SystemMessage(prompt)
+		}
+		return &schema.Message{
+			Role:    schema.RoleType(item.Role.String()),
+			Content: item.Content,
+		}
+	})
+
+	messages = append(messages, schema.UserMessage("请对上述对话做一个总结。"))
+
+	resp, err := model.Generate(ctx, messages)
+	if err != nil {
+		return errors.New("g11enDialogContextSummary.gptSrv.Chat", i18n.ERROR_INTERNAL, err)
 	}
 
 	if err = core.Store().ChatSummaryStore().Create(ctx, types.ChatSummary{
 		ID:        utils.GenSpecIDStr(),
+		SpaceID:   spaceID,
 		SessionID: sessionID,
-		MessageID: summaryMessageID,
-		Content:   resp.Choices[0].Message.Content,
+		Sequence:  summaryMessageSeqID,
+		Content:   resp.Content,
 	}); err != nil {
 		return errors.New("genDialogContextSummary.ChatSummaryStore.Create", i18n.ERROR_INTERNAL, err)
 	}
-	slog.Debug("succeed to generate summary", slog.String("session_id", sessionID), slog.String("msg_id", summaryMessageID))
+	slog.Debug("succeed to generate summary", slog.String("session_id", sessionID), slog.Int64("message_sequence", summaryMessageSeqID))
 	return nil
 }

@@ -524,7 +524,7 @@ func (l *KnowledgeLogic) Query(spaceID, agent string, resource *types.ResourceQu
 		}
 	case types.AGENT_TYPE_NORMAL:
 
-		enhanceResult, _ := rag.EnhanceChatQuery(l.ctx, l.core, msgArgs.Message, msgArgs.SpaceID, msgArgs.SessionID, msgArgs.ID)
+		enhanceResult, _ := rag.EnhanceChatQuery(l.ctx, l.core, msgArgs.Message, msgArgs.SpaceID, msgArgs.SessionID, msgArgs.Sequence)
 
 		process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msgArgs.ID, enhanceResult.Usage)
 

@@ -267,6 +267,8 @@ type MessageExt struct {
 	IsRead           []string     `json:"is_read"`
 	RelDocs          []string     `json:"rel_docs"`
 	Evaluate         EvaluateType `json:"evaluate"`
+	ToolName         string       `json:"tool_name"`
+	ToolArgs         string       `json:"tool_args"`
 	IsEvaluateEnable bool         `json:"is_evaluate_enable"`
 }
 

@@ -15,13 +15,14 @@ import (
 )
 
 type ToolContext struct {
-	Core        *core.Core
-	MessageID   string
-	SessionID   string
-	SpaceID     string
-	UserID      string
-	marks       map[string]string
-	ReceiveFunc types.ReceiveFunc
+	Core            *core.Core
+	MessageID       string
+	SessionID       string
+	SpaceID         string
+	UserID          string
+	MessageSequence int64
+	marks           map[string]string
+	ReceiveFunc     types.ReceiveFunc
 }
 
 func GetToolsHandler(core *core.Core, sessionID, spaceID, userID string, marks map[string]string, receiveFunc types.ReceiveFunc) map[string]ai.ToolHandlerFunc {
@@ -42,7 +43,6 @@ func searchKnowledge(args ToolContext, funcCall openai.FunctionCall) ([]*types.M
 	args.ReceiveFunc(&types.ToolTips{
 		ID:       toolID,
 		ToolName: FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
-		Status:   types.TOOL_STATUS_RUNNING,
 		Content:  "Retrieving your knowledge...",
 	}, types.MESSAGE_PROGRESS_GENERATING)
 
@@ -51,7 +51,6 @@ func searchKnowledge(args ToolContext, funcCall openai.FunctionCall) ([]*types.M
 		args.ReceiveFunc(&types.ToolTips{
 			ID:       toolID,
 			ToolName: FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
-			Status:   types.TOOL_STATUS_SUCCESS,
 			Content:  fmt.Sprintf("%d knowledges reviewed", reviewedKnowledges),
 		}, types.MESSAGE_PROGRESS_GENERATING)
 	}()
@@ -63,7 +62,7 @@ func searchKnowledge(args ToolContext, funcCall openai.FunctionCall) ([]*types.M
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
-	enhanceResult, _ := EnhanceChatQuery(ctx, args.Core, params.Query, args.SpaceID, args.SessionID, args.MessageID)
+	enhanceResult, _ := EnhanceChatQuery(ctx, args.Core, params.Query, args.SpaceID, args.SessionID, args.MessageSequence)
 
 	if enhanceResult.Usage != nil {
 		process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, args.MessageID, enhanceResult.Usage)

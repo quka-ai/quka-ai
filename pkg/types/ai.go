@@ -56,6 +56,7 @@ type ChatMessagePart struct {
 type MessageContext struct {
 	Role         MessageUserRole `json:"role"`
 	Content      string          `json:"content"`
+	ToolCalls    []openai.ToolCall
 	MultiContent []openai.ChatMessagePart
 }
 
@@ -83,8 +84,10 @@ func (t *TextMessage) Type() MessageType {
 	return MESSAGE_TYPE_TEXT
 }
 
+type ToolStatus int
+
 const (
-	TOOL_STATUS_NONE = iota
+	TOOL_STATUS_NONE ToolStatus = iota
 	TOOL_STATUS_RUNNING
 	TOOL_STATUS_SUCCESS
 	TOOL_STATUS_FAILED
@@ -93,7 +96,6 @@ const (
 type ToolTips struct {
 	ID       string `json:"id"`
 	ToolName string `json:"tool_name"`
-	Status   int    `json:"status"`
 	Content  string `json:"content"`
 }
 
@@ -112,10 +114,11 @@ type AgentContext struct {
 	context.Context
 
 	// 业务标识信息
-	SpaceID   string
-	UserID    string
-	SessionID string
-	MessageID string
+	SpaceID         string
+	UserID          string
+	SessionID       string
+	MessageID       string
+	MessageSequence int64
 
 	// Agent 行为控制标志
 	EnableThinking  bool // 是否开启思考模式
@@ -137,13 +140,14 @@ func NewAgentContext(ctx context.Context, spaceID, userID, sessionID, messageID 
 }
 
 // NewAgentContextWithOptions 创建一个带有自定义选项的 AgentContext
-func NewAgentContextWithOptions(ctx context.Context, spaceID, userID, sessionID, messageID string, enableThinking, enableWebSearch bool) *AgentContext {
+func NewAgentContextWithOptions(ctx context.Context, spaceID, userID, sessionID, messageID string, messageSequence int64, enableThinking, enableWebSearch bool) *AgentContext {
 	return &AgentContext{
 		Context:         ctx,
 		SpaceID:         spaceID,
 		UserID:          userID,
 		SessionID:       sessionID,
 		MessageID:       messageID,
+		MessageSequence: messageSequence,
 		EnableThinking:  enableThinking,
 		EnableWebSearch: enableWebSearch,
 	}

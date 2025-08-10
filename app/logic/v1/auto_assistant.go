@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,7 +33,6 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/ai/tools/duckduckgo"
 	"github.com/quka-ai/quka-ai/pkg/mark"
-	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
@@ -77,7 +77,7 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	var prompt string
 	if aiCallOptions.Docs == nil || len(aiCallOptions.Docs.Refs) == 0 {
 		aiCallOptions.Docs = &types.RAGDocs{}
-		prompt = lo.If(space.BasePrompt != "", space.BasePrompt).Else(ai.GENERATE_PROMPT_TPL_NONE_CONTENT_CN)
+		prompt = lo.If(space.BasePrompt != "", space.BasePrompt).Else(ai.GENERATE_PROMPT_TPL_NONE_CONTENT_CN) + ai.APPEND_PROMPT_CN
 	} else {
 		prompt = ai.BuildRAGPrompt(ai.GENERATE_PROMPT_TPL_CN, ai.NewDocs(aiCallOptions.Docs.Docs), a.core.Srv().AI())
 	}
@@ -85,7 +85,7 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	// 3. 生成会话上下文
 	sessionContext, err := a.GenSessionContext(ctx, prompt, reqMsg)
 	if err != nil {
-		return handleAndNotifyAssistantFailed(a.core, receiver, reqMsg, err)
+		return err
 	}
 
 	// 4. 创建 AgentContext - 提取思考和搜索配置
@@ -98,6 +98,7 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 		reqMsg.UserID,
 		reqMsg.SessionID,
 		reqMsg.ID,
+		reqMsg.Sequence,
 		enableThinking,
 		enableWebSearch,
 	)
@@ -108,7 +109,6 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 		einoMsg := &schema.Message{
 			Content: msgCtx.Content,
 		}
-
 		// 转换角色
 		switch msgCtx.Role {
 		case types.USER_ROLE_SYSTEM:
@@ -121,6 +121,18 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 			einoMsg.Role = schema.Tool
 		default:
 			einoMsg.Role = schema.User
+		}
+
+		if len(msgCtx.ToolCalls) > 0 {
+			einoMsg.ToolCalls = lo.Map(msgCtx.ToolCalls, func(item goopenai.ToolCall, _ int) schema.ToolCall {
+				return schema.ToolCall{
+					Type: string(item.Type),
+					Function: schema.FunctionCall{
+						Name:      item.Function.Name,
+						Arguments: item.Function.Arguments,
+					},
+				}
+			})
 		}
 
 		// 处理多媒体内容
@@ -145,37 +157,13 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 		einoMessages = append(einoMessages, einoMsg)
 	}
 
-	// 6. 🔥 创建 Eino 消息生命周期回调管理器（替代直接的消息初始化）
-	lifecycleCallback := NewEinoMessageLifecycleCallback(a.core, reqMsg, types.ChatMessageExt{}, receiver)
+	// adapter := ai.NewEinoAdapter(receiver, reqMsg.SessionID, reqMsg.ID)
+	notifyToolWrapper := NewNotifyToolWrapper(a.core, reqMsg, receiver.Copy())
 
-	// 7. 🔥 创建工具调用生命周期回调管理器
-	toolCallback := NewEinoToolLifecycleCallback(a.core, reqMsg.SessionID, reqMsg.SpaceID, reqMsg.UserID)
-
-	// 保留原有的 receiveFunc 和 doneFunc 作为备用（将在 lifecycleCallback 中使用）
-	receiveFunc := receiver.GetReceiveFunc()
-	doneFunc := receiver.GetDoneFunc(func(recvMsgInfo *types.ChatMessage) {
-		if recvMsgInfo == nil {
-			return
-		}
-		// set chat session pin
-		go safe.Run(func() {
-			if len(aiCallOptions.Docs.Refs) == 0 {
-				return
-			}
-			if err := createChatSessionKnowledgePin(a.core, recvMsgInfo, aiCallOptions.Docs); err != nil {
-				slog.Error("Failed to create chat session knowledge pins", slog.String("session_id", recvMsgInfo.SessionID), slog.String("error", err.Error()))
-			}
-		})
-	})
-
-	// 🔥 关键：使用增强的适配器支持工具调用记录
-	enhancedAdapter := NewEnhancedEinoAdapter(receiveFunc, reqMsg.SessionID, reqMsg.ID)
-
-	// 7. 创建 Agent（使用增强适配器）
 	factory := NewEinoAgentFactory(a.core)
-	agent, modelConfig, err := factory.CreateReActAgent(agentCtx, enhancedAdapter.EinoAdapter, einoMessages)
+	agent, modelConfig, err := factory.CreateReActAgent(agentCtx, notifyToolWrapper, einoMessages)
 	if err != nil {
-		return handleAndNotifyAssistantFailed(a.core, receiver, reqMsg, err)
+		return err
 	}
 
 	// 8. 执行推理并处理响应
@@ -194,29 +182,17 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	}
 
 	// 创建响应处理器（传入数据库写入函数）
-	responseHandler := NewEinoResponseHandler(receiveFunc, doneFunc, enhancedAdapter.EinoAdapter, marks)
-
-	// 9. 🔥 使用增强的 Eino Callback Handlers（集成消息和工具生命周期管理）
-	callbackHandler := NewEnhancedEinoCallbackHandlers(
-		modelConfig.ModelName,
-		reqMsg.ID,
-		lifecycleCallback,
-		toolCallback,
-		responseHandler,
-	)
+	responseHandler := NewEinoResponseHandler(receiver, reqMsg, marks)
+	callbackHandler := NewCallbackHandlers(a.core, modelConfig.ModelName, reqMsg)
 
 	// 10. 执行推理
 	if receiver.IsStream() {
 		// 流式处理
-		return a.handleStreamResponse(agentCtx, agent, einoMessages, callbackHandler)
+		return a.handleStreamResponse(agentCtx, agent, einoMessages, responseHandler, callbackHandler)
 	} else {
 		// 非流式处理
-		return a.handleDirectResponse(agentCtx, agent, einoMessages, responseHandler, doneFunc)
+		return a.handleDirectResponse(agentCtx, agent, einoMessages, responseHandler)
 	}
-}
-
-type UsageAndReasoningColumns struct {
-	ResponseMeta schema.ResponseMeta `json:"response_meta"`
 }
 
 type ReasoningContent struct {
@@ -226,7 +202,26 @@ type ReasoningContent struct {
 }
 
 // handleStreamResponse 处理流式响应
-func (a *AutoAssistant) handleStreamResponse(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, callbacksHandler callbacks.Handler) error {
+func (a *AutoAssistant) handleStreamResponse(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, streamHandler *EinoResponseHandler, callbacksHandler callbacks.Handler) error {
+	reqMessage := streamHandler.reqMsg
+	initFunc := func(ctx context.Context) error {
+		// streamHandler.Init()
+		if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
+			SpaceID:   reqMessage.SpaceID,
+			SessionID: reqMessage.SessionID,
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
+		}); err != nil {
+			slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
+			return err
+		}
+
+		slog.Debug("AI message session created",
+			slog.String("msg_id", streamHandler.Receiver().MessageID()),
+			slog.String("session_id", reqMessage.SessionID))
+		return nil
+	}
+
 	// 使用 eino agent 进行流式推理
 	result, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
 		// compose.WithCallbacks()
@@ -234,24 +229,24 @@ func (a *AutoAssistant) handleStreamResponse(ctx context.Context, reactAgent *re
 		compose.WithCallbacks(callbacksHandler, &LoggerCallback{}),
 	))
 	if err != nil {
+		initFunc(ctx)
+		streamHandler.GetDoneFunc(nil)(err)
 		slog.Error("failed to start eino stream response", slog.Any("error", err))
 		return err
 	}
 
-	defer result.Close()
-
-	for {
-		_, err := result.Recv()
-		if err != nil {
-			break
-		}
+	if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
+		slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
+		return err
 	}
+
 	return nil
 }
 
 // handleDirectResponse 处理非流式响应
-func (a *AutoAssistant) handleDirectResponse(ctx context.Context, agent *react.Agent, messages []*schema.Message, handler *EinoResponseHandler, done types.DoneFunc) error {
+func (a *AutoAssistant) handleDirectResponse(ctx context.Context, agent *react.Agent, messages []*schema.Message, handler *EinoResponseHandler) error {
 	// 使用 eino agent 进行推理
+	done := handler.GetDoneFunc(nil)
 	result, err := agent.Generate(ctx, messages)
 	if err != nil {
 		if done != nil {
@@ -260,15 +255,10 @@ func (a *AutoAssistant) handleDirectResponse(ctx context.Context, agent *react.A
 		return err
 	}
 
-	if err = handler.receiveFunc(&types.TextMessage{Text: result.Content}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
+	if err = handler.GetReceiveFunc()(&types.TextMessage{Text: result.Content}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
 		return err
 	}
-
-	// 完成处理
-	if done != nil {
-		return done(nil)
-	}
-	return nil
+	return done(nil)
 }
 
 // EinoMessageConverter 消息转换器，处理 schema.Message 和数据库记录的转换
@@ -386,23 +376,43 @@ func (c *EinoMessageConverter) convertToEinoMultiContent(openaiParts []goopenai.
 // NotifyingTool 工具包装器，在工具执行前后发送实时通知
 type NotifyingTool struct {
 	tool.InvokableTool
-	core    *core.Core
-	adapter *ai.EinoAdapter
-	toolID  string // 为每个工具实例分配唯一ID
+	core     *core.Core
+	receiver types.Receiver
+	reqMsg   *types.ChatMessage
+	// saver    *ToolCallSaver
+	toolID string // 为每个工具实例分配唯一ID
 }
 
-// NewNotifyingTool 创建带通知功能的工具包装器
-func NewNotifyingTool(baseTool tool.InvokableTool, adapter *ai.EinoAdapter) *NotifyingTool {
+// // NewNotifyingTool 创建带通知功能的工具包装器
+// func NewNotifyingTool(baseTool tool.InvokableTool, receiver types.Receiver) *NotifyingTool {
+// 	return &NotifyingTool{
+// 		InvokableTool: baseTool,
+// 		receiver:      receiver,
+// 		toolID:        utils.GenUniqIDStr(), // 生成唯一的工具实例ID
+// 	}
+// }
+
+type NotifyToolWrapper interface {
+	Wrap(baseTool tool.InvokableTool) *NotifyingTool
+}
+
+func NewNotifyToolWrapper(core *core.Core, reqMsg *types.ChatMessage, receiver types.Receiver) NotifyToolWrapper {
 	return &NotifyingTool{
-		InvokableTool: baseTool,
-		adapter:       adapter,
-		toolID:        utils.GenUniqIDStr(), // 生成唯一的工具实例ID
+		core:     core,
+		reqMsg:   reqMsg,
+		receiver: receiver,
+		toolID:   utils.GenUniqIDStr(), // 生成唯一的工具实例ID
 	}
+}
+
+func (nt *NotifyingTool) Wrap(baseTool tool.InvokableTool) *NotifyingTool {
+	c := *nt
+	c.InvokableTool = baseTool
+	return &c
 }
 
 // InvokableRun 执行工具调用，并在执行前后发送通知
 func (nt *NotifyingTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
-	fmt.Println("Invoked tool:", argumentsInJSON)
 	// 获取工具信息
 	toolInfo, err := nt.InvokableTool.Info(ctx)
 	if err != nil {
@@ -410,61 +420,49 @@ func (nt *NotifyingTool) InvokableRun(ctx context.Context, argumentsInJSON strin
 	}
 	toolName := toolInfo.Name
 
-	// 🔥 工具调用开始通知
-	if err := nt.adapter.OnToolCallStart(toolName, map[string]interface{}{
-		"input":   argumentsInJSON,
-		"tool_id": nt.toolID,
+	slog.Debug("invoke tool", slog.String("tool_name", toolName), slog.String("tool_args", argumentsInJSON))
+
+	if err = nt.receiver.RecvMessageInit(types.ChatMessageExt{
+		SessionID: nt.reqMsg.SessionID,
+		SpaceID:   nt.reqMsg.SpaceID,
+		ToolName:  toolName,
+		ToolArgs: sql.NullString{
+			String: argumentsInJSON,
+			Valid:  true,
+		},
 	}); err != nil {
-		slog.Error("Failed to send tool start notification",
-			slog.String("tool", toolName),
-			slog.String("tool_id", nt.toolID),
-			slog.Any("error", err))
+		return "", err
 	}
+
+	toolTips := &types.ToolTips{
+		ID:       nt.receiver.MessageID(),
+		ToolName: toolName,
+		Content:  fmt.Sprintf("Using tool: %s", toolName),
+	}
+
+	receiveFunc := nt.receiver.GetReceiveFunc()
+	doneFunc := nt.receiver.GetDoneFunc(nil)
+	receiveFunc(toolTips, types.MESSAGE_PROGRESS_GENERATING)
 
 	// 执行实际工具
 	startTime := time.Now()
 	result, err := nt.InvokableTool.InvokableRun(ctx, argumentsInJSON, opts...)
 	duration := time.Since(startTime)
-
-	// 🔥 工具调用结束通知
 	if err != nil {
-		nt.adapter.OnToolCallEnd(toolName, map[string]interface{}{
-			"error":    err.Error(),
-			"duration": duration.String(),
-			"tool_id":  nt.toolID,
-		}, err)
-	} else {
-		nt.adapter.OnToolCallEnd(toolName, map[string]interface{}{
-			"result":   result,
-			"duration": duration.String(),
-			"tool_id":  nt.toolID,
-		}, nil)
+		doneFunc(err)
+		return err.Error(), nil
 	}
 
-	return result, err
-}
+	slog.Debug("tool call result", slog.Float64("duration", duration.Seconds()), slog.String("tool", toolName), slog.Any("error", err))
 
-// === 增强的 eino 适配器，支持实时工具调用通知 ===
-
-// EnhancedEinoAdapter 增强的 eino 适配器，支持实时工具调用通知
-type EnhancedEinoAdapter struct {
-	*ai.EinoAdapter
-}
-
-// NewEnhancedEinoAdapter 创建增强的 eino 适配器
-func NewEnhancedEinoAdapter(receiveFunc types.ReceiveFunc, sessionID, messageID string) *EnhancedEinoAdapter {
-	baseAdapter := ai.NewEinoAdapter(receiveFunc, sessionID, messageID)
-
-	return &EnhancedEinoAdapter{
-		EinoAdapter: baseAdapter,
+	resultJson := &types.ToolTips{
+		ID:       nt.receiver.MessageID(),
+		ToolName: toolName,
+		Content:  result,
 	}
-}
-
-func (e *EnhancedEinoAdapter) extractToolName(info *callbacks.RunInfo) string {
-	if info != nil && info.Name != "" {
-		return info.Name
-	}
-	return "unknown_tool"
+	receiveFunc(resultJson, lo.If(err != nil, types.MESSAGE_PROGRESS_FAILED).Else(types.MESSAGE_PROGRESS_COMPLETE))
+	doneFunc(nil)
+	return string(resultJson.Bytes()), err
 }
 
 // EinoAgentFactory 创建和配置 eino Agent 的工厂
@@ -481,7 +479,7 @@ func NewEinoAgentFactory(core *core.Core) *EinoAgentFactory {
 }
 
 // CreateReActAgent 创建 ReAct Agent 实例
-func (f *EinoAgentFactory) CreateReActAgent(agentCtx *types.AgentContext, adapter *ai.EinoAdapter, messages []*schema.Message) (*react.Agent, *types.ModelConfig, error) {
+func (f *EinoAgentFactory) CreateReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message) (*react.Agent, *types.ModelConfig, error) {
 	// 检查消息中是否包含多媒体内容，决定使用哪种模型
 	needVisionModel := f.containsMultimediaContent(messages)
 
@@ -502,13 +500,13 @@ func (f *EinoAgentFactory) CreateReActAgent(agentCtx *types.AgentContext, adapte
 		}
 	}
 
-	chatModel, err := f.GetToolCallingModel(agentCtx, modelConfig)
+	chatModel, err := GetToolCallingModel(agentCtx, *modelConfig)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// 创建工具配置
-	tools, err := f.createTools(agentCtx, adapter)
+	tools, err := f.createTools(agentCtx, toolWrapper)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create tools: %w", err)
 	}
@@ -546,7 +544,7 @@ func (f *EinoAgentFactory) CreateReActAgent(agentCtx *types.AgentContext, adapte
 	return agent, modelConfig, nil
 }
 
-func (f *EinoAgentFactory) GetToolCallingModel(agentCtx *types.AgentContext, modelConfig *types.ModelConfig) (model.ToolCallingChatModel, error) {
+func GetToolCallingModel(agentCtx *types.AgentContext, modelConfig types.ModelConfig) (model.ToolCallingChatModel, error) {
 	if strings.Contains(strings.ToLower(modelConfig.ModelName), "qwen") {
 		// 创建 OpenAI 模型
 		chatModel, err := qwen.NewChatModel(agentCtx, &qwen.ChatModelConfig{
@@ -653,7 +651,7 @@ func (f *EinoAgentFactory) ClearModelConfigCache() {
 }
 
 // createTools 创建可用工具列表
-func (f *EinoAgentFactory) createTools(agentCtx *types.AgentContext, adapter *ai.EinoAdapter) ([]tool.BaseTool, error) {
+func (f *EinoAgentFactory) createTools(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper) ([]tool.BaseTool, error) {
 	var tools []tool.BaseTool
 
 	// 根据 EnableWebSearch 标志决定是否添加 DuckDuckGo 搜索工具
@@ -663,15 +661,15 @@ func (f *EinoAgentFactory) createTools(agentCtx *types.AgentContext, adapter *ai
 			slog.Warn("Failed to create DuckDuckGo tool", slog.String("error", err.Error()))
 		} else {
 			// 🔥 使用 NotifyingTool 包装 DuckDuckGo 工具
-			notifyingDDGTool := NewNotifyingTool(duckduckgoTool, adapter)
+			notifyingDDGTool := toolWrapper.Wrap(duckduckgoTool)
 			tools = append(tools, notifyingDDGTool)
 		}
 	}
 
 	// 添加 RAG 知识库搜索工具
-	ragTool := rag.NewRagTool(f.core, agentCtx.SpaceID, agentCtx.UserID, agentCtx.SessionID, agentCtx.MessageID)
+	ragTool := rag.NewRagTool(f.core, agentCtx.SpaceID, agentCtx.UserID, agentCtx.SessionID, agentCtx.MessageID, agentCtx.MessageSequence)
 	// 🔥 使用 NotifyingTool 包装 RAG 工具
-	notifyingRagTool := NewNotifyingTool(ragTool, adapter)
+	notifyingRagTool := toolWrapper.Wrap(ragTool)
 	tools = append(tools, notifyingRagTool)
 
 	// TODO: 这里可以添加更多工具
@@ -683,25 +681,53 @@ func (f *EinoAgentFactory) createTools(agentCtx *types.AgentContext, adapter *ai
 
 // EinoResponseHandler 处理 eino Agent 的响应
 type EinoResponseHandler struct {
-	receiveFunc types.ReceiveFunc
-	doneFunc    types.DoneFunc
-	adapter     *ai.EinoAdapter
-	marks       map[string]string // 特殊语法标记处理
+	_receiveFunc types.ReceiveFunc
+	_doneFunc    types.DoneFunc
+	_receiver    types.Receiver
+	reqMsg       *types.ChatMessage
+	// adapter     *ai.EinoAdapter
+	marks map[string]string // 特殊语法标记处理
 }
 
 // NewEinoResponseHandler 创建响应处理器
-func NewEinoResponseHandler(receiveFunc types.ReceiveFunc, doneFunc types.DoneFunc, adapter *ai.EinoAdapter, marks map[string]string) *EinoResponseHandler {
+func NewEinoResponseHandler(receiver types.Receiver, reqMsg *types.ChatMessage, marks map[string]string) *EinoResponseHandler {
 	return &EinoResponseHandler{
-		receiveFunc: receiveFunc,
-		doneFunc:    doneFunc,
-		adapter:     adapter,
-		marks:       marks,
+		_receiver: receiver,
+		reqMsg:    reqMsg,
+		// receiveFunc: receiveFunc,
+		//doneFunc:    doneFunc,
+		// adapter:     adapter,
+		marks: marks,
 	}
 }
 
+func (h *EinoResponseHandler) Receiver() types.Receiver {
+	return h._receiver
+}
+
+func (h *EinoResponseHandler) Init() {
+	h._receiver = h._receiver.Copy()
+	h._receiveFunc = nil
+	h._doneFunc = nil
+}
+
+func (h *EinoResponseHandler) GetReceiveFunc() types.ReceiveFunc {
+	if h._receiveFunc == nil {
+		h._receiveFunc = h._receiver.GetReceiveFunc()
+	}
+	return h._receiveFunc
+}
+
+func (h *EinoResponseHandler) GetDoneFunc(callback func(msg *types.ChatMessage)) types.DoneFunc {
+	if h._doneFunc == nil {
+		h._doneFunc = h._receiver.GetDoneFunc(callback)
+	}
+	return h._doneFunc
+}
+
 // HandleStreamResponse 处理 eino Agent 的流式响应，返回 ResponseChoice 通道以兼容现有接口
-func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *schema.StreamReader[*model.CallbackOutput]) error {
-	ticker := time.NewTicker(time.Millisecond * 500)
+func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *schema.StreamReader[*schema.Message], needToCreateMessage func(ctx context.Context) error) error {
+	ticker := time.NewTicker(time.Millisecond * 300)
 
 	defer func() {
 		ticker.Stop()
@@ -723,11 +749,15 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		// toolCalls []*schema.ToolCall // 使用 eino 原生结构
 	)
 
+	// nop handler
+	receiveFunc := h.GetReceiveFunc()
+	doneFunc := h.GetDoneFunc(nil)
+
 	flushResponse := func() {
 		mu.Lock()
 		defer mu.Unlock()
 		if strs.Len() > 0 {
-			if err := h.receiveFunc(&types.TextMessage{
+			if err := receiveFunc(&types.TextMessage{
 				Text: strs.String(),
 			}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
 				slog.Error("failed to call receiveFunc for database write", slog.Any("error", err))
@@ -751,39 +781,52 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		}
 	}()
 
+	isFirstChunk := true
+
 	// 处理 eino stream
 	for {
 		select {
 		case <-ctx.Done():
+			doneFunc(ctx.Err())
 			return ctx.Err()
 		default:
 		}
 
 		msg, err := stream.Recv()
+		// raw, _ := json.Marshal(msg)
+		// fmt.Println("ttttt", string(raw), "eeee", err)
 		if err != nil && err != io.EOF {
+			doneFunc(err)
 			return err
 		}
 
-		if err == io.EOF {
+		if isFirstChunk {
+			isFirstChunk = false
+			if len(msg.ToolCalls) == 0 { // 工具调用不创建message消息
+				if err := needToCreateMessage(ctx); err != nil {
+					return err
+				}
+				// receiveFunc = h.GetReceiveFunc()
+				// doneFunc = h.GetDoneFunc(nil)
+			}
+		}
+
+		if err == io.EOF || msg.ResponseMeta.FinishReason != "" {
 			flushResponse()
+			doneFunc(nil)
 			return nil
 		}
 
-		raw, err := json.Marshal(msg)
-		fmt.Println("111", string(raw))
-		// if res == nil {
-		// 	continue
-		// }
-		thinkingContent, existThinking := openailibs.GetReasoningContent(msg.Message)
+		thinkingContent, existThinking := openailibs.GetReasoningContent(msg)
 		// 处理内容
-		if msg.Message.Content == "" && !existThinking {
+		if msg.Content == "" && !existThinking {
 			continue
 		}
 
 		// 处理特殊语法标记
 		if needToMarks {
 			if !maybeMarks {
-				if strings.Contains(msg.Message.Content, "$") {
+				if strings.Contains(msg.Content, "$") {
 					maybeMarks = true
 					if strs.Len() != 0 {
 						flushResponse()
@@ -801,7 +844,7 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		// 处理思考内容
 		if existThinking {
 			if thinkingContent == "" {
-				thinkingContent = msg.Message.Content
+				thinkingContent = msg.Content
 			}
 			startThinking.Do(func() {
 				hasThinking = true
@@ -818,10 +861,10 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 				}
 				strs.WriteString("</think>")
 			})
-			strs.WriteString(msg.Message.Content)
+			strs.WriteString(msg.Content)
 
 			// 处理隐藏标记
-			if machedMarks && strings.Contains(msg.Message.Content, "]") {
+			if machedMarks && strings.Contains(msg.Content, "]") {
 				text, replaced := mark.ResolveHidden(strs.String(), func(fakeValue string) string {
 					real := h.marks[fakeValue]
 					return real
@@ -837,8 +880,8 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 
 		once.Do(func() {
 			// eino 消息 ID 可能需要从其他地方获取
-			if msg.Message.Extra != nil {
-				if id, ok := msg.Message.Extra["id"].(string); ok {
+			if msg.Extra != nil {
+				if id, ok := msg.Extra["id"].(string); ok {
 					messageID = id
 				}
 			}
@@ -847,40 +890,6 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 			}
 		})
 	}
-}
-
-// handleToolCalls 处理工具调用（持久化）
-func (h *EinoResponseHandler) handleToolCalls(ctx context.Context, toolCalls []*schema.ToolCall) {
-	for _, toolCall := range toolCalls {
-		// 1. 发送 WebSocket 通知（实时显示）
-		if err := h.adapter.RecordToolCall(toolCall.Function.Name, toolCall.Function.Arguments, types.TOOL_STATUS_RUNNING); err != nil {
-			slog.Error("failed to record tool call via adapter", slog.Any("error", err))
-		}
-
-		// 2. 持久化到数据库（需要创建 ToolCallPersister 实例）
-		// 注意：这里需要从 EinoResponseHandler 中访问必要的上下文信息
-		// 暂时记录日志，实际实现需要传入更多上下文
-		slog.Info("eino tool call detected",
-			slog.String("tool_name", toolCall.Function.Name),
-			slog.String("arguments", toolCall.Function.Arguments),
-			slog.String("tool_id", toolCall.ID))
-	}
-}
-
-// convertToolCallsToOpenAI 将 eino ToolCall 转换为兼容格式（用于 DeepContinue）
-func (h *EinoResponseHandler) convertToolCallsToOpenAI(toolCalls []*schema.ToolCall) []*goopenai.ToolCall {
-	result := make([]*goopenai.ToolCall, len(toolCalls))
-	for i, tc := range toolCalls {
-		result[i] = &goopenai.ToolCall{
-			ID:   tc.ID,
-			Type: goopenai.ToolTypeFunction,
-			Function: goopenai.FunctionCall{
-				Name:      tc.Function.Name,
-				Arguments: tc.Function.Arguments,
-			},
-		}
-	}
-	return result
 }
 
 // SendedCounterImpl 实现 SendedCounter 接口
@@ -911,17 +920,17 @@ type ToolCallMessage struct {
 	EndTime   int64       `json:"end_time,omitempty"`
 }
 
-// ToolCallPersister 工具调用持久化器，将工具调用过程保存到数据库作为聊天记录
-type ToolCallPersister struct {
+// ToolCallSaver 工具调用持久化器，将工具调用过程保存到数据库作为聊天记录
+type ToolCallSaver struct {
 	core      *core.Core
 	sessionID string
 	spaceID   string
 	userID    string
 }
 
-// NewToolCallPersister 创建工具调用持久化器
-func NewToolCallPersister(core *core.Core, sessionID, spaceID, userID string) *ToolCallPersister {
-	return &ToolCallPersister{
+// NewToolCallSaver 创建工具调用持久化器
+func NewToolCallSaver(core *core.Core, sessionID, spaceID, userID string) *ToolCallSaver {
+	return &ToolCallSaver{
 		core:      core,
 		sessionID: sessionID,
 		spaceID:   spaceID,
@@ -930,7 +939,7 @@ func NewToolCallPersister(core *core.Core, sessionID, spaceID, userID string) *T
 }
 
 // SaveToolCallStart 保存工具调用开始记录
-func (p *ToolCallPersister) SaveToolCallStart(ctx context.Context, toolName string, args interface{}) (string, error) {
+func (p *ToolCallSaver) SaveToolCallStart(ctx context.Context, toolName, args string) (string, error) {
 	// 生成工具调用消息ID
 	toolCallMsgID := utils.GenUniqIDStr()
 
@@ -943,7 +952,24 @@ func (p *ToolCallPersister) SaveToolCallStart(ctx context.Context, toolName stri
 	}
 
 	// 创建聊天消息
-	chatMsg := p.createToolCallMessage(toolCallMsgID, &toolCallMsg)
+	// 生成序列号 - 通过session获取当前最新消息的seq然后+1
+	seqID, err := p.core.Plugins.GetChatSessionSeqID(context.Background(), p.spaceID, p.sessionID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get session sequence id, %w", err)
+	}
+
+	chatMsg := &types.ChatMessage{
+		ID:        toolCallMsgID,
+		SpaceID:   p.spaceID,
+		SessionID: p.sessionID,
+		UserID:    p.userID,
+		Role:      types.USER_ROLE_TOOL,
+		Message:   "",
+		MsgType:   types.MESSAGE_TYPE_TEXT,
+		SendTime:  toolCallMsg.StartTime,
+		Complete:  types.MESSAGE_PROGRESS_GENERATING, // 开始时状态为生成中
+		Sequence:  seqID,
+	}
 
 	// 保存到数据库
 	if err := p.core.Store().ChatMessageStore().Create(ctx, chatMsg); err != nil {
@@ -961,44 +987,53 @@ func (p *ToolCallPersister) SaveToolCallStart(ctx context.Context, toolName stri
 }
 
 // SaveToolCallComplete 更新工具调用完成记录
-func (p *ToolCallPersister) SaveToolCallComplete(ctx context.Context, toolCallMsgID string, result interface{}, success bool) error {
-	// 获取原始消息
-	originalMsg, err := p.core.Store().ChatMessageStore().GetOne(ctx, toolCallMsgID)
-	if err != nil {
-		slog.Error("Failed to get original tool call message",
-			slog.String("msg_id", toolCallMsgID),
-			slog.String("error", err.Error()))
-		return err
-	}
+func (p *ToolCallSaver) SaveToolCallComplete(ctx context.Context, toolCallMsgID, args, result string, success bool) error {
+	// // 获取原始消息
+	// originalMsg, err := p.core.Store().ChatMessageStore().GetOne(ctx, toolCallMsgID)
+	// if err != nil {
+	// 	slog.Error("Failed to get original tool call message",
+	// 		slog.String("msg_id", toolCallMsgID),
+	// 		slog.String("error", err.Error()))
+	// 	return err
+	// }
 
-	if originalMsg == nil {
-		return fmt.Errorf("tool call message not found: %s", toolCallMsgID)
-	}
+	// if originalMsg == nil {
+	// 	return fmt.Errorf("tool call message not found: %s", toolCallMsgID)
+	// }
 
-	// 解析原始工具调用信息
-	var toolCallMsg ToolCallMessage
-	if err := json.Unmarshal([]byte(originalMsg.Message), &toolCallMsg); err != nil {
-		// 如果解析失败，尝试从消息文本中提取信息
-		toolCallMsg = ToolCallMessage{
-			ToolName:  "unknown",
-			StartTime: originalMsg.SendTime,
-		}
-	}
+	// // 解析原始工具调用信息
+	// var toolCallMsg ToolCallMessage
+	// if err := json.Unmarshal([]byte(originalMsg.Message), &toolCallMsg); err != nil {
+	// 	// 如果解析失败，尝试从消息文本中提取信息
+	// 	toolCallMsg = ToolCallMessage{
+	// 		ToolName:  "unknown",
+	// 		StartTime: originalMsg.SendTime,
+	// 	}
+	// }
 
-	// 更新工具调用信息
-	toolCallMsg.Result = result
-	toolCallMsg.EndTime = time.Now().Unix()
-	if success {
-		toolCallMsg.Status = "success"
-	} else {
-		toolCallMsg.Status = "failed"
-	}
+	// // 更新工具调用信息
+	// toolCallMsg.Result = result
+	// toolCallMsg.EndTime = time.Now().Unix()
+	// if success {
+	// 	toolCallMsg.Status = "success"
+	// } else {
+	// 	toolCallMsg.Status = "failed"
+	// }
 
 	// 生成新的消息内容
-	newMessage := p.formatToolCallMessage(&toolCallMsg)
+	// newMessage := p.formatToolCallMessage(&toolCallMsg)
+
+	messageStatus := lo.If(success, types.MESSAGE_PROGRESS_COMPLETE).Else(types.MESSAGE_PROGRESS_FAILED)
+
+	resultWithArgs := map[string]json.RawMessage{
+		"args":   json.RawMessage(args),
+		"result": json.RawMessage(result),
+	}
+
+	raw, _ := json.Marshal(resultWithArgs)
 
 	// 更新数据库记录
-	if err := p.core.Store().ChatMessageStore().RewriteMessage(ctx, p.spaceID, p.sessionID, toolCallMsgID, []byte(newMessage), int32(types.MESSAGE_PROGRESS_COMPLETE)); err != nil {
+	if err := p.core.Store().ChatMessageStore().RewriteMessage(ctx, p.spaceID, p.sessionID, toolCallMsgID, raw, messageStatus); err != nil {
 		slog.Error("Failed to update tool call complete record",
 			slog.String("msg_id", toolCallMsgID),
 			slog.String("error", err.Error()))
@@ -1012,85 +1047,36 @@ func (p *ToolCallPersister) SaveToolCallComplete(ctx context.Context, toolCallMs
 	return nil
 }
 
-// createToolCallMessage 创建工具调用消息格式
-func (p *ToolCallPersister) createToolCallMessage(msgID string, toolCall *ToolCallMessage) *types.ChatMessage {
-	message := p.formatToolCallMessage(toolCall)
-
-	// 生成序列号 - 通过session获取当前最新消息的seq然后+1
-	seqID, err := p.core.Plugins.GetChatSessionSeqID(context.Background(), p.spaceID, p.sessionID)
-	if err != nil {
-		// 如果获取失败，回退到原来的随机生成方式
-		seqID = utils.GenUniqID()
-		slog.Warn("Failed to get chat session seq ID, using random ID instead",
-			slog.String("space_id", p.spaceID),
-			slog.String("session_id", p.sessionID),
-			slog.String("error", err.Error()))
-	}
-
-	return &types.ChatMessage{
-		ID:        msgID,
-		SpaceID:   p.spaceID,
-		SessionID: p.sessionID,
-		UserID:    p.userID,
-		Role:      types.USER_ROLE_TOOL,
-		Message:   message,
-		MsgType:   types.MESSAGE_TYPE_TEXT,
-		SendTime:  toolCall.StartTime,
-		Complete:  types.MESSAGE_PROGRESS_GENERATING, // 开始时状态为生成中
-		Sequence:  seqID,
-	}
-}
-
-// formatToolCallMessage 格式化工具调用消息内容
-func (p *ToolCallPersister) formatToolCallMessage(toolCall *ToolCallMessage) string {
-	// 创建用户友好的显示格式
-	content := fmt.Sprintf("🔧 工具调用: %s", toolCall.ToolName)
-
-	// 添加参数信息
-	if toolCall.Arguments != nil {
-		argsJSON, _ := json.Marshal(toolCall.Arguments)
-		content += fmt.Sprintf("\n参数: %s", string(argsJSON))
-	}
-
-	// 添加结果信息
-	if toolCall.Result != nil {
-		resultJSON, _ := json.Marshal(toolCall.Result)
-		content += fmt.Sprintf("\n结果: %s", string(resultJSON))
-	}
-
-	// 添加状态信息
-	statusMap := map[string]string{
-		"running": "执行中...",
-		"success": "执行成功",
-		"failed":  "执行失败",
-	}
-	if statusText, exists := statusMap[toolCall.Status]; exists {
-		content += fmt.Sprintf("\n状态: %s", statusText)
-	}
-
-	return content
-}
-
-func NewCallbackHandlers(modelName, reqMessageID string, handler *EinoResponseHandler) callbacks.Handler {
+func NewCallbackHandlers(core *core.Core, modelName string, reqMessage *types.ChatMessage) callbacks.Handler {
 	return callbackhelper.NewHandlerHelper().ChatModel(&callbackhelper.ModelCallbackHandler{
+		OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *model.CallbackInput) context.Context {
+			// if err := initFunc(ctx); err != nil {
+			// 	ctx, cancel := context.WithCancel(ctx)
+			// 	cancel()
+			// 	return ctx
+			// }
+			// latestMessage := input.Messages[len(input.Messages)-1]
+			// 创建 assistant 消息记录，代表一次完整的 AI 响应会话
+			// (替代原来在 RequestAssistant 中的 InitAssistantMessage 调用)
+			return ctx
+		},
 		OnEnd: func(ctx context.Context, runInfo *callbacks.RunInfo, output *model.CallbackOutput) context.Context {
 			res := model.ConvCallbackOutput(output)
 			if res.TokenUsage != nil {
 				// 记录 Token 使用情况
-				go process.NewRecordChatUsageRequest(modelName, types.USAGE_SUB_TYPE_CHAT, reqMessageID, &goopenai.Usage{
+				go process.NewRecordChatUsageRequest(modelName, types.USAGE_SUB_TYPE_CHAT, reqMessage.ID, &goopenai.Usage{
 					TotalTokens:      res.TokenUsage.TotalTokens,
 					PromptTokens:     res.TokenUsage.PromptTokens,
 					CompletionTokens: res.TokenUsage.CompletionTokens,
 				})
 			}
-			handler.doneFunc(nil)
 			return ctx
 		},
 		OnError: func(ctx context.Context, runInfo *callbacks.RunInfo, err error) context.Context {
 			if err != nil {
-				slog.Error("eino callback error", slog.Any("error", err), slog.String("model_name", modelName), slog.String("message_id", reqMessageID))
+				slog.Error("eino callback error", slog.Any("error", err), slog.String("model_name", modelName), slog.String("message_id", reqMessage.Message))
 				// 记录错误信息
-				handler.doneFunc(err)
+				// streamHandler.GetDoneFunc(nil)(err)
 			}
 			return ctx
 		},
@@ -1099,20 +1085,11 @@ func NewCallbackHandlers(modelName, reqMessageID string, handler *EinoResponseHa
 			if output == nil {
 				return ctx
 			}
-
 			infoRaw, _ := json.Marshal(runInfo)
-			slog.Debug("eino callback stream output", slog.String("info", string(infoRaw)), slog.String("model_name", modelName), slog.String("message_id", reqMessageID))
-
-			go safe.Run(func() {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Minute*30)
-				defer cancel()
-				if err := handler.HandleStreamResponse(ctx, output); err != nil {
-					slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("model_name", modelName), slog.String("message_id", reqMessageID))
-					return
-				}
-			})
+			slog.Debug("eino callback stream output", slog.String("info", string(infoRaw)), slog.String("model_name", modelName), slog.String("message_id", reqMessage.ID))
 
 			return ctx
 		},
 	}).Handler()
+	// .Tool(&callbackhelper.ToolCallbackHandler{})
 }

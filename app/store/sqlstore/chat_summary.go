@@ -24,7 +24,7 @@ func NewChatSummaryStore(provider SqlProviderAchieve) *ChatSummaryStore {
 	repo := &ChatSummaryStore{}
 	repo.SetProvider(provider)
 	repo.SetTable(types.TABLE_CHAT_SUMMARY)
-	repo.SetAllColumns("id", "space_id", "message_id", "session_id", "content", "created_at")
+	repo.SetAllColumns("id", "space_id", "sequence", "session_id", "content", "created_at")
 	return repo
 }
 
@@ -78,8 +78,8 @@ func (s *ChatSummaryStore) Create(ctx context.Context, data types.ChatSummary) e
 		data.CreatedAt = time.Now().Unix()
 	}
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "space_id", "message_id", "session_id", "content", "created_at").
-		Values(data.ID, data.SpaceID, data.MessageID, data.SessionID, data.Content, data.CreatedAt)
+		Columns("id", "space_id", "sequence", "session_id", "content", "created_at").
+		Values(data.ID, data.SpaceID, data.Sequence, data.SessionID, data.Content, data.CreatedAt)
 
 	queryString, args, err := query.ToSql()
 	if err != nil {

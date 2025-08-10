@@ -130,7 +130,7 @@ func (b *ButlerAgent) Query(userID string, reqMsg *types.ChatMessage) ([]openai.
 	userData := userTables.String()
 
 	// 获取session 历史记录
-	list, err := b.core.Store().ChatMessageStore().ListSessionMessageUpToGivenID(ctx, reqMsg.SpaceID, reqMsg.SessionID, reqMsg.ID, 1, 10)
+	list, err := b.core.Store().ChatMessageStore().ListSessionMessageUpToGivenID(ctx, reqMsg.SpaceID, reqMsg.SessionID, reqMsg.Sequence, 1, 10)
 	if err != nil {
 		slog.Error("Butler: failed to load session history message", slog.String("error", err.Error()), slog.String("session_id", reqMsg.SessionID))
 		list = append(list, reqMsg)

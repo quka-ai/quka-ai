@@ -151,7 +151,7 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 	// }
 
 	messager := DefaultMessager(protocol.GenIMTopic(msg.SessionID), l.core.Srv().Tower())
-	receiver := NewChatReceiver(ctx, l.core, messager)
+	receiver := NewChatReceiver(ctx, l.core, messager, msg)
 
 	err = l.core.Store().Transaction(ctx, func(ctx context.Context) error {
 		if err = l.core.Store().ChatMessageStore().Create(l.ctx, msg); err != nil {
@@ -225,7 +225,7 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 		// else rag handler
 		go safe.Run(func() {
 			getDocsFunc := func() (types.RAGDocs, error) {
-				enhanceResult, _ := rag.EnhanceChatQuery(l.ctx, l.core, msg.Message, msg.SpaceID, msg.SessionID, msg.ID)
+				enhanceResult, _ := rag.EnhanceChatQuery(l.ctx, l.core, msg.Message, msg.SpaceID, msg.SessionID, msg.Sequence)
 
 				if enhanceResult.Usage != nil {
 					process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msg.ID, enhanceResult.Usage)
@@ -251,17 +251,19 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 				GenMode:        types.GEN_MODE_NORMAL,
 				GetDocsFunc:    getDocsFunc,
 				EnableThinking: msgArgs.EnableThinking,
+				EnableSearch:   msgArgs.EnableSearch,
 			}); err != nil {
 				slog.Error("Failed to handle rag message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
 		})
 	default:
-		// else rag handler
 		go safe.Run(func() {
+			// else rag handler
 			if err := ChatSessionHandle(l.core, receiver, msg, &types.AICallOptions{
 				GenMode:        types.GEN_MODE_NORMAL,
 				GetDocsFunc:    nil,
 				EnableThinking: msgArgs.EnableThinking,
+				EnableSearch:   msgArgs.EnableSearch,
 			}); err != nil {
 				slog.Error("Failed to handle message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
@@ -346,15 +348,7 @@ func JournalSessionHandle(core *core.Core, receiver types.Receiver, userMessage 
 		UpdatedAt: time.Now().Unix(),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-	seqID, err := core.Plugins.GetChatSessionSeqID(ctx, userMessage.SpaceID, userMessage.SessionID)
-	if err != nil {
-		return err
-	}
-
-	answerMessageID := core.Plugins.GenMessageID()
-	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
+	if err := receiver.RecvMessageInit(ext); err != nil {
 		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
 			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
 	}
@@ -389,21 +383,14 @@ func ButlerSessionHandle(core *core.Core, receiver types.Receiver, userMessage *
 	logic := core.AIChatLogic(types.AGENT_TYPE_BUTLER)
 
 	ext := types.ChatMessageExt{
+		MessageID: receiver.MessageID(),
 		SpaceID:   userMessage.SpaceID,
 		SessionID: userMessage.SessionID,
 		CreatedAt: time.Now().Unix(),
 		UpdatedAt: time.Now().Unix(),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-	seqID, err := core.Plugins.GetChatSessionSeqID(ctx, userMessage.SpaceID, userMessage.SessionID)
-	if err != nil {
-		return err
-	}
-
-	answerMessageID := core.Plugins.GenMessageID()
-	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
+	if err := receiver.RecvMessageInit(ext); err != nil {
 		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
 			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
 	}
@@ -436,23 +423,15 @@ func RAGHandle(core *core.Core, receiver types.Receiver, userMessage *types.Chat
 // genMode new request or re-request
 func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, getDocsFunc func() (types.RAGDocs, error), aiCallOptions *types.AICallOptions) error {
 
-	answerMessageID := core.Plugins.GenMessageID()
 	ext := types.ChatMessageExt{
-		MessageID: answerMessageID,
+		MessageID: receiver.MessageID(),
 		SpaceID:   userMessage.SpaceID,
 		SessionID: userMessage.SessionID,
 		CreatedAt: time.Now().Unix(),
 		UpdatedAt: time.Now().Unix(),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-	seqID, err := core.Plugins.GetChatSessionSeqID(ctx, userMessage.SpaceID, userMessage.SessionID)
-	if err != nil {
-		return err
-	}
-
-	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
+	if err := receiver.RecvMessageInit(ext); err != nil {
 		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
 			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
 		return err
@@ -465,7 +444,6 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 	receiveFunc(&types.ToolTips{
 		ID:       toolID,
 		ToolName: "ReviewingKnowledges",
-		Status:   types.TOOL_STATUS_RUNNING,
 		Content:  "Reviewing your knowledges...",
 	}, types.MESSAGE_PROGRESS_GENERATING)
 
@@ -497,7 +475,6 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 		receiveFunc(&types.ToolTips{
 			ID:       toolID,
 			ToolName: "ReviewingKnowledges",
-			Status:   types.TOOL_STATUS_SUCCESS,
 			Content:  fmt.Sprintf("%d knowledges reviewed", len(relDocs)),
 		}, types.MESSAGE_PROGRESS_GENERATING)
 	}()
@@ -531,28 +508,6 @@ func ChatHandle(core *core.Core, receiver types.Receiver, userMessage *types.Cha
 func ChatSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_AUTO)
 
-	ext := types.ChatMessageExt{
-		SpaceID:   userMessage.SpaceID,
-		SessionID: userMessage.SessionID,
-		CreatedAt: time.Now().Unix(),
-		UpdatedAt: time.Now().Unix(),
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-	seqID, err := core.Plugins.GetChatSessionSeqID(ctx, userMessage.SpaceID, userMessage.SessionID)
-	if err != nil {
-		return err
-	}
-
-	answerMessageID := core.Plugins.GenMessageID()
-	if err := receiver.RecvMessageInit(userMessage, answerMessageID, seqID, ext); err != nil {
-		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
-			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
-		return err
-	}
-	// rag docs merge to user request message
-
 	// 使用新的变量名避免资源泄露
 	reqCtx, reqCancel := context.WithTimeout(context.Background(), time.Minute*5)
 	defer reqCancel()
@@ -561,7 +516,6 @@ func ChatSessionHandle(core *core.Core, receiver types.Receiver, userMessage *ty
 	removeSignalFunc := core.Srv().Tower().RegisterStreamSignal(userMessage.SessionID, func() {
 		slog.Debug("close chat stream", slog.String("session_id", userMessage.SessionID))
 		reqCancel()
-		receiver.GetDoneFunc(nil)(context.Canceled)
 	})
 	defer removeSignalFunc()
 

@@ -24,11 +24,4 @@ func RegisterConstants(siteTitle, siteDescription string) {
 	SITE_DESCRIPTION = siteDescription
 }
 
-const APPEND_PROMPT_CN = `
-系统支持的 Markdown 数学公式语法需要使用 ${math}$ 包住表示inline，否则使用
-$$
-{math}
-$$
-包住表示block。
-系统内置了脱敏语法"$hidden[xxxx]"，当你发现参考内容中出现了这些语法信息，请不要做任何处理，直接原封不动的响应出来，前端会进行处理。
-`
+

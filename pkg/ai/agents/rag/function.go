@@ -45,21 +45,23 @@ var FunctionDefine = lo.Map([]*openai.FunctionDefinition{
 
 // RagTool 基于 eino 框架的 RAG 工具
 type RagTool struct {
-	core      *core.Core
-	spaceID   string
-	userID    string
-	sessionID string
-	messageID string
+	core            *core.Core
+	spaceID         string
+	userID          string
+	sessionID       string
+	messageID       string
+	messageSequence int64
 }
 
 // NewRagTool 创建新的 RAG 工具实例
-func NewRagTool(core *core.Core, spaceID, userID, sessionID, messageID string) *RagTool {
+func NewRagTool(core *core.Core, spaceID, userID, sessionID, messageID string, messageSequence int64) *RagTool {
 	return &RagTool{
 		core:      core,
 		spaceID:   spaceID,
 		userID:    userID,
 		sessionID: sessionID,
 		messageID: messageID,
+		messageSequence:messageSequence,
 	}
 }
 
@@ -100,7 +102,7 @@ func (r *RagTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts
 	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
 
-	enhanceResult, _ := EnhanceChatQuery(ctx, r.core, params.Query, r.spaceID, r.sessionID, r.messageID)
+	enhanceResult, _ := EnhanceChatQuery(ctx, r.core, params.Query, r.spaceID, r.sessionID, r.messageSequence)
 
 	// 记录查询增强的使用量
 	if enhanceResult.Usage != nil {

@@ -7,60 +7,58 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 	"github.com/quka-ai/quka-ai/app/core"
-	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/types"
-	"github.com/quka-ai/quka-ai/pkg/utils"
 	"github.com/sashabaranov/go-openai"
 )
 
 func TestAutoAssistant_Creation(t *testing.T) {
 	// 简单测试 AutoAssistant 的创建
 	core := &core.Core{} // 这里需要完整的 core 初始化，暂时用空的测试结构创建
-	
+
 	assistant := NewAutoAssistant(core, types.AGENT_TYPE_NORMAL)
-	
+
 	if assistant == nil {
 		t.Fatal("AutoAssistant creation failed")
 	}
-	
+
 	if assistant.agentType != types.AGENT_TYPE_NORMAL {
 		t.Errorf("Expected agent type %s, got %s", types.AGENT_TYPE_NORMAL, assistant.agentType)
 	}
-	
+
 	t.Log("✅ AutoAssistant creation test passed")
 }
 
 func TestEinoMessageConverter_Creation(t *testing.T) {
 	// 测试消息转换器的创建
 	core := &core.Core{}
-	
+
 	converter := NewEinoMessageConverter(core)
-	
+
 	if converter == nil {
 		t.Fatal("EinoMessageConverter creation failed")
 	}
-	
+
 	if converter.core != core {
 		t.Error("EinoMessageConverter core not set correctly")
 	}
-	
+
 	t.Log("✅ EinoMessageConverter creation test passed")
 }
 
 func TestEinoAgentFactory_Creation(t *testing.T) {
 	// 测试 Agent 工厂的创建
 	core := &core.Core{}
-	
+
 	factory := NewEinoAgentFactory(core)
-	
+
 	if factory == nil {
 		t.Fatal("EinoAgentFactory creation failed")
 	}
-	
+
 	if factory.core != core {
 		t.Error("EinoAgentFactory core not set correctly")
 	}
-	
+
 	// 测试缓存相关功能
 	if factory.cachedChatModelConfig != nil {
 		t.Error("Expected cachedChatModelConfig to be nil initially")
@@ -68,7 +66,7 @@ func TestEinoAgentFactory_Creation(t *testing.T) {
 	if factory.cachedVisionModelConfig != nil {
 		t.Error("Expected cachedVisionModelConfig to be nil initially")
 	}
-	
+
 	// 测试清除缓存功能
 	factory.ClearModelConfigCache()
 	if factory.cachedChatModelConfig != nil {
@@ -77,7 +75,7 @@ func TestEinoAgentFactory_Creation(t *testing.T) {
 	if factory.cachedVisionModelConfig != nil {
 		t.Error("Expected cachedVisionModelConfig to remain nil after clear")
 	}
-	
+
 	t.Log("✅ EinoAgentFactory creation test passed")
 }
 
@@ -87,66 +85,26 @@ func TestToolCallPersister_Creation(t *testing.T) {
 	sessionID := "test-session"
 	spaceID := "test-space"
 	userID := "test-user"
-	
-	persister := NewToolCallPersister(core, sessionID, spaceID, userID)
-	
+
+	persister := NewToolCallSaver(core, sessionID, spaceID, userID)
+
 	if persister == nil {
 		t.Fatal("ToolCallPersister creation failed")
 	}
-	
+
 	if persister.sessionID != sessionID {
 		t.Errorf("Expected sessionID %s, got %s", sessionID, persister.sessionID)
 	}
-	
+
 	if persister.spaceID != spaceID {
 		t.Errorf("Expected spaceID %s, got %s", spaceID, persister.spaceID)
 	}
-	
+
 	if persister.userID != userID {
 		t.Errorf("Expected userID %s, got %s", userID, persister.userID)
 	}
-	
-	t.Log("✅ ToolCallPersister creation test passed")
-}
 
-func TestToolCallMessage_Formatting(t *testing.T) {
-	// 测试工具调用消息格式化
-	core := &core.Core{}
-	persister := NewToolCallPersister(core, "session", "space", "user")
-	
-	toolCall := &ToolCallMessage{
-		ToolName:  "SearchUserKnowledges",
-		Arguments: map[string]interface{}{"query": "golang"},
-		Result:    "Found 5 documents",
-		Status:    "success",
-		StartTime: 1640995200,
-		EndTime:   1640995260,
-	}
-	
-	formatted := persister.formatToolCallMessage(toolCall)
-	
-	if formatted == "" {
-		t.Fatal("Tool call message formatting failed")
-	}
-	
-	// 检查格式化内容是否包含期望的信息
-	expectedParts := []string{
-		"🔧 工具调用: SearchUserKnowledges",
-		"参数:",
-		"golang",
-		"结果:",
-		"Found 5 documents",
-		"状态: 执行成功",
-	}
-	
-	for _, part := range expectedParts {
-		if !contains(formatted, part) {
-			t.Errorf("Expected formatted message to contain '%s', but it didn't. Got: %s", part, formatted)
-		}
-	}
-	
-	t.Log("✅ ToolCallMessage formatting test passed")
-	t.Logf("Formatted message: %s", formatted)
+	t.Log("✅ ToolCallPersister creation test passed")
 }
 
 // TestEinoMessageConverter_ConvertFromChatMessages 测试从数据库消息转换到 eino 消息
@@ -353,7 +311,7 @@ func TestAutoAssistant_RequestAssistant_Interface(t *testing.T) {
 	// 验证 AutoAssistant 实现了与 NormalAssistant 相同的接口
 	core := &core.Core{}
 	autoAssistant := NewAutoAssistant(core, "rag")
-	
+
 	// 类型检查：确保 AutoAssistant 实现了与 NormalAssistant 相同的方法
 	var _ interface {
 		InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error)
@@ -387,7 +345,7 @@ func containsHelper(s, substr string) bool {
 
 // MockInvokableTool 模拟的 InvokableTool 实现用于测试
 type MockInvokableTool struct {
-	name string
+	name      string
 	callCount int
 }
 
@@ -401,126 +359,4 @@ func (m *MockInvokableTool) Info(ctx context.Context) (*schema.ToolInfo, error) 
 func (m *MockInvokableTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
 	m.callCount++
 	return "mock result", nil
-}
-
-// TestNotifyingTool_Functionality 测试 NotifyingTool 的通知功能
-func TestNotifyingTool_Functionality(t *testing.T) {
-	// 初始化 ID 生成器（测试环境）
-	utils.SetupIDWorker(1)
-	
-	// 创建模拟接收函数来验证通知
-	notifications := []types.MessageContent{}
-	receiveFunc := types.ReceiveFunc(func(msg types.MessageContent, progressStatus types.MessageProgress) error {
-		notifications = append(notifications, msg)
-		return nil
-	})
-	
-	// 创建 EinoAdapter
-	adapter := ai.NewEinoAdapter(receiveFunc, "test-session", "test-message")
-	
-	// 创建模拟工具
-	mockTool := &MockInvokableTool{name: "MockTool"}
-	
-	// 创建 NotifyingTool (手动设置以避免依赖 snowflake worker)
-	testToolID := "test-tool-id-12345"
-	notifyingTool := &NotifyingTool{
-		InvokableTool: mockTool,
-		adapter:       adapter,
-		toolID:        testToolID, // 使用静态ID进行测试
-	}
-	
-	// 执行工具调用
-	ctx := context.Background()
-	result, err := notifyingTool.InvokableRun(ctx, `{"query": "test"}`)
-	
-	// 验证结果
-	if err != nil {
-		t.Fatalf("NotifyingTool execution failed: %v", err)
-	}
-	
-	if result != "mock result" {
-		t.Errorf("Expected result 'mock result', got '%s'", result)
-	}
-	
-	if mockTool.callCount != 1 {
-		t.Errorf("Expected tool to be called once, got %d calls", mockTool.callCount)
-	}
-	
-	// 验证通知功能 - 重点验证 tool_id 是否一致
-	t.Log("✅ NotifyingTool functionality test passed")
-	t.Logf("Tool was called %d times", mockTool.callCount)
-	t.Logf("Received %d notifications", len(notifications))
-	t.Logf("Expected tool_id: %s", testToolID)
-	
-	// 通过检查日志或其他方式验证 tool_id 的一致性
-	// 在实际应用中，OnToolCallStart 和 OnToolCallEnd 都应该使用相同的 testToolID
-}
-
-// TestToolIDConsistency 专门测试工具调用过程中 tool_id 的一致性
-func TestToolIDConsistency(t *testing.T) {
-	// 收集所有的 ToolTips 消息
-	var toolTipsMessages []*types.ToolTips
-	receiveFunc := types.ReceiveFunc(func(msg types.MessageContent, progressStatus types.MessageProgress) error {
-		if toolTips, ok := msg.(*types.ToolTips); ok {
-			toolTipsMessages = append(toolTipsMessages, toolTips)
-		}
-		return nil
-	})
-	
-	// 创建 EinoAdapter
-	adapter := ai.NewEinoAdapter(receiveFunc, "test-session", "test-message")
-	
-	// 创建模拟工具
-	mockTool := &MockInvokableTool{name: "TestTool"}
-	
-	// 创建 NotifyingTool 使用固定的 tool_id
-	expectedToolID := "consistent-tool-id-456"
-	notifyingTool := &NotifyingTool{
-		InvokableTool: mockTool,
-		adapter:       adapter,
-		toolID:        expectedToolID,
-	}
-	
-	// 执行工具调用
-	ctx := context.Background()
-	_, err := notifyingTool.InvokableRun(ctx, `{"test": "data"}`)
-	
-	if err != nil {
-		t.Fatalf("Tool execution failed: %v", err)
-	}
-	
-	// 验证收到了 2 条 ToolTips 消息（开始 + 结束）
-	if len(toolTipsMessages) != 2 {
-		t.Fatalf("Expected 2 ToolTips messages, got %d", len(toolTipsMessages))
-	}
-	
-	// 验证两条消息都使用了相同的 tool_id
-	startMessage := toolTipsMessages[0]
-	endMessage := toolTipsMessages[1]
-	
-	if startMessage.ID != expectedToolID {
-		t.Errorf("Start message tool_id mismatch. Expected: %s, Got: %s", expectedToolID, startMessage.ID)
-	}
-	
-	if endMessage.ID != expectedToolID {
-		t.Errorf("End message tool_id mismatch. Expected: %s, Got: %s", expectedToolID, endMessage.ID)
-	}
-	
-	if startMessage.ID != endMessage.ID {
-		t.Errorf("Tool IDs are not consistent. Start: %s, End: %s", startMessage.ID, endMessage.ID)
-	}
-	
-	// 验证状态变化：开始 -> RUNNING，结束 -> SUCCESS
-	if startMessage.Status != types.TOOL_STATUS_RUNNING {
-		t.Errorf("Expected start message status %d, got %d", types.TOOL_STATUS_RUNNING, startMessage.Status)
-	}
-	
-	if endMessage.Status != types.TOOL_STATUS_SUCCESS {
-		t.Errorf("Expected end message status %d, got %d", types.TOOL_STATUS_SUCCESS, endMessage.Status)
-	}
-	
-	t.Log("✅ Tool ID consistency test passed")
-	t.Logf("Consistent tool_id used: %s", expectedToolID)
-	t.Logf("Start message tool name: %s, status: %d", startMessage.ToolName, startMessage.Status)
-	t.Logf("End message tool name: %s, status: %d", endMessage.ToolName, endMessage.Status)
 }

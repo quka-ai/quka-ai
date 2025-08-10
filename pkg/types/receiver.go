@@ -10,7 +10,9 @@ type Messager interface {
 
 type Receiver interface {
 	IsStream() bool
+	Copy() Receiver
 	GetReceiveFunc() ReceiveFunc
 	GetDoneFunc(callback func(msg *ChatMessage)) DoneFunc
-	RecvMessageInit(userReqMsg *ChatMessage, msgID string, seqID int64, ext ChatMessageExt) error
+	RecvMessageInit(ext ChatMessageExt) error
+	MessageID() string
 }

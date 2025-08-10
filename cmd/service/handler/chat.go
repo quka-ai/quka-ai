@@ -16,7 +16,7 @@ import (
 )
 
 func (s *HttpSrv) GenMessageID(c *gin.Context) {
-	response.APISuccess(c, s.Core.Plugins.AIChatLogic("").GenMessageID())
+	response.APISuccess(c, s.Core.Plugins.GenMessageID())
 }
 
 type ListChatSessionRequest struct {
@@ -131,9 +131,9 @@ func (s *HttpSrv) DeleteChatSession(c *gin.Context) {
 }
 
 type GetChatSessionHistoryRequest struct {
-	Page           uint64 `json:"page" form:"page" binding:"required"`
-	PageSize       uint64 `json:"pagesize" form:"pagesize" binding:"required"`
-	AfterMessageID string `json:"after_message_id" form:"after_message_id"`
+	Page          uint64 `json:"page" form:"page" binding:"required"`
+	PageSize      uint64 `json:"pagesize" form:"pagesize" binding:"required"`
+	AfterSequence int64  `json:"after_sequence" form:"after_sequence"`
 }
 
 type GetChatSessionHistoryResponse struct {
@@ -166,7 +166,7 @@ func (s *HttpSrv) GetChatSessionHistory(c *gin.Context) {
 	}
 
 	historyLogic := v1.NewHistoryLogic(c, s.Core)
-	list, total, err := historyLogic.GetHistoryMessage(space, sessionID, req.AfterMessageID, req.Page, req.PageSize)
+	list, total, err := historyLogic.GetHistoryMessage(space, sessionID, req.AfterSequence, req.Page, req.PageSize)
 	if err != nil {
 		response.APIError(c, err)
 		return

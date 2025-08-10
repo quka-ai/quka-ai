@@ -39,6 +39,8 @@ type ChatMessageExt struct {
 	Evaluate         types.EvaluateType         `json:"evaluate"`
 	GenerationStatus types.GenerationStatusType `json:"generation_status"`
 	RelDocs          []RelDoc                   `json:"rel_docs"` // relevance docs
+	ToolName         string                     `json:"tool_name"`
+	ToolArgs         string                     `json:"tool_args"`
 	Marks            map[string]string          `json:"marks"`
 }
 
@@ -59,6 +61,8 @@ func (l *HistoryLogic) GetMessageExt(spaceID, sessionID, messageID string) (*Cha
 
 	result.Evaluate = data.Evaluate
 	result.GenerationStatus = data.GenerationStatus
+	result.ToolName = data.ToolName
+	result.ToolArgs = data.ToolArgs.String
 
 	if len(data.RelDocs) > 0 {
 		docs, err := l.core.Store().KnowledgeStore().ListKnowledges(l.ctx, types.GetKnowledgeOptions{
@@ -91,16 +95,18 @@ type MessageExt struct {
 	IsRead           []string           `json:"is_read"`
 	RelDocs          []RelDoc           `json:"rel_docs"`
 	Evaluate         types.EvaluateType `json:"evaluate"`
+	ToolName         string             `json:"tool_name"`
+	ToolArgs         string             `json:"tool_args"`
 	IsEvaluateEnable bool               `json:"is_evaluate_enable"`
 }
 
-func (l *HistoryLogic) GetHistoryMessage(spaceID, sessionID, afterMsgID string, page, pageSize uint64) ([]*MessageDetail, int64, error) {
-	list, err := l.core.Store().ChatMessageStore().ListSessionMessage(l.ctx, spaceID, sessionID, afterMsgID, page, pageSize)
+func (l *HistoryLogic) GetHistoryMessage(spaceID, sessionID string, afterMsgSequence int64, page, pageSize uint64) ([]*MessageDetail, int64, error) {
+	list, err := l.core.Store().ChatMessageStore().ListSessionMessage(l.ctx, spaceID, sessionID, afterMsgSequence, page, pageSize)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, 0, errors.New("HistoryLogic.GetHistoryMessage.ChatMessageStore.ListSessionMessage", i18n.ERROR_INTERNAL, err)
 	}
 
-	total, err := l.core.Store().ChatMessageStore().TotalSessionMessage(l.ctx, spaceID, sessionID, afterMsgID)
+	total, err := l.core.Store().ChatMessageStore().TotalSessionMessage(l.ctx, spaceID, sessionID, afterMsgSequence)
 	if err != nil {
 		return nil, 0, errors.New("HistoryLogic.GetHistoryMessage.TotalDialogMessage", i18n.ERROR_INTERNAL, err)
 	}
@@ -185,6 +191,8 @@ func (l *HistoryLogic) GetHistoryMessage(spaceID, sessionID, afterMsgID string, 
 				Evaluate:         v.Ext.Evaluate,
 				IsEvaluateEnable: v.Ext.IsEvaluateEnable,
 				RelDocs:          relDocs,
+				ToolName:         v.Ext.ToolName,
+				ToolArgs:         v.Ext.ToolArgs,
 			},
 		}
 	})
@@ -205,6 +213,8 @@ func chatMsgAndExtToMessageDetail(msg *types.ChatMessage, ext *types.ChatMessage
 		data.Ext = &types.MessageExt{
 			Evaluate:         ext.Evaluate,
 			RelDocs:          ext.RelDocs,
+			ToolName:         ext.ToolName,
+			ToolArgs:         ext.ToolArgs.String,
 			IsEvaluateEnable: lo.If(msg.Role == types.USER_ROLE_ASSISTANT, true).Else(false),
 		}
 	}
