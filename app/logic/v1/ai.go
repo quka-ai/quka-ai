@@ -11,6 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/eino/callbacks"
+	"github.com/cloudwego/eino/compose"
+	"github.com/cloudwego/eino/flow/agent"
+	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 	"github.com/samber/lo"
 	"github.com/sashabaranov/go-openai"
@@ -21,10 +25,9 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/butler"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/journal"
-	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
-	"github.com/quka-ai/quka-ai/pkg/safe"
+	"github.com/quka-ai/quka-ai/pkg/mark"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/types/protocol"
 	"github.com/quka-ai/quka-ai/pkg/utils"
@@ -267,105 +270,6 @@ func handleAndNotifyAssistantFailed(core *core.Core, receiver types.Receiver, re
 	// return nil
 }
 
-// requestAI
-func requestAI(ctx context.Context, core *core.Core, isStream bool, enableThinking bool, sessionContext *SessionContext, marks map[string]string, receiveFunc types.ReceiveFunc, done types.DoneFunc) ([]*openai.ToolCall, error) {
-	// slog.Debug("request to ai", slog.Any("context", sessionContext.MessageContext), slog.String("prompt", sessionContext.Prompt))
-	requestCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	tool := core.Srv().AI().NewQuery(requestCtx, sessionContext.MessageContext)
-
-	if sessionContext.Prompt == "" {
-		sessionContext.Prompt = core.Cfg().Prompt.Base
-	}
-	tool.WithPrompt(sessionContext.Prompt)
-	tool.EnableThinking(enableThinking)
-
-	if !isStream {
-		msg, err := tool.Query()
-		if err != nil {
-			return nil, err
-		}
-
-		process.NewRecordChatUsageRequest(msg.Model, types.USAGE_SUB_TYPE_CHAT, sessionContext.MessageID, &msg.Usage)
-
-		var contentBuilder strings.Builder
-		for _, choice := range msg.Choices {
-			contentBuilder.WriteString(choice.Message.Content)
-		}
-		content := contentBuilder.String()
-
-		defer done(nil)
-		return nil, receiveFunc(&types.TextMessage{Text: content}, types.MESSAGE_PROGRESS_COMPLETE)
-	}
-
-	resp, err := tool.QueryStream()
-	if err != nil {
-		return nil, err
-	}
-
-	respChan, err := ai.HandleAIStream(requestCtx, resp, marks)
-	if err != nil {
-		return nil, errors.New("requestAI.HandleAIStream", i18n.ERROR_INTERNAL, err)
-	}
-
-	var (
-		usage     openai.Usage
-		usedModel string
-		setModel  sync.Once
-	)
-	defer process.NewRecordChatUsageRequest(usedModel, types.USAGE_SUB_TYPE_CHAT, sessionContext.MessageID, &usage)
-	// 3. handle response
-	for {
-		select {
-		case <-requestCtx.Done():
-			if done != nil {
-				done(requestCtx.Err())
-			}
-			return nil, requestCtx.Err()
-		case msg, ok := <-respChan:
-			if !ok {
-				return nil, nil
-			}
-			if msg.Error != nil {
-				return nil, err
-			}
-
-			if msg.Message != "" {
-				if err := receiveFunc(&types.TextMessage{Text: msg.Message}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
-					fmt.Println("receiveFunc error", err)
-					return nil, errors.New("ChatGPTLogic.RequestChatGPT.for.respChan.receive", i18n.ERROR_INTERNAL, err)
-				}
-			}
-
-			// slog.Debug("got ai response", slog.Any("msg", msg), slog.Bool("status", ok))
-			if msg.FinishReason != "" {
-				if err = done(nil); err != nil {
-					slog.Error("Failed to set message done", slog.String("error", err.Error()), slog.String("msg_id", msg.ID))
-				}
-				if msg.FinishReason != "" && msg.FinishReason != "stop" {
-					slog.Error("AI srv unexpected exit", slog.String("error", msg.FinishReason), slog.String("id", msg.ID))
-					return nil, errors.New("requestAI.Srv.AI.Query", i18n.ERROR_INTERNAL, fmt.Errorf("%s", msg.FinishReason))
-				}
-			}
-
-			if msg.Usage != nil {
-				setModel.Do(func() {
-					usedModel = msg.Model
-				})
-
-				usage.CompletionTokens += msg.Usage.CompletionTokens
-				usage.PromptTokens += msg.Usage.PromptTokens
-				usage.TotalTokens += msg.Usage.TotalTokens
-			}
-
-			if msg.DeepContinue != nil {
-				return msg.DeepContinue, nil
-			}
-		}
-	}
-}
-
 type AIRequestOptions struct {
 	IsStream       bool
 	EnableThinking bool
@@ -481,30 +385,6 @@ func requestAIWithTools(ctx context.Context, core *core.Core, opts AIRequestOpti
 	}
 }
 
-func NewNormalAssistant(core *core.Core, agentType string) *NormalAssistant {
-	return &NormalAssistant{
-		core:      core,
-		agentType: agentType,
-	}
-}
-
-type NormalAssistant struct {
-	core      *core.Core
-	agentType string
-}
-
-func (s *NormalAssistant) InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error) {
-	// 生成ai响应消息载体的同时，写入关联的内容列表(ext)
-	return initAssistantMessage(ctx, s.core, msgID, seqID, userReqMessage, ext)
-}
-
-// GenSessionContext 生成session上下文
-func (s *NormalAssistant) GenSessionContext(ctx context.Context, prompt string, reqMsgWithDocs *types.ChatMessage) (*SessionContext, error) {
-	// latency := s.core.Metrics().GenContextTimer("GenChatSessionContext")
-	// defer latency.ObserveDuration()
-	return GenChatSessionContextAndSummaryIfExceedsTokenLimit(ctx, s.core, prompt, reqMsgWithDocs, normalGenMessageCondition, types.GEN_CONTEXT)
-}
-
 func NewChatReceiver(ctx context.Context, core *core.Core, msger types.Messager, reqMessage *types.ChatMessage) types.Receiver {
 	return &ChatReceiveHandler{
 		ctx:           ctx,
@@ -513,6 +393,8 @@ func NewChatReceiver(ctx context.Context, core *core.Core, msger types.Messager,
 		userReqMsg:    reqMessage,
 		messageID:     core.GenMessageID(),
 		sendedCounter: &sendedCounter{},
+
+		varHandler: mark.NewSensitiveWork(),
 	}
 }
 
@@ -542,6 +424,8 @@ type ChatReceiveHandler struct {
 	userReqMsg    *types.ChatMessage
 	receiveMsg    *types.ChatMessage
 	sendedCounter *sendedCounter
+
+	varHandler mark.VariableHandler
 }
 
 func (s *ChatReceiveHandler) IsStream() bool {
@@ -550,6 +434,10 @@ func (s *ChatReceiveHandler) IsStream() bool {
 
 func (s *ChatReceiveHandler) MessageID() string {
 	return s.messageID
+}
+
+func (s *ChatReceiveHandler) VariableHandler() mark.VariableHandler {
+	return s.varHandler
 }
 
 func (s *ChatReceiveHandler) RecvMessageInit(ext types.ChatMessageExt) error {
@@ -607,6 +495,8 @@ func NewQueryReceiver(ctx context.Context, core *core.Core, responseChan chan ty
 		core:         core,
 		resp:         responseChan,
 		sendedLength: 0,
+
+		varHandler: mark.NewSensitiveWork(),
 	}
 }
 
@@ -615,6 +505,12 @@ type QueryReceiveHandler struct {
 	core         *core.Core
 	resp         chan types.MessageContent
 	sendedLength int64
+
+	varHandler mark.VariableHandler
+}
+
+func (s *QueryReceiveHandler) VariableHandler() mark.VariableHandler {
+	return s.varHandler
 }
 
 func (s *QueryReceiveHandler) MessageID() string {
@@ -654,130 +550,11 @@ func (s *QueryReceiveHandler) GetDoneFunc(callback func(receiveMsg *types.ChatMe
 	}
 }
 
-// RequestAssistant 向智能助理发起请求
-// reqMsgInfo 用户请求的内容
-// recvMsgInfo 用于承载ai回复的内容，会预先在数据库中为ai响应的数据创建出对应的记录
-func (s *NormalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error {
-	space, err := s.core.Store().SpaceStore().GetSpace(ctx, reqMsg.SpaceID)
-	if err != nil {
-		return err
-	}
-
-	var prompt string
-	if aiCallOptions.Docs == nil || len(aiCallOptions.Docs.Refs) == 0 {
-		aiCallOptions.Docs = &types.RAGDocs{}
-		prompt = lo.If(space.BasePrompt != "", space.BasePrompt).Else(s.core.Prompt().Base)
-	} else {
-		prompt = lo.If(space.ChatPrompt != "", space.ChatPrompt).Else(s.core.Prompt().Query)
-	}
-	prompt = ai.BuildRAGPrompt(prompt, ai.NewDocs(aiCallOptions.Docs.Docs), s.core.Srv().AI())
-
-	var (
-		sessionContext *SessionContext
-	)
-	if reqMsg.SessionID != "" {
-		sessionContext, err = s.GenSessionContext(ctx, prompt, reqMsg)
-		if err != nil {
-			return err
-		}
-	} else {
-		var userChatMessage []*types.MessageContext
-		if len(reqMsg.Attach) > 0 {
-			item := &types.MessageContext{
-				Role: types.USER_ROLE_USER,
-			}
-			item.MultiContent = reqMsg.Attach.ToMultiContent("", s.core.FileStorage())
-			userChatMessage = append(userChatMessage, item)
-		}
-
-		userChatMessage = append(userChatMessage, &types.MessageContext{
-			Role:    types.USER_ROLE_USER,
-			Content: reqMsg.Message,
-		})
-		sessionContext = &SessionContext{
-			Prompt:         prompt,
-			MessageID:      reqMsg.ID,
-			MessageContext: userChatMessage,
-		}
-	}
-
-	receiveFunc := receiver.GetReceiveFunc()
-	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
-	doneFunc := receiver.GetDoneFunc(func(recvMsgInfo *types.ChatMessage) {
-		if recvMsgInfo == nil {
-			return
-		}
-		// set chat session pin
-		go safe.Run(func() {
-			switch s.agentType {
-			case types.AGENT_TYPE_NORMAL:
-				if len(aiCallOptions.Docs.Refs) == 0 {
-					return
-				}
-				if err := createChatSessionKnowledgePin(s.core, recvMsgInfo, aiCallOptions.Docs); err != nil {
-					slog.Error("Failed to create chat session knowledge pins", slog.String("session_id", recvMsgInfo.SessionID), slog.String("error", err.Error()))
-				}
-			default:
-			}
-		})
-	})
-
-	marks := make(map[string]string)
-	for _, v := range aiCallOptions.Docs.Docs {
-		if v.SW == nil {
-			continue
-		}
-		for fake, real := range v.SW.Map() {
-			marks[fake] = real
-		}
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		toolCalls, err := requestAIWithTools(ctx, s.core, AIRequestOptions{
-			IsStream:       receiver.IsStream(),
-			EnableThinking: aiCallOptions.EnableThinking,
-			SessionContext: sessionContext,
-			Marks:          marks,
-			Tools:          rag.FunctionDefine,
-		}, receiveFunc, doneFunc)
-		if err != nil {
-			slog.Error("NormalAssistant: failed to request AI", slog.String("error", err.Error()))
-			return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
-		}
-
-		if len(toolCalls) == 0 {
-			break
-		}
-
-		if marks == nil {
-			marks = make(map[string]string)
-		}
-		appendMessages, err := ai.HandleToolCallOnly(toolCalls, rag.GetToolsHandler(s.core, reqMsg.SessionID, reqMsg.SpaceID, reqMsg.UserID, marks, receiveFunc))
-		if err != nil {
-			slog.Error("NormalAssistant: failed to handle tool call", slog.String("error", err.Error()))
-			return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
-		}
-
-		sessionContext.MessageContext = append(sessionContext.MessageContext, appendMessages...)
-	}
-
-	return nil
-}
-
 func NewBulterAssistant(core *core.Core, agentType string) *ButlerAssistant {
-	cfg := openai.DefaultConfig(core.Cfg().AI.Agent.Token)
-	cfg.BaseURL = core.Cfg().AI.Agent.Endpoint
-
-	cli := openai.NewClientWithConfig(cfg)
 	return &ButlerAssistant{
 		core:      core,
 		agentType: agentType,
-		client:    butler.NewButlerAgent(core, cli, core.Cfg().AI.Agent.Model, core.Cfg().AI.Agent.VlModel),
+		client:    butler.NewButlerAgent(core),
 	}
 }
 
@@ -785,11 +562,6 @@ type ButlerAssistant struct {
 	core      *core.Core
 	agentType string
 	client    *butler.ButlerAgent
-}
-
-func (s *ButlerAssistant) InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error) {
-	// 生成ai响应消息载体的同时，写入关联的内容列表(ext)
-	return initAssistantMessage(ctx, s.core, msgID, seqID, userReqMessage, ext)
 }
 
 // GenSessionContext 生成session上下文
@@ -803,54 +575,129 @@ func (s *ButlerAssistant) GenSessionContext(ctx context.Context, prompt string, 
 // reqMsgInfo 用户请求的内容
 // recvMsgInfo 用于承载ai回复的内容，会预先在数据库中为ai响应的数据创建出对应的记录
 func (s *ButlerAssistant) RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error {
-	nextReq, usages, err := s.client.Query(reqMsg.UserID, reqMsg)
+	// 1. 获取空间信息
+	space, err := s.core.Store().SpaceStore().GetSpace(ctx, reqMsg.SpaceID)
 	if err != nil {
-		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
+		return err
 	}
 
-	for _, v := range usages {
-		process.NewRecordUsageRequest(s.client.Model, "Agents", "Butler", reqMsg.SpaceID, reqMsg.UserID, v)
+	// 2. 准备提示词 - 使用butler专用提示词
+	prompt := ai.BuildPrompt(space.BasePrompt, s.core.Srv().AI().Lang())
+	prompt = receiver.VariableHandler().Do(prompt)
+
+	// 3. 生成会话上下文
+	sessionContext, err := s.GenSessionContext(ctx, prompt, reqMsg)
+	if err != nil {
+		return err
 	}
 
-	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
-	receiveFunc := receiver.GetReceiveFunc()
-	doneFunc := receiver.GetDoneFunc(nil)
+	// 4. 创建 AgentContext - 提取思考和搜索配置
+	enableThinking := aiCallOptions.EnableThinking
+	enableWebSearch := aiCallOptions.EnableSearch
 
-	if len(nextReq) == 1 {
-		defer doneFunc(nil)
-		return receiveFunc(&types.TextMessage{Text: nextReq[0].Content}, types.MESSAGE_PROGRESS_COMPLETE)
+	agentCtx := types.NewAgentContextWithOptions(
+		ctx,
+		reqMsg.SpaceID,
+		reqMsg.UserID,
+		reqMsg.SessionID,
+		reqMsg.ID,
+		reqMsg.Sequence,
+		enableThinking,
+		enableWebSearch,
+		false,
+	)
+
+	// 5. 将 MessageContext 转换为 eino 消息格式
+	einoMessages := ai.ConvertMessageContextToEinoMessages(sessionContext.MessageContext)
+	einoMessages = lo.Map(einoMessages, func(item *schema.Message, _ int) *schema.Message {
+		item.Content = receiver.VariableHandler().Do(item.Content)
+		return item
+	})
+
+	// 6. 创建工具包装器
+	notifyToolWrapper := NewNotifyToolWrapper(s.core, reqMsg, receiver.Copy())
+
+	// 7. 使用通用工厂创建Butler ReAct Agent
+	factory := NewEinoAgentFactory(s.core)
+	agent, modelConfig, err := factory.CreateButlerReActAgent(agentCtx, notifyToolWrapper, einoMessages, s.client)
+	if err != nil {
+		return err
 	}
 
-	chatSessionContext := &SessionContext{
-		MessageID: reqMsg.ID,
-		SessionID: reqMsg.SessionID,
-		MessageContext: lo.Map(nextReq, func(item openai.ChatCompletionMessage, _ int) *types.MessageContext {
-			return &types.MessageContext{
-				Role:         types.GetMessageUserRole(item.Role),
-				Content:      item.Content,
-				MultiContent: item.MultiContent,
-			}
-		}),
-		Prompt: butler.BuildButlerPrompt("", s.core.Srv().AI()),
+	// 8. 创建响应处理器
+	responseHandler := NewEinoResponseHandler(receiver, reqMsg)
+	callbackHandler := NewCallbackHandlers(s.core, modelConfig.ModelName, reqMsg)
+
+	// 9. 执行推理
+	if receiver.IsStream() {
+		// 流式处理
+		return s.handleStreamResponse(agentCtx, agent, einoMessages, responseHandler, callbackHandler)
+	} else {
+		// 非流式处理
+		return s.handleDirectResponse(agentCtx, agent, einoMessages, responseHandler)
 	}
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
-	defer cancel()
-
-	// doneFunc := getStreamDoneFunc(ctx, s.core, recvMsgInfo, nil)
-
-	marks := make(map[string]string)
-	for _, v := range aiCallOptions.Docs.Docs {
-		for fake, real := range v.SW.Map() {
-			marks[fake] = real
+// handleStreamResponse 处理流式响应 (复用AutoAssistant的实现)
+func (s *ButlerAssistant) handleStreamResponse(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, streamHandler *EinoResponseHandler, callbacksHandler callbacks.Handler) error {
+	reqMessage := streamHandler.reqMsg
+	initFunc := func(ctx context.Context) error {
+		if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
+			SpaceID:   reqMessage.SpaceID,
+			SessionID: reqMessage.SessionID,
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
+		}); err != nil {
+			slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
+			return err
 		}
+
+		slog.Debug("AI message session created",
+			slog.String("msg_id", streamHandler.Receiver().MessageID()),
+			slog.String("session_id", reqMessage.SessionID))
+		return nil
 	}
 
-	if _, err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, chatSessionContext, marks, receiveFunc, doneFunc); err != nil {
-		slog.Error("failed to request AI", slog.String("error", err.Error()))
-		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
+	// 使用 eino agent 进行流式推理
+	result, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
+		compose.WithCallbacks(callbacksHandler, &LoggerCallback{}),
+	))
+	if err != nil {
+		initFunc(ctx)
+		streamHandler.GetDoneFunc(nil)(err)
+		slog.Error("failed to start eino stream response", slog.Any("error", err))
+		return err
 	}
+
+	if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
+		slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
+		return err
+	}
+
 	return nil
+}
+
+// handleDirectResponse 处理非流式响应 (复用AutoAssistant的实现)
+func (s *ButlerAssistant) handleDirectResponse(ctx context.Context, agent *react.Agent, messages []*schema.Message, handler *EinoResponseHandler) error {
+	// 使用 eino agent 进行推理
+	done := handler.GetDoneFunc(nil)
+	result, err := agent.Generate(ctx, messages)
+	if err != nil {
+		if done != nil {
+			done(err)
+		}
+		return err
+	}
+
+	reqMessage := handler.reqMsg
+	handler.Receiver().RecvMessageInit(types.ChatMessageExt{
+		SpaceID:   reqMessage.SpaceID,
+		SessionID: reqMessage.SessionID,
+	})
+	if err = handler.GetReceiveFunc()(&types.TextMessage{Text: result.Content}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
+		return err
+	}
+	return done(nil)
 }
 
 func NewJournalAssistant(core *core.Core, agentType string) *JournalAssistant {
@@ -871,11 +718,6 @@ type JournalAssistant struct {
 	agent     *journal.JournalAgent
 }
 
-func (s *JournalAssistant) InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error) {
-	// 生成ai响应消息载体的同时，写入关联的内容列表(ext)
-	return initAssistantMessage(ctx, s.core, msgID, seqID, userReqMessage, ext)
-}
-
 // GenSessionContext 生成session上下文
 func (s *JournalAssistant) GenSessionContext(ctx context.Context, prompt string, reqMsgWithDocs *types.ChatMessage) (*SessionContext, error) {
 	// latency := s.core.Metrics().GenContextTimer("GenChatSessionContext")
@@ -893,86 +735,123 @@ var (
 )
 
 func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error {
-	userChatMessage := openai.ChatCompletionMessage{
-		Role: types.USER_ROLE_USER.String(),
-	}
-	if len(reqMsg.Attach) > 0 {
-		userChatMessage.MultiContent = reqMsg.Attach.ToMultiContent(reqMsg.Message, s.core.FileStorage())
-	} else {
-		userChatMessage.Content = reqMsg.Message
-	}
-	baseReq := []openai.ChatCompletionMessage{
-		{
-			Role:    types.USER_ROLE_SYSTEM.String(),
-			Content: journal.BuildJournalPrompt("", s.core.Srv().AI()),
-		},
-		userChatMessage,
-	}
+	// 2. 准备提示词 - 使用journal专用提示词
+	prompt := journal.BuildJournalPrompt("", s.core.Srv().AI())
+	prompt = receiver.VariableHandler().Do(prompt)
 
-	receiveFunc := receiver.GetReceiveFunc()
-	// receiveFunc := getStreamReceiveFunc(ctx, s.core, recvMsgInfo)
-	doneFunc := receiver.GetDoneFunc(nil)
-	// doneFunc := getStreamDoneFunc(ctx, s.core, recvMsgInfo, nil)
-
-	toolID := utils.GenUniqIDStr()
-	receiveFunc(&types.ToolTips{
-		ID:       toolID,
-		ToolName: "SearchJournal",
-		Content:  "Searching your journals...",
-	}, types.MESSAGE_PROGRESS_GENERATING)
-
-	once := sync.Once{}
-	actualReceiveFunc := func(message types.MessageContent, progressStatus types.MessageProgress) error {
-		once.Do(func() {
-			receiveFunc(&types.ToolTips{
-				ID:       toolID,
-				ToolName: "SearchJournal",
-				Content:  "Searching your journals done",
-			}, types.MESSAGE_PROGRESS_GENERATING)
-		})
-		return receiveFunc(message, progressStatus)
-	}
-
-	nextReq, usage, err := s.agent.HandleUserRequest(ctx, reqMsg.SpaceID, reqMsg.UserID, baseReq, receiveFunc)
+	// 3. 生成会话上下文
+	sessionContext, err := s.GenSessionContext(ctx, prompt, reqMsg)
 	if err != nil {
-		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
+		return err
 	}
 
-	if len(nextReq) == 0 {
-		nextReq = baseReq
+	// 4. 创建 AgentContext - 提取思考和搜索配置
+	enableThinking := aiCallOptions.EnableThinking
+	enableWebSearch := aiCallOptions.EnableSearch
+
+	agentCtx := types.NewAgentContextWithOptions(
+		ctx,
+		reqMsg.SpaceID,
+		reqMsg.UserID,
+		reqMsg.SessionID,
+		reqMsg.ID,
+		reqMsg.Sequence,
+		enableThinking,
+		enableWebSearch,
+		false,
+	)
+
+	// 5. 将 MessageContext 转换为 eino 消息格式
+	einoMessages := ai.ConvertMessageContextToEinoMessages(sessionContext.MessageContext)
+	einoMessages = lo.Map(einoMessages, func(item *schema.Message, _ int) *schema.Message {
+		item.Content = receiver.VariableHandler().Do(item.Content)
+		return item
+	})
+
+	// 6. 创建工具包装器
+	notifyToolWrapper := NewNotifyToolWrapper(s.core, reqMsg, receiver.Copy())
+
+	// 7. 使用通用工厂创建Journal ReAct Agent
+	factory := NewEinoAgentFactory(s.core)
+	agent, modelConfig, err := factory.CreateJournalReActAgent(agentCtx, notifyToolWrapper, einoMessages, s.agent)
+	if err != nil {
+		return err
 	}
 
-	if usage != nil {
-		process.NewRecordUsageRequest(s.agent.Model, "Agents", "Journal", reqMsg.SpaceID, reqMsg.UserID, usage)
+	// 8. 创建响应处理器
+	responseHandler := NewEinoResponseHandler(receiver, reqMsg)
+	callbackHandler := NewCallbackHandlers(s.core, modelConfig.ModelName, reqMsg)
+
+	// 9. 执行推理
+	if receiver.IsStream() {
+		// 流式处理
+		return s.handleStreamResponse(agentCtx, agent, einoMessages, responseHandler, callbackHandler)
+	} else {
+		// 非流式处理
+		return s.handleDirectResponse(agentCtx, agent, einoMessages, responseHandler)
 	}
+}
 
-	chatSessionContext := &SessionContext{
-		MessageID: reqMsg.ID,
-		SessionID: reqMsg.SessionID,
-		MessageContext: lo.Map(nextReq, func(item openai.ChatCompletionMessage, _ int) *types.MessageContext {
-			return &types.MessageContext{
-				Role:         types.GetMessageUserRole(item.Role),
-				Content:      item.Content,
-				MultiContent: item.MultiContent,
-			}
-		}),
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
-	defer cancel()
-
-	marks := make(map[string]string)
-	for _, v := range aiCallOptions.Docs.Docs {
-		for fake, real := range v.SW.Map() {
-			marks[fake] = real
+// handleStreamResponse 处理流式响应 (复用ButlerAssistant的实现)
+func (s *JournalAssistant) handleStreamResponse(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, streamHandler *EinoResponseHandler, callbacksHandler callbacks.Handler) error {
+	reqMessage := streamHandler.reqMsg
+	initFunc := func(ctx context.Context) error {
+		if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
+			SpaceID:   reqMessage.SpaceID,
+			SessionID: reqMessage.SessionID,
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
+		}); err != nil {
+			slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
+			return err
 		}
+
+		slog.Debug("AI message session created",
+			slog.String("msg_id", streamHandler.Receiver().MessageID()),
+			slog.String("session_id", reqMessage.SessionID))
+		return nil
 	}
 
-	if _, err = requestAI(ctx, s.core, receiver.IsStream(), aiCallOptions.EnableThinking, chatSessionContext, marks, actualReceiveFunc, doneFunc); err != nil {
-		slog.Error("Journal: failed to request AI", slog.String("error", err.Error()))
-		return handleAndNotifyAssistantFailed(s.core, receiver, reqMsg, err)
+	// 使用 eino agent 进行流式推理
+	result, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
+		compose.WithCallbacks(callbacksHandler, &LoggerCallback{}),
+	))
+	if err != nil {
+		initFunc(ctx)
+		streamHandler.GetDoneFunc(nil)(err)
+		slog.Error("failed to start eino stream response", slog.Any("error", err))
+		return err
 	}
+
+	if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
+		slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
+		return err
+	}
+
 	return nil
+}
+
+// handleDirectResponse 处理非流式响应 (复用ButlerAssistant的实现)
+func (s *JournalAssistant) handleDirectResponse(ctx context.Context, agent *react.Agent, messages []*schema.Message, handler *EinoResponseHandler) error {
+	// 使用 eino agent 进行推理
+	done := handler.GetDoneFunc(nil)
+	result, err := agent.Generate(ctx, messages)
+	if err != nil {
+		if done != nil {
+			done(err)
+		}
+		return err
+	}
+
+	reqMessage := handler.reqMsg
+	handler.Receiver().RecvMessageInit(types.ChatMessageExt{
+		SpaceID:   reqMessage.SpaceID,
+		SessionID: reqMessage.SessionID,
+	})
+	if err = handler.GetReceiveFunc()(&types.TextMessage{Text: result.Content}, types.MESSAGE_PROGRESS_GENERATING); err != nil {
+		return err
+	}
+	return done(nil)
 }
 
 // createChatSessionKnowledgePin Create this chat session prompt pin docs

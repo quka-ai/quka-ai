@@ -181,7 +181,7 @@ func (s *SelfHostPlugin) TryLock(ctx context.Context, key string) (bool, error) 
 
 type AIChatLogic struct {
 	core *core.Core
-	plugins.Assistant
+	core.AIChatLogic
 }
 
 func (s *SelfHostPlugin) GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error) {
@@ -205,23 +205,18 @@ func (s *SelfHostPlugin) AIChatLogic(agentType string) core.AIChatLogic {
 	switch agentType {
 	case types.AGENT_TYPE_BUTLER:
 		return &AIChatLogic{
-			core:      s.core.AppCore,
-			Assistant: v1.NewBulterAssistant(s.core.AppCore, agentType),
+			core:        s.core.AppCore,
+			AIChatLogic: v1.NewBulterAssistant(s.core.AppCore, agentType),
 		}
 	case types.AGENT_TYPE_JOURNAL:
 		return &AIChatLogic{
-			core:      s.core.AppCore,
-			Assistant: v1.NewJournalAssistant(s.core.AppCore, agentType),
-		}
-	case types.AGENT_TYPE_NORMAL:
-		return &AIChatLogic{
-			core:      s.core.AppCore,
-			Assistant: v1.NewNormalAssistant(s.core.AppCore, agentType),
+			core:        s.core.AppCore,
+			AIChatLogic: v1.NewJournalAssistant(s.core.AppCore, agentType),
 		}
 	default:
 		return &AIChatLogic{
-			core:      s.core.AppCore,
-			Assistant: v1.NewAutoAssistant(s.core.AppCore, agentType),
+			core:        s.core.AppCore,
+			AIChatLogic: v1.NewAutoAssistant(s.core.AppCore, agentType),
 		}
 	}
 }
@@ -323,13 +318,11 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 		// 对所有转换后的markdown内容进行预签名URL替换
 		content = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(content, s.FileStorage())
 
-		sw := mark.NewSensitiveWork()
 		docs = append(docs, &types.PassageInfo{
 			ID:       v.ID,
-			Content:  sw.Do(content),
+			Content:  content,
 			DateTime: v.MaybeDate,
 			Resource: lo.If(resourceTitle[v.Resource] != "", resourceTitle[v.Resource]).Else(v.Resource),
-			SW:       sw,
 		})
 	}
 	return docs, nil

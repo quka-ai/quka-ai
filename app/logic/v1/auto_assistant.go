@@ -30,9 +30,10 @@ import (
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
 	"github.com/quka-ai/quka-ai/pkg/ai"
+	"github.com/quka-ai/quka-ai/pkg/ai/agents/butler"
+	"github.com/quka-ai/quka-ai/pkg/ai/agents/journal"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/ai/tools/duckduckgo"
-	"github.com/quka-ai/quka-ai/pkg/mark"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
@@ -52,12 +53,6 @@ func NewAutoAssistant(core *core.Core, agentType string) *AutoAssistant {
 	}
 }
 
-// InitAssistantMessage 初始化助手消息 - 与 NormalAssistant 保持兼容
-func (a *AutoAssistant) InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error) {
-	// 直接调用 ai.go 中的 initAssistantMessage 函数
-	return initAssistantMessage(ctx, a.core, msgID, seqID, userReqMessage, ext)
-}
-
 // GenSessionContext 生成会话上下文 - 与 NormalAssistant 保持兼容
 func (a *AutoAssistant) GenSessionContext(ctx context.Context, prompt string, reqMsgWithDocs *types.ChatMessage) (*SessionContext, error) {
 	// 直接调用 ai.go 中的函数
@@ -74,13 +69,8 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	}
 
 	// 2. 准备提示词
-	var prompt string
-	if aiCallOptions.Docs == nil || len(aiCallOptions.Docs.Refs) == 0 {
-		aiCallOptions.Docs = &types.RAGDocs{}
-		prompt = lo.If(space.BasePrompt != "", space.BasePrompt).Else(ai.GENERATE_PROMPT_TPL_NONE_CONTENT_CN) + ai.APPEND_PROMPT_CN
-	} else {
-		prompt = ai.BuildRAGPrompt(ai.GENERATE_PROMPT_TPL_CN, ai.NewDocs(aiCallOptions.Docs.Docs), a.core.Srv().AI())
-	}
+	prompt := ai.BuildPrompt(space.BasePrompt, a.core.Srv().AI().Lang())
+	prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
 	sessionContext, err := a.GenSessionContext(ctx, prompt, reqMsg)
@@ -89,9 +79,6 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	}
 
 	// 4. 创建 AgentContext - 提取思考和搜索配置
-	enableThinking := aiCallOptions.EnableThinking
-	enableWebSearch := aiCallOptions.EnableSearch
-
 	agentCtx := types.NewAgentContextWithOptions(
 		ctx,
 		reqMsg.SpaceID,
@@ -99,90 +86,29 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 		reqMsg.SessionID,
 		reqMsg.ID,
 		reqMsg.Sequence,
-		enableThinking,
-		enableWebSearch,
+		aiCallOptions.EnableThinking,
+		aiCallOptions.EnableSearch,
+		aiCallOptions.EnableKnowledge,
 	)
 
-	// 5. 直接将 MessageContext 转换为 eino 消息格式
-	einoMessages := make([]*schema.Message, 0, len(sessionContext.MessageContext))
-	for _, msgCtx := range sessionContext.MessageContext {
-		einoMsg := &schema.Message{
-			Content: msgCtx.Content,
-		}
-		// 转换角色
-		switch msgCtx.Role {
-		case types.USER_ROLE_SYSTEM:
-			einoMsg.Role = schema.System
-		case types.USER_ROLE_USER:
-			einoMsg.Role = schema.User
-		case types.USER_ROLE_ASSISTANT:
-			einoMsg.Role = schema.Assistant
-		case types.USER_ROLE_TOOL:
-			einoMsg.Role = schema.Tool
-		default:
-			einoMsg.Role = schema.User
-		}
-
-		if len(msgCtx.ToolCalls) > 0 {
-			einoMsg.ToolCalls = lo.Map(msgCtx.ToolCalls, func(item goopenai.ToolCall, _ int) schema.ToolCall {
-				return schema.ToolCall{
-					Type: string(item.Type),
-					Function: schema.FunctionCall{
-						Name:      item.Function.Name,
-						Arguments: item.Function.Arguments,
-					},
-				}
-			})
-		}
-
-		// 处理多媒体内容
-		if len(msgCtx.MultiContent) > 0 {
-			einoMsg.MultiContent = make([]schema.ChatMessagePart, len(msgCtx.MultiContent))
-			for i, part := range msgCtx.MultiContent {
-				einoMsg.MultiContent[i] = schema.ChatMessagePart{
-					Type: schema.ChatMessagePartType(part.Type),
-					Text: part.Text,
-				}
-
-				// 转换 ImageURL
-				if part.ImageURL != nil {
-					einoMsg.MultiContent[i].ImageURL = &schema.ChatMessageImageURL{
-						URL:    part.ImageURL.URL,
-						Detail: schema.ImageURLDetail(part.ImageURL.Detail),
-					}
-				}
-			}
-		}
-
-		einoMessages = append(einoMessages, einoMsg)
-	}
+	// 5. 将 MessageContext 转换为 eino 消息格式
+	einoMessages := ai.ConvertMessageContextToEinoMessages(sessionContext.MessageContext)
+	einoMessages = lo.Map(einoMessages, func(item *schema.Message, _ int) *schema.Message {
+		item.Content = receiver.VariableHandler().Do(item.Content)
+		return item
+	})
 
 	// adapter := ai.NewEinoAdapter(receiver, reqMsg.SessionID, reqMsg.ID)
 	notifyToolWrapper := NewNotifyToolWrapper(a.core, reqMsg, receiver.Copy())
 
 	factory := NewEinoAgentFactory(a.core)
-	agent, modelConfig, err := factory.CreateReActAgent(agentCtx, notifyToolWrapper, einoMessages)
+	agent, modelConfig, err := factory.CreateAutoRagReActAgent(agentCtx, notifyToolWrapper, einoMessages)
 	if err != nil {
 		return err
 	}
 
-	// 8. 执行推理并处理响应
-
-	// 构建 marks 映射（用于特殊语法处理）
-	marks := make(map[string]string)
-	if aiCallOptions != nil && aiCallOptions.Docs != nil {
-		for _, v := range aiCallOptions.Docs.Docs {
-			if v.SW == nil {
-				continue
-			}
-			for fake, real := range v.SW.Map() {
-				marks[fake] = real
-			}
-		}
-	}
-
 	// 创建响应处理器（传入数据库写入函数）
-	responseHandler := NewEinoResponseHandler(receiver, reqMsg, marks)
+	responseHandler := NewEinoResponseHandler(receiver, reqMsg)
 	callbackHandler := NewCallbackHandlers(a.core, modelConfig.ModelName, reqMsg)
 
 	// 10. 执行推理
@@ -453,6 +379,8 @@ func (nt *NotifyingTool) InvokableRun(ctx context.Context, argumentsInJSON strin
 		return err.Error(), nil
 	}
 
+	nt.receiver.VariableHandler().Do(result)
+
 	slog.Debug("tool call result", slog.Float64("duration", duration.Seconds()), slog.String("tool", toolName), slog.Any("error", err))
 
 	resultJson := &types.ToolTips{
@@ -478,70 +406,85 @@ func NewEinoAgentFactory(core *core.Core) *EinoAgentFactory {
 	return &EinoAgentFactory{core: core}
 }
 
-// CreateReActAgent 创建 ReAct Agent 实例
-func (f *EinoAgentFactory) CreateReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message) (*react.Agent, *types.ModelConfig, error) {
-	// 检查消息中是否包含多媒体内容，决定使用哪种模型
-	needVisionModel := f.containsMultimediaContent(messages)
+// CreateAutoRagReActAgent
+func (f *EinoAgentFactory) CreateAutoRagReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message) (*react.Agent, *types.ModelConfig, error) {
+	config := NewAgentConfig(agentCtx, toolWrapper, f.core, messages)
 
-	var modelConfig *types.ModelConfig
-	var err error
+	// 应用选项
+	options := []AgentOption{
+		&WithWebSearch{
+			Enable: agentCtx.EnableWebSearch,
+		}, // 支持网络搜索
+		&WithRAG{
+			Enable: agentCtx.EnableKnowledge,
+		}, // 支持知识库搜索
+	}
 
-	if needVisionModel {
-		// 获取视觉模型配置
-		modelConfig, err = f.getVisionModelConfig(agentCtx)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get vision model config: %w", err)
-		}
-	} else {
-		// 获取聊天模型配置
-		modelConfig, err = f.getChatModelConfig(agentCtx)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get chat model config: %w", err)
+	for _, option := range options {
+		if err := option.Apply(config); err != nil {
+			slog.Warn("Failed to apply butler agent option", slog.Any("error", err))
 		}
 	}
 
-	chatModel, err := GetToolCallingModel(agentCtx, *modelConfig)
-	if err != nil {
-		return nil, nil, err
+	return f.CreateReActAgentWithConfig(config)
+}
+
+// CreateButlerReActAgent 创建包含Butler工具的ReAct Agent实例 (便捷方法)
+func (f *EinoAgentFactory) CreateButlerReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message, butlerAgent *butler.ButlerAgent) (*react.Agent, *types.ModelConfig, error) {
+	config := NewAgentConfig(agentCtx, toolWrapper, f.core, messages)
+
+	// 应用选项
+	options := []AgentOption{
+		&WithWebSearch{
+			Enable: agentCtx.EnableWebSearch,
+		}, // 支持网络搜索
+		&WithRAG{
+			Enable: agentCtx.EnableKnowledge,
+		}, // 支持知识库搜索
+		NewWithButlerTools(butlerAgent), // 添加Butler专用工具
 	}
 
-	// 创建工具配置
-	tools, err := f.createTools(agentCtx, toolWrapper)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create tools: %w", err)
+	for _, option := range options {
+		if err := option.Apply(config); err != nil {
+			slog.Warn("Failed to apply butler agent option", slog.Any("error", err))
+		}
 	}
 
-	toolsConfig := compose.ToolsNodeConfig{
-		Tools: tools,
+	return f.CreateReActAgentWithConfig(config)
+}
+
+// CreateJournalReActAgent 创建包含Journal工具的ReAct Agent实例 (便捷方法)
+func (f *EinoAgentFactory) CreateJournalReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message, journalAgent *journal.JournalAgent) (*react.Agent, *types.ModelConfig, error) {
+	config := NewAgentConfig(agentCtx, toolWrapper, f.core, messages)
+
+	// 应用选项
+	options := []AgentOption{
+		&WithWebSearch{},                  // 支持网络搜索
+		&WithRAG{},                        // 支持知识库搜索
+		NewWithJournalTools(journalAgent), // 添加Journal专用工具
 	}
 
-	// 创建 ReAct Agent
-	agentConfig := &react.AgentConfig{
-		ToolCallingModel: chatModel,
-		ToolsConfig:      toolsConfig,
-		// 🔥 禁用 MessageModifier，改为使用工具内部通知机制
-		MessageModifier: nil,
-		StreamToolCallChecker: func(ctx context.Context, modelOutput *schema.StreamReader[*schema.Message]) (bool, error) {
-			defer modelOutput.Close()
-			for {
-				res, err := modelOutput.Recv()
-				if err != nil {
-					return false, nil
-				}
-
-				if res.ResponseMeta.FinishReason == "tool_calls" {
-					return true, nil
-				}
-			}
-		},
+	for _, option := range options {
+		if err := option.Apply(config); err != nil {
+			slog.Warn("Failed to apply journal agent option", slog.Any("error", err))
+		}
 	}
 
-	agent, err := react.NewAgent(agentCtx, agentConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create ReAct agent: %w", err)
+	return f.CreateReActAgentWithConfig(config)
+}
+
+// CreateCustomReActAgent 使用自定义选项创建ReAct Agent实例 (最灵活的方法)
+func (f *EinoAgentFactory) CreateCustomReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message, options ...AgentOption) (*react.Agent, *types.ModelConfig, error) {
+	config := NewAgentConfig(agentCtx, toolWrapper, f.core, messages)
+
+	// 应用所有选项
+	for _, option := range options {
+		if err := option.Apply(config); err != nil {
+			slog.Warn("Failed to apply custom agent option", slog.Any("error", err))
+		}
 	}
 
-	return agent, modelConfig, nil
+	return f.CreateReActAgentWithConfig(config)
 }
 
 func GetToolCallingModel(agentCtx *types.AgentContext, modelConfig types.ModelConfig) (model.ToolCallingChatModel, error) {
@@ -629,16 +572,6 @@ func (f *EinoAgentFactory) containsMultimediaContent(messages []*schema.Message)
 	for _, msg := range messages {
 		if len(msg.MultiContent) > 0 {
 			return true
-			// for _, part := range msg.MultiContent {
-			// 	// 检查是否包含非文本内容
-			// 	switch part.Type {
-			// 	case schema.ChatMessagePartTypeImageURL,
-			// 		 schema.ChatMessagePartTypeAudioURL,
-			// 		 schema.ChatMessagePartTypeVideoURL,
-			// 		 schema.ChatMessagePartTypeFileURL:
-			// 		return true
-			// 	}
-			// }
 		}
 	}
 	return false
@@ -650,33 +583,227 @@ func (f *EinoAgentFactory) ClearModelConfigCache() {
 	f.cachedVisionModelConfig = nil
 }
 
-// createTools 创建可用工具列表
-func (f *EinoAgentFactory) createTools(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper) ([]tool.BaseTool, error) {
-	var tools []tool.BaseTool
+// AgentOption Agent选项接口，用于配置Agent的各个方面
+type AgentOption interface {
+	Apply(config *AgentConfig) error
+}
 
-	// 根据 EnableWebSearch 标志决定是否添加 DuckDuckGo 搜索工具
-	if agentCtx.EnableWebSearch {
-		duckduckgoTool, err := duckduckgo.NewTool(agentCtx, ddg.RegionCN)
-		if err != nil {
-			slog.Warn("Failed to create DuckDuckGo tool", slog.String("error", err.Error()))
+// AgentConfig Agent配置结构
+type AgentConfig struct {
+	AgentCtx    *types.AgentContext
+	ToolWrapper NotifyToolWrapper
+	Core        *core.Core
+	Messages    []*schema.Message
+
+	// 可扩展的配置字段
+	Tools         []tool.BaseTool
+	ModelOverride *types.ModelConfig // 可选：覆盖默认模型配置
+	CustomPrompts []string           // 可选：自定义系统提示词
+	MaxIterations int                // 可选：最大工具调用迭代次数
+}
+
+// NewAgentConfig 创建默认的Agent配置
+func NewAgentConfig(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, core *core.Core, messages []*schema.Message) *AgentConfig {
+	return &AgentConfig{
+		AgentCtx:      agentCtx,
+		ToolWrapper:   toolWrapper,
+		Core:          core,
+		Messages:      messages,
+		Tools:         []tool.BaseTool{},
+		MaxIterations: 2, // 默认最大迭代次数
+	}
+}
+
+// === 工具相关选项 ===
+
+// WithWebSearch 添加网络搜索工具选项
+type WithWebSearch struct {
+	Enable bool
+}
+
+func (o *WithWebSearch) Apply(config *AgentConfig) error {
+	if !o.Enable {
+		return nil
+	}
+
+	duckduckgoTool, err := duckduckgo.NewTool(config.AgentCtx, ddg.RegionCN)
+	if err != nil {
+		slog.Warn("Failed to create DuckDuckGo tool", slog.String("error", err.Error()))
+		return nil
+	}
+
+	notifyingDDGTool := config.ToolWrapper.Wrap(duckduckgoTool)
+	config.Tools = append(config.Tools, notifyingDDGTool)
+	return nil
+}
+
+// WithRAG 添加RAG知识库工具选项
+type WithRAG struct {
+	Enable bool
+}
+
+func (o *WithRAG) Apply(config *AgentConfig) error {
+	if !o.Enable {
+		return nil
+	}
+
+	ragTool := rag.NewRagTool(config.Core, config.AgentCtx.SpaceID, config.AgentCtx.UserID, config.AgentCtx.SessionID, config.AgentCtx.MessageID, config.AgentCtx.MessageSequence)
+	notifyingRagTool := config.ToolWrapper.Wrap(ragTool)
+	config.Tools = append(config.Tools, notifyingRagTool)
+	return nil
+}
+
+// WithButlerTools 添加Butler工具选项
+type WithButlerTools struct {
+	ButlerAgent *butler.ButlerAgent
+}
+
+func NewWithButlerTools(butlerAgent *butler.ButlerAgent) *WithButlerTools {
+	return &WithButlerTools{ButlerAgent: butlerAgent}
+}
+
+func (o *WithButlerTools) Apply(config *AgentConfig) error {
+	butlerTools := butler.GetButlerTools(config.Core, config.AgentCtx.UserID, o.ButlerAgent)
+
+	for _, butlerTool := range butlerTools {
+		notifyingButlerTool := config.ToolWrapper.Wrap(butlerTool)
+		config.Tools = append(config.Tools, notifyingButlerTool)
+	}
+
+	return nil
+}
+
+// WithJournalTools 添加Journal工具选项
+type WithJournalTools struct {
+	JournalAgent *journal.JournalAgent
+}
+
+func NewWithJournalTools(journalAgent *journal.JournalAgent) *WithJournalTools {
+	return &WithJournalTools{JournalAgent: journalAgent}
+}
+
+func (o *WithJournalTools) Apply(config *AgentConfig) error {
+	journalTools := journal.GetJournalTools(config.Core, config.AgentCtx.SpaceID, config.AgentCtx.UserID, o.JournalAgent)
+
+	for _, journalTool := range journalTools {
+		notifyingJournalTool := config.ToolWrapper.Wrap(journalTool)
+		config.Tools = append(config.Tools, notifyingJournalTool)
+	}
+
+	return nil
+}
+
+// === 模型相关选项 ===
+
+// WithModelOverride 覆盖默认模型配置
+type WithModelOverride struct {
+	ModelConfig *types.ModelConfig
+}
+
+func NewWithModelOverride(modelConfig *types.ModelConfig) *WithModelOverride {
+	return &WithModelOverride{ModelConfig: modelConfig}
+}
+
+func (o *WithModelOverride) Apply(config *AgentConfig) error {
+	config.ModelOverride = o.ModelConfig
+	return nil
+}
+
+// === 行为相关选项 ===
+
+// WithMaxIterations 设置最大工具调用迭代次数
+type WithMaxIterations struct {
+	MaxIterations int
+}
+
+func NewWithMaxIterations(maxIterations int) *WithMaxIterations {
+	return &WithMaxIterations{MaxIterations: maxIterations}
+}
+
+func (o *WithMaxIterations) Apply(config *AgentConfig) error {
+	config.MaxIterations = o.MaxIterations
+	return nil
+}
+
+// WithCustomPrompts 添加自定义系统提示词
+type WithCustomPrompts struct {
+	Prompts []string
+}
+
+func NewWithCustomPrompts(prompts ...string) *WithCustomPrompts {
+	return &WithCustomPrompts{Prompts: prompts}
+}
+
+func (o *WithCustomPrompts) Apply(config *AgentConfig) error {
+	config.CustomPrompts = append(config.CustomPrompts, o.Prompts...)
+	return nil
+}
+
+// CreateReActAgentWithConfig 使用AgentConfig创建ReAct Agent (新的通用方法)
+func (f *EinoAgentFactory) CreateReActAgentWithConfig(config *AgentConfig) (*react.Agent, *types.ModelConfig, error) {
+	var modelConfig *types.ModelConfig
+	var err error
+
+	// 如果有模型覆盖配置，则使用它
+	if config.ModelOverride != nil {
+		modelConfig = config.ModelOverride
+	} else {
+		// 检查消息中是否包含多媒体内容，决定使用哪种模型
+		needVisionModel := f.containsMultimediaContent(config.Messages)
+
+		if needVisionModel {
+			// 获取视觉模型配置
+			modelConfig, err = f.getVisionModelConfig(config.AgentCtx)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get vision model config: %w", err)
+			}
 		} else {
-			// 🔥 使用 NotifyingTool 包装 DuckDuckGo 工具
-			notifyingDDGTool := toolWrapper.Wrap(duckduckgoTool)
-			tools = append(tools, notifyingDDGTool)
+			// 获取聊天模型配置
+			modelConfig, err = f.getChatModelConfig(config.AgentCtx)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get chat model config: %w", err)
+			}
 		}
 	}
 
-	// 添加 RAG 知识库搜索工具
-	ragTool := rag.NewRagTool(f.core, agentCtx.SpaceID, agentCtx.UserID, agentCtx.SessionID, agentCtx.MessageID, agentCtx.MessageSequence)
-	// 🔥 使用 NotifyingTool 包装 RAG 工具
-	notifyingRagTool := toolWrapper.Wrap(ragTool)
-	tools = append(tools, notifyingRagTool)
+	chatModel, err := GetToolCallingModel(config.AgentCtx, *modelConfig)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	// TODO: 这里可以添加更多工具
-	// - 文件处理工具
-	// - 计算工具等
+	toolsConfig := compose.ToolsNodeConfig{
+		Tools: config.Tools,
+	}
 
-	return tools, nil
+	// 使用配置中的StreamChecker，如果没有则使用默认的
+	streamChecker := func(ctx context.Context, modelOutput *schema.StreamReader[*schema.Message]) (bool, error) {
+		defer modelOutput.Close()
+		for {
+			res, err := modelOutput.Recv()
+			if err != nil {
+				return false, nil
+			}
+
+			if res.ResponseMeta.FinishReason == "tool_calls" {
+				return true, nil
+			}
+		}
+	}
+
+	// 创建 ReAct Agent
+	agentConfig := &react.AgentConfig{
+		ToolCallingModel:      chatModel,
+		ToolsConfig:           toolsConfig,
+		MessageModifier:       nil, // 禁用 MessageModifier，使用工具内部通知机制
+		StreamToolCallChecker: streamChecker,
+	}
+
+	agent, err := react.NewAgent(config.AgentCtx, agentConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create ReAct agent: %w", err)
+	}
+
+	return agent, modelConfig, nil
 }
 
 // EinoResponseHandler 处理 eino Agent 的响应
@@ -685,19 +812,13 @@ type EinoResponseHandler struct {
 	_doneFunc    types.DoneFunc
 	_receiver    types.Receiver
 	reqMsg       *types.ChatMessage
-	// adapter     *ai.EinoAdapter
-	marks map[string]string // 特殊语法标记处理
 }
 
 // NewEinoResponseHandler 创建响应处理器
-func NewEinoResponseHandler(receiver types.Receiver, reqMsg *types.ChatMessage, marks map[string]string) *EinoResponseHandler {
+func NewEinoResponseHandler(receiver types.Receiver, reqMsg *types.ChatMessage) *EinoResponseHandler {
 	return &EinoResponseHandler{
 		_receiver: receiver,
 		reqMsg:    reqMsg,
-		// receiveFunc: receiveFunc,
-		//doneFunc:    doneFunc,
-		// adapter:     adapter,
-		marks: marks,
 	}
 }
 
@@ -741,7 +862,6 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 
 		maybeMarks  bool
 		machedMarks bool
-		needToMarks = len(h.marks) > 0
 
 		startThinking    = sync.Once{}
 		hasThinking      = false
@@ -824,20 +944,18 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		}
 
 		// 处理特殊语法标记
-		if needToMarks {
-			if !maybeMarks {
-				if strings.Contains(msg.Content, "$") {
-					maybeMarks = true
-					if strs.Len() != 0 {
-						flushResponse()
-					}
+		if !maybeMarks {
+			if strings.Contains(msg.Content, "$") {
+				maybeMarks = true
+				if strs.Len() != 0 {
+					flushResponse()
 				}
-			} else if maybeMarks && strs.Len() >= 10 {
-				if strings.Contains(strs.String(), "$hidden[") {
-					machedMarks = true
-				} else {
-					maybeMarks = false
-				}
+			}
+		} else if maybeMarks && strs.Len() >= 10 {
+			if strings.Contains(strs.String(), "$hidden[") {
+				machedMarks = true
+			} else {
+				maybeMarks = false
 			}
 		}
 
@@ -865,16 +983,14 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 
 			// 处理隐藏标记
 			if machedMarks && strings.Contains(msg.Content, "]") {
-				text, replaced := mark.ResolveHidden(strs.String(), func(fakeValue string) string {
-					real := h.marks[fakeValue]
-					return real
-				}, false)
-				if replaced {
+				preStr := strs.String()
+				resultStr := h._receiver.VariableHandler().Undo(preStr)
+				if preStr != resultStr {
 					strs.Reset()
-					strs.WriteString(text)
-					maybeMarks = false
-					machedMarks = false
+					strs.WriteString(resultStr)
 				}
+				maybeMarks = false
+				machedMarks = false
 			}
 		}
 

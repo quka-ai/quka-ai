@@ -9,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/samber/lo"
 	"github.com/sashabaranov/go-openai"
+	goopenai "github.com/sashabaranov/go-openai"
 
 	"github.com/quka-ai/quka-ai/pkg/mark"
 	"github.com/quka-ai/quka-ai/pkg/safe"
@@ -141,7 +143,6 @@ func (s *EnhanceOptions) WithHistories(messages []*types.ChatMessage) *EnhanceOp
 	s.vars[PROMPT_VAR_HISTORIES] = str.String()
 	return s
 }
-
 
 func (s *EnhanceOptions) EnhanceQuery(query string) (EnhanceQueryResult, error) {
 	if s.prompt == "" {
@@ -476,6 +477,30 @@ func BuildRAGPrompt(tpl string, docs Docs, driver Lang) string {
 
 	tpl += APPEND_PROMPT_CN
 	return tpl
+}
+
+func BuildPrompt(basePrompt string, lang string) string {
+	sb := strings.Builder{}
+	if basePrompt == "" {
+		switch lang {
+		case MODEL_BASE_LANGUAGE_EN:
+			sb.WriteString(GENERATE_PROMPT_TPL_NONE_CONTENT_EN)
+		default:
+			sb.WriteString(GENERATE_PROMPT_TPL_NONE_CONTENT_CN)
+		}
+	} else {
+		sb.WriteString(basePrompt)
+	}
+
+	sb.WriteString(ReplaceVarWithLang(basePrompt, lang))
+	sb.WriteString("\n")
+	switch lang {
+	case MODEL_BASE_LANGUAGE_EN:
+		sb.WriteString(APPEND_PROMPT_EN)
+	default:
+		sb.WriteString(APPEND_PROMPT_CN)
+	}
+	return sb.String()
 }
 
 func ReplaceVarWithLang(tpl, lang string) string {
@@ -916,4 +941,65 @@ func NumTokens(messages []openai.ChatCompletionMessage, model string) (numTokens
 	}
 	numTokens += 3 // every reply is primed with <|start|>assistant<|message|>
 	return numTokens, nil
+}
+
+// ConvertMessageContextToEinoMessages 将 MessageContext 转换为 eino 消息格式
+func ConvertMessageContextToEinoMessages(messageContexts []*types.MessageContext) []*schema.Message {
+	einoMessages := make([]*schema.Message, 0, len(messageContexts))
+	
+	for _, msgCtx := range messageContexts {
+		einoMsg := &schema.Message{
+			Content: msgCtx.Content,
+		}
+		
+		// 转换角色
+		switch msgCtx.Role {
+		case types.USER_ROLE_SYSTEM:
+			einoMsg.Role = schema.System
+		case types.USER_ROLE_USER:
+			einoMsg.Role = schema.User
+		case types.USER_ROLE_ASSISTANT:
+			einoMsg.Role = schema.Assistant
+		case types.USER_ROLE_TOOL:
+			einoMsg.Role = schema.Tool
+		default:
+			einoMsg.Role = schema.User
+		}
+
+		// 处理工具调用
+		if len(msgCtx.ToolCalls) > 0 {
+			einoMsg.ToolCalls = lo.Map(msgCtx.ToolCalls, func(item goopenai.ToolCall, _ int) schema.ToolCall {
+				return schema.ToolCall{
+					Type: string(item.Type),
+					Function: schema.FunctionCall{
+						Name:      item.Function.Name,
+						Arguments: item.Function.Arguments,
+					},
+				}
+			})
+		}
+
+		// 处理多媒体内容
+		if len(msgCtx.MultiContent) > 0 {
+			einoMsg.MultiContent = make([]schema.ChatMessagePart, len(msgCtx.MultiContent))
+			for i, part := range msgCtx.MultiContent {
+				einoMsg.MultiContent[i] = schema.ChatMessagePart{
+					Type: schema.ChatMessagePartType(part.Type),
+					Text: part.Text,
+				}
+
+				// 转换 ImageURL
+				if part.ImageURL != nil {
+					einoMsg.MultiContent[i].ImageURL = &schema.ChatMessageImageURL{
+						URL:    part.ImageURL.URL,
+						Detail: schema.ImageURLDetail(part.ImageURL.Detail),
+					}
+				}
+			}
+		}
+
+		einoMessages = append(einoMessages, einoMsg)
+	}
+	
+	return einoMessages
 }

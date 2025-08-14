@@ -8,9 +8,6 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	"github.com/samber/lo"
-	"github.com/sashabaranov/go-openai"
-	"github.com/sashabaranov/go-openai/jsonschema"
 
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
@@ -22,26 +19,26 @@ const (
 	FUNCTION_NAME_SEARCH_USER_KNOWLEDGES = "SearchUserKnowledges"
 )
 
-var FunctionDefine = lo.Map([]*openai.FunctionDefinition{
-	{
-		Name:        FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
-		Description: "查询用户知识库中的相关知识，如果已经查过了，请不要连续性的重复查询",
-		Parameters: jsonschema.Definition{
-			Type: jsonschema.Object,
-			Properties: map[string]jsonschema.Definition{
-				"query": {
-					Type:        jsonschema.String,
-					Description: "用户的问题",
-				},
-			},
-			Required: []string{"query"},
-		},
-	},
-}, func(item *openai.FunctionDefinition, _ int) openai.Tool {
-	return openai.Tool{
-		Function: item,
-	}
-})
+// var FunctionDefine = lo.Map([]*openai.FunctionDefinition{
+// 	{
+// 		Name:        FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
+// 		Description: "查询用户知识库中的相关知识，如果已经查过了，请不要连续性的重复查询",
+// 		Parameters: jsonschema.Definition{
+// 			Type: jsonschema.Object,
+// 			Properties: map[string]jsonschema.Definition{
+// 				"query": {
+// 					Type:        jsonschema.String,
+// 					Description: "用户的问题",
+// 				},
+// 			},
+// 			Required: []string{"query"},
+// 		},
+// 	},
+// }, func(item *openai.FunctionDefinition, _ int) openai.Tool {
+// 	return openai.Tool{
+// 		Function: item,
+// 	}
+// })
 
 // RagTool 基于 eino 框架的 RAG 工具
 type RagTool struct {
@@ -56,12 +53,12 @@ type RagTool struct {
 // NewRagTool 创建新的 RAG 工具实例
 func NewRagTool(core *core.Core, spaceID, userID, sessionID, messageID string, messageSequence int64) *RagTool {
 	return &RagTool{
-		core:      core,
-		spaceID:   spaceID,
-		userID:    userID,
-		sessionID: sessionID,
-		messageID: messageID,
-		messageSequence:messageSequence,
+		core:            core,
+		spaceID:         spaceID,
+		userID:          userID,
+		sessionID:       sessionID,
+		messageID:       messageID,
+		messageSequence: messageSequence,
 	}
 }
 

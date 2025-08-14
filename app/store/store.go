@@ -36,6 +36,8 @@ type KnowledgeStore interface {
 	SetRetryTimes(ctx context.Context, spaceID, id string, retryTimes int) error
 	ListProcessingKnowledges(ctx context.Context, retryTimes int, page, pageSize uint64) ([]types.Knowledge, error)
 	ListFailedKnowledges(ctx context.Context, stage types.KnowledgeStage, retryTimes int, page, pageSize uint64) ([]types.Knowledge, error)
+	// UpdateExpiredAt 更新单个knowledge的过期时间
+	UpdateExpiredAt(ctx context.Context, knowledgeID string, expiredAt int64) error
 }
 
 // KnowledgeChunkStore 定义 KnowledgeChunkStore 的接口

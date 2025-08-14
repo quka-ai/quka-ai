@@ -128,7 +128,6 @@ type PassageInfo struct {
 	Content  string `json:"content"`
 	Resource string `json:"resource"`
 	DateTime string `json:"date_time"`
-	SW       Undo   `json:"-"`
 }
 
 type Undo interface {
@@ -137,14 +136,15 @@ type Undo interface {
 }
 
 type CreateChatMessageArgs struct {
-	ID             string
-	Message        string
-	MsgType        MessageType
-	SendTime       int64
-	Agent          string
-	ChatAttach     []ChatAttach
-	EnableThinking bool
-	EnableSearch   bool
+	ID              string
+	Message         string
+	MsgType         MessageType
+	SendTime        int64
+	Agent           string
+	ChatAttach      []ChatAttach
+	EnableThinking  bool
+	EnableSearch    bool
+	EnableKnowledge bool
 }
 
 type ChatAttach struct {

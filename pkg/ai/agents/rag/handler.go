@@ -21,15 +21,14 @@ type ToolContext struct {
 	SpaceID         string
 	UserID          string
 	MessageSequence int64
-	marks           map[string]string
 	ReceiveFunc     types.ReceiveFunc
 }
 
-func GetToolsHandler(core *core.Core, sessionID, spaceID, userID string, marks map[string]string, receiveFunc types.ReceiveFunc) map[string]ai.ToolHandlerFunc {
+func GetToolsHandler(core *core.Core, sessionID, spaceID, userID string, receiveFunc types.ReceiveFunc) map[string]ai.ToolHandlerFunc {
 	return map[string]ai.ToolHandlerFunc{
 		// 查询用户知识库中的相关知识
 		FUNCTION_NAME_SEARCH_USER_KNOWLEDGES: ai.WrapToolHandler(func() ToolContext {
-			return ToolContext{Core: core, SessionID: sessionID, SpaceID: spaceID, UserID: userID, ReceiveFunc: receiveFunc, marks: marks}
+			return ToolContext{Core: core, SessionID: sessionID, SpaceID: spaceID, UserID: userID, ReceiveFunc: receiveFunc}
 		}, searchKnowledge),
 	}
 }
@@ -83,17 +82,9 @@ func searchKnowledge(args ToolContext, funcCall openai.FunctionCall) ([]*types.M
 	// Supplement associated document content.
 	SupplementSessionChatDocs(args.Core, args.SpaceID, args.SessionID, docs)
 
-	for _, v := range docs.Docs {
-		if v.SW == nil {
-			continue
-		}
-		for fake, real := range v.SW.Map() {
-			args.marks[fake] = real
-		}
-	}
 	return []*types.MessageContext{
 		{
-			Role:    types.USER_ROLE_SYSTEM,
+			Role:    types.USER_ROLE_TOOL,
 			Content: fmt.Sprintf("Tool '%s' Response:\n", FUNCTION_NAME_SEARCH_USER_KNOWLEDGES) + ai.BuildRAGPrompt(ai.GENERATE_PROMPT_TPL_CN, ai.NewDocs(docs.Docs), args.Core.Srv().AI()),
 		},
 	}, nil

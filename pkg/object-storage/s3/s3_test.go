@@ -1,4 +1,4 @@
-package s3
+package s3_test
 
 import (
 	"bytes"
@@ -8,19 +8,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/quka-ai/quka-ai/pkg/object-storage/s3"
 	"github.com/quka-ai/quka-ai/pkg/testutils"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
-func newClient() *S3 {
+func newClient() *s3.S3 {
 	testutils.LoadEnvOrPanic()
-	return NewS3Client(
+	return s3.NewS3Client(
 		os.Getenv("TEST_QUKA_SELFHOST_S3_ENDPOINT"),
 		os.Getenv("TEST_QUKA_SELFHOST_S3_REGION"),
 		os.Getenv("TEST_QUKA_SELFHOST_S3_BUCKET"),
 		os.Getenv("TEST_QUKA_SELFHOST_S3_ACCESS_KEY"),
 		os.Getenv("TEST_QUKA_SELFHOST_S3_SECRET_KEY"),
-		WithPathStyle(os.Getenv("TEST_QUKA_SELFHOST_S3_PATH_STYLE") == "true"), // MinIO需要路径样式URL
+		s3.WithPathStyle(os.Getenv("TEST_QUKA_SELFHOST_S3_PATH_STYLE") == "true"), // MinIO需要路径样式URL
 	)
 }
 

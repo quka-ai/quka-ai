@@ -11,7 +11,6 @@ import (
 
 const (
 	AGENT_TYPE_NONE    = ""
-	AGENT_TYPE_NORMAL  = "rag"
 	AGENT_TYPE_JOURNAL = "journal"
 	AGENT_TYPE_BUTLER  = "butler"
 	AGENT_TYPE_AUTO    = "auto"
@@ -19,7 +18,6 @@ const (
 
 var registeredAgents = map[string][]string{
 	AGENT_TYPE_AUTO:    {"Quka", "QukaAI"},
-	AGENT_TYPE_NORMAL:  {"Quka", "QukaAI"},
 	AGENT_TYPE_JOURNAL: {"Journal", "工作助理"},
 	AGENT_TYPE_BUTLER:  {"Butler", "管家"},
 	AGENT_TYPE_NONE:    {},
@@ -27,11 +25,10 @@ var registeredAgents = map[string][]string{
 
 type AICallOptions struct {
 	GenMode        RequestAssistantMode
-	Docs           *RAGDocs
-	GetDocsFunc    func() (RAGDocs, error)
 	Model          string
 	EnableThinking bool
 	EnableSearch   bool
+	EnableKnowledge bool
 }
 
 func FilterAgent(userQuery string) string {
@@ -123,6 +120,7 @@ type AgentContext struct {
 	// Agent 行为控制标志
 	EnableThinking  bool // 是否开启思考模式
 	EnableWebSearch bool // 是否开启联网搜索
+	EnableKnowledge bool // 是否允许查询记忆
 }
 
 // NewAgentContext 创建一个新的 AgentContext
@@ -140,7 +138,7 @@ func NewAgentContext(ctx context.Context, spaceID, userID, sessionID, messageID 
 }
 
 // NewAgentContextWithOptions 创建一个带有自定义选项的 AgentContext
-func NewAgentContextWithOptions(ctx context.Context, spaceID, userID, sessionID, messageID string, messageSequence int64, enableThinking, enableWebSearch bool) *AgentContext {
+func NewAgentContextWithOptions(ctx context.Context, spaceID, userID, sessionID, messageID string, messageSequence int64, enableThinking, enableWebSearch, enableKnowledge bool) *AgentContext {
 	return &AgentContext{
 		Context:         ctx,
 		SpaceID:         spaceID,
@@ -150,6 +148,7 @@ func NewAgentContextWithOptions(ctx context.Context, spaceID, userID, sessionID,
 		MessageSequence: messageSequence,
 		EnableThinking:  enableThinking,
 		EnableWebSearch: enableWebSearch,
+		EnableKnowledge:enableKnowledge,
 	}
 }
 

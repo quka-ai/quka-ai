@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/lib/pq"
@@ -111,6 +112,8 @@ type KnowledgeResponse struct {
 	Stage       KnowledgeStage       `json:"stage" db:"stage"`
 	CreatedAt   int64                `json:"created_at" db:"created_at"`
 	UpdatedAt   int64                `json:"updated_at" db:"updated_at"`
+	ExpiredAt   int64                `json:"expired_at" db:"expired_at"`
+	IsExpired   bool                 `json:"is_expired,omitempty" db:"-"`
 }
 
 type Knowledge struct {
@@ -129,6 +132,7 @@ type Knowledge struct {
 	CreatedAt   int64                `json:"created_at" db:"created_at"`
 	UpdatedAt   int64                `json:"updated_at" db:"updated_at"`
 	RetryTimes  int                  `json:"retry_times" db:"retry_times"`
+	ExpiredAt   int64                `json:"expired_at" db:"expired_at"`
 }
 
 type RawMessage = KnowledgeContent
@@ -201,20 +205,22 @@ func StringToKnowledgeContentType(str string) KnowledgeContentType {
 }
 
 type GetKnowledgeOptions struct {
-	ID          string
-	IDs         []string
-	Kind        []KnowledgeKind
-	ExcludeKind []KnowledgeKind
-	SpaceID     string
-	UserID      string
-	Resource    *ResourceQuery
-	Stage       KnowledgeStage
-	RetryTimes  int
-	Keywords    string
-	TimeRange   *struct {
+	ID              string
+	IDs             []string
+	Kind            []KnowledgeKind
+	ExcludeKind     []KnowledgeKind
+	SpaceID         string
+	UserID          string
+	Resource        *ResourceQuery
+	Stage           KnowledgeStage
+	RetryTimes      int
+	Keywords        string
+	TimeRange       *struct {
 		St int64
 		Et int64
 	}
+	IncludeExpired  bool   // 是否包含过期内容，默认false
+	ExpiredOnly     bool   // 只返回过期内容
 }
 
 func (opts GetKnowledgeOptions) Apply(query *sq.SelectBuilder) {
@@ -255,6 +261,23 @@ func (opts GetKnowledgeOptions) Apply(query *sq.SelectBuilder) {
 	if opts.TimeRange != nil {
 		*query = query.Where(sq.And{sq.GtOrEq{"created_at": opts.TimeRange.St}, sq.LtOrEq{"created_at": opts.TimeRange.Et}})
 	}
+	
+	// 过期检查逻辑（预计算方案，默认排除过期内容）
+	now := GetCurrentTimestamp()
+	if opts.ExpiredOnly {
+		// 只返回过期内容：WHERE expired_at > 0 AND expired_at <= NOW()
+		*query = query.Where(sq.And{
+			sq.Gt{"expired_at": 0},
+			sq.LtOrEq{"expired_at": now},
+		})
+	} else if !opts.IncludeExpired {
+		// 默认排除过期内容：WHERE (expired_at = 0 OR expired_at > NOW())
+		*query = query.Where(sq.Or{
+			sq.Eq{"expired_at": 0},
+			sq.Gt{"expired_at": now},
+		})
+	}
+	// 如果 IncludeExpired=true 且 ExpiredOnly=false，则不添加过期条件，返回所有内容
 }
 
 type ResourceQuery struct {
@@ -278,4 +301,32 @@ type UpdateKnowledgeArgs struct {
 	Tags        []string
 	Stage       KnowledgeStage
 	Summary     string
+}
+
+// 过期相关工具函数
+
+// CalculateExpiredAt 根据资源周期计算过期时间
+func CalculateExpiredAt(createdAt int64, cycle int) int64 {
+	if cycle <= 0 {
+		return 0 // 永不过期
+	}
+	return createdAt + int64(cycle*24*3600)
+}
+
+// IsExpired 检查知识是否过期
+func (k *Knowledge) IsExpired() bool {
+	if k.ExpiredAt == 0 {
+		return false // 永不过期
+	}
+	return k.ExpiredAt <= GetCurrentTimestamp()
+}
+
+// SetExpiredAt 设置过期时间
+func (k *Knowledge) SetExpiredAt(cycle int) {
+	k.ExpiredAt = CalculateExpiredAt(k.CreatedAt, cycle)
+}
+
+// GetCurrentTimestamp 获取当前时间戳（便于测试时mock）
+var GetCurrentTimestamp = func() int64 {
+	return time.Now().Unix()
 }

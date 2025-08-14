@@ -15,14 +15,14 @@ func TestAutoAssistant_Creation(t *testing.T) {
 	// 简单测试 AutoAssistant 的创建
 	core := &core.Core{} // 这里需要完整的 core 初始化，暂时用空的测试结构创建
 
-	assistant := NewAutoAssistant(core, types.AGENT_TYPE_NORMAL)
+	assistant := NewAutoAssistant(core, types.AGENT_TYPE_AUTO)
 
 	if assistant == nil {
 		t.Fatal("AutoAssistant creation failed")
 	}
 
-	if assistant.agentType != types.AGENT_TYPE_NORMAL {
-		t.Errorf("Expected agent type %s, got %s", types.AGENT_TYPE_NORMAL, assistant.agentType)
+	if assistant.agentType != types.AGENT_TYPE_AUTO {
+		t.Errorf("Expected agent type %s, got %s", types.AGENT_TYPE_AUTO, assistant.agentType)
 	}
 
 	t.Log("✅ AutoAssistant creation test passed")
@@ -305,21 +305,6 @@ func TestEinoAgentFactory_ContainsMultimediaContent(t *testing.T) {
 	}
 
 	t.Log("✅ EinoAgentFactory containsMultimediaContent test passed")
-}
-
-func TestAutoAssistant_RequestAssistant_Interface(t *testing.T) {
-	// 验证 AutoAssistant 实现了与 NormalAssistant 相同的接口
-	core := &core.Core{}
-	autoAssistant := NewAutoAssistant(core, "rag")
-
-	// 类型检查：确保 AutoAssistant 实现了与 NormalAssistant 相同的方法
-	var _ interface {
-		InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error)
-		GenSessionContext(ctx context.Context, prompt string, reqMsgWithDocs *types.ChatMessage) (*SessionContext, error)
-		RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error
-	} = autoAssistant
-
-	t.Log("✅ AutoAssistant implements the same interface as NormalAssistant")
 }
 
 // 辅助函数：检查字符串是否包含子串

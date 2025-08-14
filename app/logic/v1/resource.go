@@ -97,6 +97,12 @@ func (l *ResourceLogic) Delete(spaceID, id string) error {
 }
 
 func (l *ResourceLogic) Update(spaceID, id, title, desc, tag string, cycle int) error {
+	// 先获取当前资源信息，检查cycle是否变化
+	currentResource, err := l.core.Store().ResourceStore().GetResource(l.ctx, spaceID, id)
+	if err != nil {
+		return errors.New("ResourceLogic.Update.ResourceStore.GetResource", i18n.ERROR_INTERNAL, err)
+	}
+
 	resources, err := l.core.Store().ResourceStore().ListResources(l.ctx, spaceID, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil {
 		return errors.New("ResourceLogic.Update.ResourceStore.ListResources", i18n.ERROR_INTERNAL, err)
@@ -108,11 +114,23 @@ func (l *ResourceLogic) Update(spaceID, id, title, desc, tag string, cycle int) 
 		}
 	}
 
-	err = l.core.Store().ResourceStore().Update(l.ctx, spaceID, id, title, desc, tag, cycle)
-	if err != nil {
-		return errors.New("ResourceLogic.Update.ResourceStore.Update", i18n.ERROR_INTERNAL, err)
-	}
-	return nil
+	return l.core.Store().Transaction(l.ctx, func(ctx context.Context) error {
+		// 更新resource
+		err = l.core.Store().ResourceStore().Update(ctx, spaceID, id, title, desc, tag, cycle)
+		if err != nil {
+			return errors.New("ResourceLogic.Update.ResourceStore.Update", i18n.ERROR_INTERNAL, err)
+		}
+
+		// 如果cycle发生变化，批量更新相关knowledge的过期时间
+		if currentResource != nil && currentResource.Cycle != cycle {
+			err = l.updateKnowledgeExpiredAtByResource(ctx, id, cycle)
+			if err != nil {
+				return errors.New("ResourceLogic.Update.updateKnowledgeExpiredAtByResource", i18n.ERROR_INTERNAL, err)
+			}
+		}
+
+		return nil
+	})
 }
 
 func (l *ResourceLogic) ListSpaceResources(spaceID string) ([]types.Resource, error) {
@@ -152,4 +170,36 @@ func (l *ResourceLogic) ListUserResources(page, pagesize uint64) ([]types.Resour
 	}
 
 	return list, nil
+}
+
+// updateKnowledgeExpiredAtByResource 批量更新指定resource的所有knowledge的过期时间
+func (l *ResourceLogic) updateKnowledgeExpiredAtByResource(ctx context.Context, resourceID string, cycle int) error {
+	// 获取所有相关的knowledge信息
+	knowledges, err := l.core.Store().KnowledgeStore().ListKnowledges(ctx, types.GetKnowledgeOptions{
+		Resource: &types.ResourceQuery{
+			Include: []string{resourceID},
+		},
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
+	if err != nil {
+		return err
+	}
+
+	// 如果没有相关知识，直接返回
+	if len(knowledges) == 0 {
+		return nil
+	}
+
+	// 在逻辑层为每个knowledge计算新的过期时间
+	for _, knowledge := range knowledges {
+		// 根据knowledge的创建时间计算新的过期时间
+		newExpiredAt := types.CalculateExpiredAt(knowledge.CreatedAt, cycle)
+		// 更新单个knowledge的过期时间
+		knowledge.ExpiredAt = newExpiredAt
+		err = l.core.Store().KnowledgeStore().UpdateExpiredAt(ctx, knowledge.ID, newExpiredAt)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

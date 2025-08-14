@@ -19,37 +19,12 @@ import (
 	"github.com/quka-ai/quka-ai/app/core/srv"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
 	"github.com/quka-ai/quka-ai/pkg/ai"
-	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
-)
-
-const CONTEXT_SCENE_PROMPT = `
-以下是关于回答用户提问的“参考内容”，这些内容都是历史记录，其中提到的时间点无法与当前时间进行参照：
---------------------------------------
-{solt}
---------------------------------------
-你需要结合“参考内容”来回答用户的提问，
-注意，“参考内容”中可能有部分内容描述的是同一件事情，但是发生的时间不同，当你无法选择应该参考哪一天的内容时，可以结合用户提出的问题进行分析。
-如果你从上述内容中找到了用户想要的答案，可以结合内容相关的属性来给到用户更多的帮助，比如参考“事件发生时间”来告诉用户这件事发生在哪天。
-请你使用 {lang} 语言，以Markdown格式回复用户。
-`
-
-var (
-	userSetting = map[string][]ai.OptionFunc{
-		"context": {
-			func(opts *ai.QueryOptions) {
-				opts.WithPrompt(CONTEXT_SCENE_PROMPT)
-				opts.WithDocsSoltName("{solt}")
-			},
-		},
-	}
-	// resource setting
-	// model,prompt,docs_solt,cycle(int days)
 )
 
 type KnowledgeLogic struct {
@@ -507,7 +482,6 @@ func (l *KnowledgeLogic) Query(spaceID, agent string, resource *types.ResourceQu
 	case types.AGENT_TYPE_BUTLER:
 		err = ButlerHandle(l.core, receiver, msgArgs, &types.AICallOptions{
 			GenMode:        types.GEN_MODE_NORMAL,
-			GetDocsFunc:    nil,
 			EnableThinking: false,
 		})
 		if err != nil {
@@ -516,42 +490,16 @@ func (l *KnowledgeLogic) Query(spaceID, agent string, resource *types.ResourceQu
 	case types.AGENT_TYPE_JOURNAL:
 		err = JournalHandle(l.core, receiver, msgArgs, &types.AICallOptions{
 			GenMode:        types.GEN_MODE_NORMAL,
-			GetDocsFunc:    nil,
 			EnableThinking: false,
 		})
 		if err != nil {
 			slog.Error("Failed to handle journal message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 		}
-	case types.AGENT_TYPE_NORMAL:
-
-		enhanceResult, _ := rag.EnhanceChatQuery(l.ctx, l.core, msgArgs.Message, msgArgs.SpaceID, msgArgs.SessionID, msgArgs.Sequence)
-
-		process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msgArgs.ID, enhanceResult.Usage)
-
-		docs, usages, err := rag.GetQueryRelevanceKnowledges(l.core, msgArgs.SpaceID, l.GetUserInfo().User, msgArgs.Message, resource)
-		if len(usages) > 0 {
-			for _, v := range usages {
-				process.NewRecordChatUsageRequest(v.Usage.Model, v.Subject, msgArgs.ID, v.Usage.Usage)
-			}
-		}
-		if err != nil {
-			err = errors.Trace("ChatLogic.getRelevanceKnowledges", err)
-		} else {
-			result.Refs = docs.Refs
-
-			if err = RAGHandle(l.core, receiver, msgArgs, &types.AICallOptions{
-				GenMode:        types.GEN_MODE_NORMAL,
-				Docs:           &docs,
-				EnableThinking: false,
-			}); err != nil {
-				slog.Error("Failed to handle rag message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
-			}
-		}
 	default:
 		err = ChatHandle(l.core, receiver, msgArgs, &types.AICallOptions{
-			GenMode:        types.GEN_MODE_NORMAL,
-			GetDocsFunc:    nil,
-			EnableThinking: false,
+			GenMode:         types.GEN_MODE_NORMAL,
+			EnableThinking:  false,
+			EnableKnowledge: true,
 		})
 		if err != nil {
 			slog.Error("Failed to handle message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
@@ -688,6 +636,12 @@ func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, ki
 		CreatedAt:   time.Now().Unix(),
 		UpdatedAt:   time.Now().Unix(),
 	}
+
+	// 根据resource计算过期时间
+	if resource != "" && resource != types.DEFAULT_RESOURCE {
+		knowledge.ExpiredAt = l.calculateExpiredAtByResource(spaceID, resource, knowledge.CreatedAt)
+	}
+
 	err = l.core.Store().KnowledgeStore().Create(l.ctx, knowledge)
 	if err != nil {
 		return "", errors.New("KnowledgeLogic.InsertContent.Store.KnowledgeStore.Create", i18n.ERROR_INTERNAL, err)
@@ -825,4 +779,15 @@ func (l *KnowledgeLogic) processKnowledgeAsync(knowledge types.Knowledge) error 
 	}
 
 	return nil
+}
+
+// calculateExpiredAtByResource 根据resource的cycle计算过期时间
+func (l *KnowledgeLogic) calculateExpiredAtByResource(spaceID, resourceID string, createdAt int64) int64 {
+	// 获取resource信息
+	resource, err := l.core.Store().ResourceStore().GetResource(l.ctx, spaceID, resourceID)
+	if err != nil {
+		return 0 // 如果获取失败，默认不过期
+	}
+
+	return types.CalculateExpiredAt(createdAt, resource.Cycle)
 }

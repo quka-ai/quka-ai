@@ -1,5 +1,7 @@
 package types
 
+import "github.com/quka-ai/quka-ai/pkg/mark"
+
 type ReceiveFunc func(msg MessageContent, progressStatus MessageProgress) error
 type DoneFunc func(err error) error
 
@@ -15,4 +17,6 @@ type Receiver interface {
 	GetDoneFunc(callback func(msg *ChatMessage)) DoneFunc
 	RecvMessageInit(ext ChatMessageExt) error
 	MessageID() string
+
+	VariableHandler() mark.VariableHandler
 }

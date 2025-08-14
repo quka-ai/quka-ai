@@ -13,8 +13,6 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/quka-ai/quka-ai/app/core"
-	"github.com/quka-ai/quka-ai/app/logic/v1/process"
-	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/safe"
@@ -205,7 +203,6 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 		go safe.Run(func() {
 			if err := ButlerSessionHandle(l.core, receiver, msg, &types.AICallOptions{
 				GenMode:        types.GEN_MODE_NORMAL,
-				GetDocsFunc:    nil,
 				EnableThinking: msgArgs.EnableThinking,
 			}); err != nil {
 				slog.Error("Failed to handle butler message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
@@ -215,55 +212,19 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 		go safe.Run(func() {
 			if err := JournalSessionHandle(l.core, receiver, msg, &types.AICallOptions{
 				GenMode:        types.GEN_MODE_NORMAL,
-				GetDocsFunc:    nil,
 				EnableThinking: msgArgs.EnableThinking,
 			}); err != nil {
 				slog.Error("Failed to handle journal message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
-			}
-		})
-	case types.AGENT_TYPE_NORMAL:
-		// else rag handler
-		go safe.Run(func() {
-			getDocsFunc := func() (types.RAGDocs, error) {
-				enhanceResult, _ := rag.EnhanceChatQuery(l.ctx, l.core, msg.Message, msg.SpaceID, msg.SessionID, msg.Sequence)
-
-				if enhanceResult.Usage != nil {
-					process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msg.ID, enhanceResult.Usage)
-				}
-
-				docs, usages, err := rag.GetQueryRelevanceKnowledges(l.core, chatSession.SpaceID, l.GetUserInfo().User, enhanceResult.ResultQuery(), resourceQuery)
-				if len(usages) > 0 {
-					for _, v := range usages {
-						process.NewRecordChatUsageRequest(v.Usage.Model, v.Subject, msgArgs.ID, v.Usage.Usage)
-					}
-				}
-				if err != nil {
-					err = errors.Trace("ChatLogic.getRelevanceKnowledges", err)
-					return types.RAGDocs{}, err
-				}
-
-				// Supplement associated document content.
-				rag.SupplementSessionChatDocs(l.core, chatSession.SpaceID, chatSession.ID, docs)
-				return docs, nil
-			}
-
-			if err := RAGSessionHandle(l.core, receiver, msg, getDocsFunc, &types.AICallOptions{
-				GenMode:        types.GEN_MODE_NORMAL,
-				GetDocsFunc:    getDocsFunc,
-				EnableThinking: msgArgs.EnableThinking,
-				EnableSearch:   msgArgs.EnableSearch,
-			}); err != nil {
-				slog.Error("Failed to handle rag message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
 		})
 	default:
 		go safe.Run(func() {
 			// else rag handler
 			if err := ChatSessionHandle(l.core, receiver, msg, &types.AICallOptions{
-				GenMode:        types.GEN_MODE_NORMAL,
-				GetDocsFunc:    nil,
-				EnableThinking: msgArgs.EnableThinking,
-				EnableSearch:   msgArgs.EnableSearch,
+				GenMode:         types.GEN_MODE_NORMAL,
+				EnableThinking:  msgArgs.EnableThinking,
+				EnableSearch:    msgArgs.EnableSearch,
+				EnableKnowledge: msgArgs.EnableKnowledge,
 			}); err != nil {
 				slog.Error("Failed to handle message", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
 			}
@@ -341,18 +302,6 @@ func JournalHandle(core *core.Core, receiver types.Receiver, userMessage *types.
 func JournalSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_JOURNAL)
 
-	ext := types.ChatMessageExt{
-		SpaceID:   userMessage.SpaceID,
-		SessionID: userMessage.SessionID,
-		CreatedAt: time.Now().Unix(),
-		UpdatedAt: time.Now().Unix(),
-	}
-
-	if err := receiver.RecvMessageInit(ext); err != nil {
-		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
-			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
-	}
-
 	// 使用新的变量名避免资源泄露
 	reqCtx, reqCancel := context.WithTimeout(context.Background(), time.Minute)
 	defer reqCancel()
@@ -382,19 +331,6 @@ func ButlerHandle(core *core.Core, receiver types.Receiver, userMessage *types.C
 func ButlerSessionHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
 	logic := core.AIChatLogic(types.AGENT_TYPE_BUTLER)
 
-	ext := types.ChatMessageExt{
-		MessageID: receiver.MessageID(),
-		SpaceID:   userMessage.SpaceID,
-		SessionID: userMessage.SessionID,
-		CreatedAt: time.Now().Unix(),
-		UpdatedAt: time.Now().Unix(),
-	}
-
-	if err := receiver.RecvMessageInit(ext); err != nil {
-		slog.Error("Failed to notify chat message inited event", slog.String("session_id", userMessage.SessionID),
-			slog.String("message_id", userMessage.ID), slog.String("error", err.Error()))
-	}
-
 	// 使用新的变量名避免资源泄露
 	reqCtx, reqCancel := context.WithTimeout(context.Background(), time.Minute)
 	defer reqCancel()
@@ -412,7 +348,7 @@ func ButlerSessionHandle(core *core.Core, receiver types.Receiver, userMessage *
 }
 
 func RAGHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
-	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
+	logic := core.AIChatLogic(types.AGENT_TYPE_AUTO)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -452,7 +388,6 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 		return err
 	}
 
-	aiCallOptions.Docs = &docs
 	var relDocs []string
 	if len(docs.Docs) > 0 {
 		relDocs = lo.Map(docs.Docs, func(item *types.PassageInfo, _ int) string {
@@ -496,7 +431,7 @@ func RAGSessionHandle(core *core.Core, receiver types.Receiver, userMessage *typ
 }
 
 func ChatHandle(core *core.Core, receiver types.Receiver, userMessage *types.ChatMessage, aiCallOptions *types.AICallOptions) error {
-	logic := core.AIChatLogic(types.AGENT_TYPE_NORMAL)
+	logic := core.AIChatLogic(types.AGENT_TYPE_AUTO)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
