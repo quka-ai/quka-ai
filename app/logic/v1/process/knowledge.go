@@ -544,7 +544,7 @@ func (p *KnowledgeProcess) processSummary(req *SummaryRequest) {
 			}
 		}
 
-		if err = p.core.Store().KnowledgeStore().FinishedStageSummarize(req.ctx, req.data.SpaceID, req.data.ID, summary); err != nil {
+		if err = p.core.Store().KnowledgeStore().FinishedStageSummarize(req.ctx, req.data.SpaceID, req.data.ID, *summary); err != nil {
 			slog.Error("Failed to set finished summary stage", append(logAttrs, slog.String("error", err.Error()))...)
 			return err
 		}

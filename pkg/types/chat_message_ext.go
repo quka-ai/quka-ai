@@ -18,4 +18,3 @@ type ChatMessageExt struct {
 	CreatedAt        int64                `json:"-" db:"created_at"`
 	UpdatedAt        int64                `json:"-" db:"updated_at"`
 }
-

@@ -17,12 +17,13 @@ import (
 
 // AIUsageRequest AI使用配置请求
 type AIUsageRequest struct {
-	Chat      string `json:"chat" binding:"required"`
-	Embedding string `json:"embedding" binding:"required"`
-	Vision    string `json:"vision,omitempty"`
-	Rerank    string `json:"rerank,omitempty"`
-	Reader    string `json:"reader,omitempty"`
-	Enhance   string `json:"enhance,omitempty"`
+	Chat         string `json:"chat" binding:"required"`
+	ChatThinking string `json:"chat_thinking,omitempty"`
+	Embedding    string `json:"embedding" binding:"required"`
+	Vision       string `json:"vision,omitempty"`
+	Rerank       string `json:"rerank,omitempty"`
+	Reader       string `json:"reader,omitempty"`
+	Enhance      string `json:"enhance,omitempty"`
 }
 
 // ReloadAIConfig 重新加载AI配置
@@ -65,6 +66,19 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 		}
 	}
 
+	if req.ChatThinking != "" {
+		model, err := logic.GetModel(req.ChatThinking)
+		if err != nil {
+			response.APIError(c, errors.New("UpdateAIUsage.ChatThinkingModel.NotFound", i18n.ERROR_AI_THINKING_MODEL_NOT_FOUND, err).Code(http.StatusBadRequest))
+			return
+		}
+		// 验证模型是否支持思考功能
+		if model.ThinkingSupport == types.ThinkingSupportNone {
+			response.APIError(c, errors.New("UpdateAIUsage.ChatThinkingModel.NotSupported", i18n.ERROR_MODEL_THINKING_NOT_SUPPORTED, nil).Code(http.StatusBadRequest))
+			return
+		}
+	}
+
 	if req.Embedding != "" {
 		if _, err := logic.GetModel(req.Embedding); err != nil {
 			response.APIError(c, errors.New("UpdateAIUsage.EmbeddingModel.NotFound", i18n.ERROR_AI_EMBEDDING_MODEL_NOT_FOUND, err).Code(http.StatusBadRequest))
@@ -95,6 +109,19 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 			CreatedAt:   time.Now().Unix(),
 			UpdatedAt:   time.Now().Unix(),
 		},
+	}
+
+	// 添加思考模型配置
+	if req.ChatThinking != "" {
+		configs = append(configs, types.CustomConfig{
+			Name:        types.AI_USAGE_CHAT_THINKING,
+			Category:    types.AI_USAGE_CATEGORY,
+			Value:       json.RawMessage(`"` + req.ChatThinking + `"`),
+			Description: types.AI_USAGE_CHAT_THINKING_DESC,
+			Status:      types.StatusEnabled,
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
+		})
 	}
 
 	// 添加可选配置
@@ -186,6 +213,8 @@ func (s *HttpSrv) GetAIUsage(c *gin.Context) {
 		switch config.Name {
 		case types.AI_USAGE_CHAT:
 			usage["chat"] = modelID
+		case types.AI_USAGE_CHAT_THINKING:
+			usage["chat_thinking"] = modelID
 		case types.AI_USAGE_EMBEDDING:
 			usage["embedding"] = modelID
 		case types.AI_USAGE_VISION:

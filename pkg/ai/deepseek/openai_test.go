@@ -106,16 +106,3 @@ pgvector/pgvector:pg16
 
 	t.Log(resp)
 }
-
-func Test_EnhanceQuery(t *testing.T) {
-	query := "喝小红有什么作用？"
-
-	d := new()
-	opts := ai.NewEnhance(context.Background(), d)
-	opts.WithPrompt(ai.PROMPT_ENHANCE_QUERY_CN)
-	res, err := opts.EnhanceQuery(query)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(res, res.Usage)
-}

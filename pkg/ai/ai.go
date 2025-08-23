@@ -37,11 +37,6 @@ type Lang interface {
 	Lang() string
 }
 
-type Enhance interface {
-	EnhanceQuery(ctx context.Context, messages []openai.ChatCompletionMessage) (EnhanceQueryResult, error)
-	Lang() string
-}
-
 func NewQueryOptions(ctx context.Context, driver Query, model string, query []*types.MessageContext) *QueryOptions {
 	return &QueryOptions{
 		ctx:     ctx,
@@ -97,19 +92,19 @@ func (s *QueryOptions) WithVar(key, value string) {
 type EnhanceOptions struct {
 	ctx     context.Context
 	prompt  string
-	_driver Enhance
+	_driver types.ChatModel
 	vars    map[string]string
 }
 
-func NewEnhance(ctx context.Context, driver Enhance) *EnhanceOptions {
+func NewEnhance(ctx context.Context, driver types.ChatModel) *EnhanceOptions {
 	opt := &EnhanceOptions{
 		ctx:     ctx,
 		_driver: driver,
 		vars:    make(map[string]string),
 	}
 
-	opt.vars[PROMPT_VAR_TIME_RANGE] = lo.If(driver.Lang() == MODEL_BASE_LANGUAGE_CN, PROMPT_ENHANCE_QUERY_CN).Else(PROMPT_ENHANCE_QUERY_EN)
-	opt.vars[PROMPT_VAR_LANG] = driver.Lang()
+	opt.vars[PROMPT_VAR_TIME_RANGE] = PROMPT_ENHANCE_QUERY_CN
+	opt.vars[PROMPT_VAR_LANG] = MODEL_BASE_LANGUAGE_CN
 	opt.vars[PROMPT_VAR_HISTORIES] = "null"
 	opt.vars[PROMPT_VAR_SYMBOL] = CurrentSymbols
 	opt.vars[PROMPT_VAR_SITE_TITLE] = SITE_TITLE
@@ -146,12 +141,7 @@ func (s *EnhanceOptions) WithHistories(messages []*types.ChatMessage) *EnhanceOp
 
 func (s *EnhanceOptions) EnhanceQuery(query string) (EnhanceQueryResult, error) {
 	if s.prompt == "" {
-		switch s._driver.Lang() {
-		case MODEL_BASE_LANGUAGE_CN:
-			s.prompt = PROMPT_ENHANCE_QUERY_CN
-		default:
-			s.prompt = PROMPT_ENHANCE_QUERY_EN
-		}
+		s.prompt = PROMPT_ENHANCE_QUERY_CN
 	}
 
 	for k, v := range s.vars {
@@ -160,18 +150,24 @@ func (s *EnhanceOptions) EnhanceQuery(query string) (EnhanceQueryResult, error) 
 
 	s.prompt = strings.ReplaceAll(s.prompt, PROMPT_VAR_QUERY, query)
 
-	res, err := s._driver.EnhanceQuery(s.ctx, []openai.ChatCompletionMessage{
-		{
-			Role:    types.USER_ROLE_USER.String(),
-			Content: s.prompt,
-		},
+	res, err := s._driver.Generate(s.ctx, []*schema.Message{
+		schema.UserMessage(s.prompt),
 	})
 	if err != nil {
-		return res, err
+		return EnhanceQueryResult{}, err
 	}
 
-	res.Original = query
-	return res, nil
+	var result EnhanceQueryResult
+
+	result.Original = query
+	result.Model = s._driver.Config().ModelName
+	result.News = strings.Split(res.Content, " ")
+	result.Usage = &openai.Usage{
+		PromptTokens:     result.Usage.PromptTokens,
+		CompletionTokens: result.Usage.CompletionTokens,
+		TotalTokens:      result.Usage.TotalTokens,
+	}
+	return result, nil
 }
 
 func (s *QueryOptions) Query() (*openai.ChatCompletionResponse, error) {
@@ -946,12 +942,12 @@ func NumTokens(messages []openai.ChatCompletionMessage, model string) (numTokens
 // ConvertMessageContextToEinoMessages 将 MessageContext 转换为 eino 消息格式
 func ConvertMessageContextToEinoMessages(messageContexts []*types.MessageContext) []*schema.Message {
 	einoMessages := make([]*schema.Message, 0, len(messageContexts))
-	
+
 	for _, msgCtx := range messageContexts {
 		einoMsg := &schema.Message{
 			Content: msgCtx.Content,
 		}
-		
+
 		// 转换角色
 		switch msgCtx.Role {
 		case types.USER_ROLE_SYSTEM:
@@ -1000,6 +996,6 @@ func ConvertMessageContextToEinoMessages(messageContexts []*types.MessageContext
 
 		einoMessages = append(einoMessages, einoMsg)
 	}
-	
+
 	return einoMessages
 }

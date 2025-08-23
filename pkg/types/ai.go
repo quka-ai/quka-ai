@@ -24,10 +24,10 @@ var registeredAgents = map[string][]string{
 }
 
 type AICallOptions struct {
-	GenMode        RequestAssistantMode
-	Model          string
-	EnableThinking bool
-	EnableSearch   bool
+	GenMode         RequestAssistantMode
+	Model           string
+	EnableThinking  bool
+	EnableSearch    bool
 	EnableKnowledge bool
 }
 
@@ -148,7 +148,7 @@ func NewAgentContextWithOptions(ctx context.Context, spaceID, userID, sessionID,
 		MessageSequence: messageSequence,
 		EnableThinking:  enableThinking,
 		EnableWebSearch: enableWebSearch,
-		EnableKnowledge:enableKnowledge,
+		EnableKnowledge: enableKnowledge,
 	}
 }
 

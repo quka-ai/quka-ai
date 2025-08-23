@@ -28,6 +28,7 @@ import (
 	goopenai "github.com/sashabaranov/go-openai"
 
 	"github.com/quka-ai/quka-ai/app/core"
+	"github.com/quka-ai/quka-ai/app/core/srv"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/butler"
@@ -53,6 +54,45 @@ func NewAutoAssistant(core *core.Core, agentType string) *AutoAssistant {
 	}
 }
 
+// HandleAssistantEarlyError 通用的早期错误处理函数
+// 用于在 RequestAssistant 准备阶段出现错误时，向前端发送失败响应
+// 这确保了即使在消息初始化前出错，前端也能收到错误通知
+func HandleAssistantEarlyError(err error, reqMsg *types.ChatMessage, receiver types.Receiver, errorPrefix string) error {
+	if err == nil {
+		return nil
+	}
+
+	slog.Error("Early error in RequestAssistant",
+		slog.String("error", err.Error()),
+		slog.String("prefix", errorPrefix),
+		slog.String("session_id", reqMsg.SessionID),
+		slog.String("message_id", reqMsg.ID))
+
+	// 初始化错误响应消息
+	if initErr := receiver.RecvMessageInit(types.ChatMessageExt{
+		SpaceID:   reqMsg.SpaceID,
+		SessionID: reqMsg.SessionID,
+		CreatedAt: time.Now().Unix(),
+		UpdatedAt: time.Now().Unix(),
+	}); initErr != nil {
+		slog.Error("failed to initialize error message",
+			slog.String("init_error", initErr.Error()),
+			slog.String("original_error", err.Error()))
+		return fmt.Errorf("failed to initialize error message: %w (original: %s)", initErr, err.Error())
+	}
+
+	// 发送错误消息给前端
+	receiveFunc := receiver.GetReceiveFunc()
+	doneFunc := receiver.GetDoneFunc(nil)
+
+	// 构建错误消息
+	errorMsg := fmt.Sprintf("%s: %s", errorPrefix, err.Error())
+	receiveFunc(&types.TextMessage{Text: errorMsg}, types.MESSAGE_PROGRESS_FAILED)
+	doneFunc(err)
+
+	return err
+}
+
 // GenSessionContext 生成会话上下文 - 与 NormalAssistant 保持兼容
 func (a *AutoAssistant) GenSessionContext(ctx context.Context, prompt string, reqMsgWithDocs *types.ChatMessage) (*SessionContext, error) {
 	// 直接调用 ai.go 中的函数
@@ -65,17 +105,17 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	// 1. 获取空间信息
 	space, err := a.core.Store().SpaceStore().GetSpace(ctx, reqMsg.SpaceID)
 	if err != nil {
-		return err
+		return HandleAssistantEarlyError(err, reqMsg, receiver, "获取空间信息失败")
 	}
 
 	// 2. 准备提示词
-	prompt := ai.BuildPrompt(space.BasePrompt, a.core.Srv().AI().Lang())
+	prompt := ai.BuildPrompt(space.BasePrompt, ai.MODEL_BASE_LANGUAGE_CN)
 	prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
 	sessionContext, err := a.GenSessionContext(ctx, prompt, reqMsg)
 	if err != nil {
-		return err
+		return HandleAssistantEarlyError(err, reqMsg, receiver, "生成会话上下文失败")
 	}
 
 	// 4. 创建 AgentContext - 提取思考和搜索配置
@@ -104,9 +144,10 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	factory := NewEinoAgentFactory(a.core)
 	agent, modelConfig, err := factory.CreateAutoRagReActAgent(agentCtx, notifyToolWrapper, einoMessages)
 	if err != nil {
-		return err
+		return HandleAssistantEarlyError(err, reqMsg, receiver, "创建AI代理失败")
 	}
 
+	// 从这里开始，错误处理交给具体的 handler 方法
 	// 创建响应处理器（传入数据库写入函数）
 	responseHandler := NewEinoResponseHandler(receiver, reqMsg)
 	callbackHandler := NewCallbackHandlers(a.core, modelConfig.ModelName, reqMsg)
@@ -408,7 +449,7 @@ func NewEinoAgentFactory(core *core.Core) *EinoAgentFactory {
 
 // CreateAutoRagReActAgent
 func (f *EinoAgentFactory) CreateAutoRagReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message) (*react.Agent, *types.ModelConfig, error) {
-	config := NewAgentConfig(agentCtx, toolWrapper, f.core, messages)
+	config := NewAgentConfig(agentCtx, toolWrapper, f.core, agentCtx.EnableThinking, messages)
 
 	// 应用选项
 	options := []AgentOption{
@@ -431,7 +472,7 @@ func (f *EinoAgentFactory) CreateAutoRagReActAgent(agentCtx *types.AgentContext,
 
 // CreateButlerReActAgent 创建包含Butler工具的ReAct Agent实例 (便捷方法)
 func (f *EinoAgentFactory) CreateButlerReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message, butlerAgent *butler.ButlerAgent) (*react.Agent, *types.ModelConfig, error) {
-	config := NewAgentConfig(agentCtx, toolWrapper, f.core, messages)
+	config := NewAgentConfig(agentCtx, toolWrapper, f.core, agentCtx.EnableThinking, messages)
 
 	// 应用选项
 	options := []AgentOption{
@@ -455,7 +496,7 @@ func (f *EinoAgentFactory) CreateButlerReActAgent(agentCtx *types.AgentContext, 
 
 // CreateJournalReActAgent 创建包含Journal工具的ReAct Agent实例 (便捷方法)
 func (f *EinoAgentFactory) CreateJournalReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message, journalAgent *journal.JournalAgent) (*react.Agent, *types.ModelConfig, error) {
-	config := NewAgentConfig(agentCtx, toolWrapper, f.core, messages)
+	config := NewAgentConfig(agentCtx, toolWrapper, f.core, agentCtx.EnableThinking, messages)
 
 	// 应用选项
 	options := []AgentOption{
@@ -475,7 +516,7 @@ func (f *EinoAgentFactory) CreateJournalReActAgent(agentCtx *types.AgentContext,
 
 // CreateCustomReActAgent 使用自定义选项创建ReAct Agent实例 (最灵活的方法)
 func (f *EinoAgentFactory) CreateCustomReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message, options ...AgentOption) (*react.Agent, *types.ModelConfig, error) {
-	config := NewAgentConfig(agentCtx, toolWrapper, f.core, messages)
+	config := NewAgentConfig(agentCtx, toolWrapper, f.core, agentCtx.EnableThinking, messages)
 
 	// 应用所有选项
 	for _, option := range options {
@@ -488,17 +529,26 @@ func (f *EinoAgentFactory) CreateCustomReActAgent(agentCtx *types.AgentContext, 
 }
 
 func GetToolCallingModel(agentCtx *types.AgentContext, modelConfig types.ModelConfig) (model.ToolCallingChatModel, error) {
+	// 根据模型的思考支持类型调整EnableThinking设置
+	enableThinking := agentCtx.EnableThinking
+	switch modelConfig.ThinkingSupport {
+	case types.ThinkingSupportForced:
+		enableThinking = true // 强制思考
+	case types.ThinkingSupportNone:
+		enableThinking = false // 不支持思考
+		// ThinkingSupportOptional的情况保持原始设置
+	}
+
 	if strings.Contains(strings.ToLower(modelConfig.ModelName), "qwen") {
-		// 创建 OpenAI 模型
+		// 创建 Qwen 模型
 		chatModel, err := qwen.NewChatModel(agentCtx, &qwen.ChatModelConfig{
 			APIKey:         modelConfig.Provider.ApiKey,
 			BaseURL:        modelConfig.Provider.ApiUrl,
 			Model:          modelConfig.ModelName,
 			Timeout:        5 * time.Minute,
-			EnableThinking: &agentCtx.EnableThinking,
+			EnableThinking: &enableThinking,
 		})
 		if err != nil {
-			// 如果创建失败，尝试使用 goopenai 库创建模型
 			return nil, fmt.Errorf("failed to create qwen chat model: %w", err)
 		}
 		return chatModel, nil
@@ -522,7 +572,7 @@ func GetToolCallingModel(agentCtx *types.AgentContext, modelConfig types.ModelCo
 		Model:   modelConfig.ModelName,
 		Timeout: 5 * time.Minute,
 		ExtraFields: map[string]any{
-			"enable_thinking": agentCtx.EnableThinking,
+			"enable_thinking": enableThinking,
 		},
 	})
 	if err != nil {
@@ -600,17 +650,20 @@ type AgentConfig struct {
 	ModelOverride *types.ModelConfig // 可选：覆盖默认模型配置
 	CustomPrompts []string           // 可选：自定义系统提示词
 	MaxIterations int                // 可选：最大工具调用迭代次数
+
+	EnableThinking bool
 }
 
 // NewAgentConfig 创建默认的Agent配置
-func NewAgentConfig(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, core *core.Core, messages []*schema.Message) *AgentConfig {
+func NewAgentConfig(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, core *core.Core, enableThinking bool, messages []*schema.Message) *AgentConfig {
 	return &AgentConfig{
-		AgentCtx:      agentCtx,
-		ToolWrapper:   toolWrapper,
-		Core:          core,
-		Messages:      messages,
-		Tools:         []tool.BaseTool{},
-		MaxIterations: 2, // 默认最大迭代次数
+		AgentCtx:       agentCtx,
+		ToolWrapper:    toolWrapper,
+		Core:           core,
+		Messages:       messages,
+		Tools:          []tool.BaseTool{},
+		MaxIterations:  2, // 默认最大迭代次数
+		EnableThinking: enableThinking,
 	}
 }
 
@@ -741,34 +794,21 @@ func (o *WithCustomPrompts) Apply(config *AgentConfig) error {
 
 // CreateReActAgentWithConfig 使用AgentConfig创建ReAct Agent (新的通用方法)
 func (f *EinoAgentFactory) CreateReActAgentWithConfig(config *AgentConfig) (*react.Agent, *types.ModelConfig, error) {
-	var modelConfig *types.ModelConfig
 	var err error
 
+	var chatModel types.ChatModel
 	// 如果有模型覆盖配置，则使用它
 	if config.ModelOverride != nil {
-		modelConfig = config.ModelOverride
+		if chatModel, err = srv.SetupAIDriver(context.Background(), *config.ModelOverride); err != nil {
+			return nil, nil, err
+		}
 	} else {
 		// 检查消息中是否包含多媒体内容，决定使用哪种模型
-		needVisionModel := f.containsMultimediaContent(config.Messages)
-
-		if needVisionModel {
-			// 获取视觉模型配置
-			modelConfig, err = f.getVisionModelConfig(config.AgentCtx)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to get vision model config: %w", err)
-			}
+		if f.containsMultimediaContent(config.Messages) {
+			chatModel = config.Core.Srv().AI().GetVisionAI()
 		} else {
-			// 获取聊天模型配置
-			modelConfig, err = f.getChatModelConfig(config.AgentCtx)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to get chat model config: %w", err)
-			}
+			chatModel = config.Core.Srv().AI().GetChatAI(config.EnableThinking)
 		}
-	}
-
-	chatModel, err := GetToolCallingModel(config.AgentCtx, *modelConfig)
-	if err != nil {
-		return nil, nil, err
 	}
 
 	toolsConfig := compose.ToolsNodeConfig{
@@ -803,7 +843,8 @@ func (f *EinoAgentFactory) CreateReActAgentWithConfig(config *AgentConfig) (*rea
 		return nil, nil, fmt.Errorf("failed to create ReAct agent: %w", err)
 	}
 
-	return agent, modelConfig, nil
+	modelConfig := chatModel.Config()
+	return agent, &modelConfig, nil
 }
 
 // EinoResponseHandler 处理 eino Agent 的响应
@@ -869,7 +910,6 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		// toolCalls []*schema.ToolCall // 使用 eino 原生结构
 	)
 
-	// nop handler
 	receiveFunc := h.GetReceiveFunc()
 	doneFunc := h.GetDoneFunc(nil)
 
@@ -973,12 +1013,11 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 			})
 			strs.WriteString(strings.ReplaceAll(thinkingContent, "\n", "</br>"))
 		} else {
-			finishedThinking.Do(func() {
-				if !hasThinking {
-					return
-				}
-				strs.WriteString("</think>")
-			})
+			if hasThinking {
+				finishedThinking.Do(func() {
+					strs.WriteString("</think>")
+				})
+			}
 			strs.WriteString(msg.Content)
 
 			// 处理隐藏标记

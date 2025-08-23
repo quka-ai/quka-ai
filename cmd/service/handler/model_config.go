@@ -66,6 +66,20 @@ func (s *HttpSrv) ListModelConfigs(c *gin.Context) {
 		}
 	}
 
+	var thinkingSupport *int
+	if thinkingSupportStr := c.Query("thinking_support"); thinkingSupportStr != "" {
+		if thinkingSupportInt, err := strconv.Atoi(thinkingSupportStr); err == nil {
+			thinkingSupport = &thinkingSupportInt
+		}
+	}
+
+	var thinkingRequired *bool
+	if thinkingRequiredStr := c.Query("thinking_required"); thinkingRequiredStr != "" {
+		if thinkingRequiredBool, err := strconv.ParseBool(thinkingRequiredStr); err == nil {
+			thinkingRequired = &thinkingRequiredBool
+		}
+	}
+
 	providerID := c.Query("provider_id")
 	modelType := c.Query("model_type")
 	modelName := c.Query("model_name")
@@ -94,6 +108,17 @@ func (s *HttpSrv) ListModelConfigs(c *gin.Context) {
 		}
 		if isMultiModal != nil && model.IsMultiModal != *isMultiModal {
 			continue
+		}
+		if thinkingSupport != nil && model.ThinkingSupport != *thinkingSupport {
+			continue
+		}
+		if thinkingRequired != nil {
+			if *thinkingRequired && model.ThinkingSupport == types.ThinkingSupportNone {
+				continue // 需要思考但模型不支持
+			}
+			if !*thinkingRequired && model.ThinkingSupport == types.ThinkingSupportForced {
+				continue // 不需要思考但模型强制思考
+			}
 		}
 		filteredModels = append(filteredModels, model)
 	}
@@ -145,4 +170,51 @@ func (s *HttpSrv) DeleteModelConfig(c *gin.Context) {
 	response.APISuccess(c, map[string]interface{}{
 		"message": "模型配置删除成功",
 	})
+}
+
+// GetAvailableModels 获取可用的模型配置
+func (s *HttpSrv) GetAvailableModels(c *gin.Context) {
+	modelType := c.Query("model_type")
+
+	var isMultiModal *bool
+	if isMultiModalStr := c.Query("is_multi_modal"); isMultiModalStr != "" {
+		if val, err := strconv.ParseBool(isMultiModalStr); err == nil {
+			isMultiModal = &val
+		}
+	}
+
+	var thinkingRequired *bool
+	if thinkingRequiredStr := c.Query("thinking_required"); thinkingRequiredStr != "" {
+		if val, err := strconv.ParseBool(thinkingRequiredStr); err == nil {
+			thinkingRequired = &val
+		}
+	}
+
+	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	models, err := logic.GetAvailableModels(modelType, isMultiModal, thinkingRequired)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	response.APISuccess(c, models)
+}
+
+// GetThinkingModels 获取支持思考功能的模型
+func (s *HttpSrv) GetThinkingModels(c *gin.Context) {
+	var needsThinking bool = true
+	if needsThinkingStr := c.Query("needs_thinking"); needsThinkingStr != "" {
+		if val, err := strconv.ParseBool(needsThinkingStr); err == nil {
+			needsThinking = val
+		}
+	}
+
+	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	models, err := logic.GetAvailableThinkingModels(needsThinking)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	response.APISuccess(c, models)
 }

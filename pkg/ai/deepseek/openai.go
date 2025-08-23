@@ -268,10 +268,6 @@ func (s *Driver) Chunk(ctx context.Context, doc *string) (ai.ChunkResult, error)
 	return result, nil
 }
 
-func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
-	return ai.NewEnhance(ctx, s)
-}
-
 func (s *Driver) EnhanceQuery(ctx context.Context, messages []openai.ChatCompletionMessage) (ai.EnhanceQueryResult, error) {
 	slog.Debug("EnhanceQuery", slog.String("driver", NAME))
 

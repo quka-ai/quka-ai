@@ -111,7 +111,7 @@ func setupTestServer(t *testing.T) (pb.FileChunkerServiceClient, func()) {
 			},
 		},
 	}
-	
+
 	pb.RegisterFileChunkerServiceServer(baseServer, mockService)
 	go func() {
 		if err := baseServer.Serve(lis); err != nil {
@@ -271,7 +271,7 @@ func TestChunkFileWithTimeout(t *testing.T) {
 		Filename:    "test.txt",
 		Config:      &pb.GenieConfig{LlmProvider: pb.LLMProvider_OPENAI},
 	})
-	
+
 	// Since we're using bufconn, the timeout might not trigger as expected
 	// This test is more about ensuring context cancellation is handled
 	if err == nil {
@@ -294,7 +294,7 @@ func TestChunkFilePerformance(t *testing.T) {
 
 	ctx := context.Background()
 	start := time.Now()
-	
+
 	resp, err := client.ChunkFile(ctx, &pb.ChunkFileRequest{
 		FileContent: largeContent,
 		Filename:    "large_test.txt",
@@ -308,7 +308,7 @@ func TestChunkFilePerformance(t *testing.T) {
 	})
 
 	duration := time.Since(start)
-	
+
 	if err != nil {
 		t.Fatalf("ChunkFile failed: %v", err)
 	}

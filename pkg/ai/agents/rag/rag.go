@@ -48,16 +48,15 @@ func decryptMessageLists(core *core.Core, messages []*types.ChatMessage) {
 }
 
 func EnhanceQuery(ctx context.Context, core *core.Core, query string, histories []*types.ChatMessage) (ai.EnhanceQueryResult, error) {
-	aiOpts := core.Srv().AI().NewEnhance(ctx)
+	aiOpts := ai.NewEnhance(ctx, core.Srv().AI().GetEnhanceAI())
 	resp, err := aiOpts.WithPrompt(core.Prompt().EnhanceQuery).
 		WithHistories(histories).
 		EnhanceQuery(query)
 	if err != nil {
 		slog.Error("failed to enhance user query", slog.String("query", query), slog.String("error", err.Error()))
 		// return nil, errors.New("KnowledgeLogic.GetRelevanceKnowledges.AI.EnhanceQuery", i18n.ERROR_INTERNAL, err)
+		resp.Original = query
 	}
-
-	resp.Original = query
 	return resp, nil
 }
 

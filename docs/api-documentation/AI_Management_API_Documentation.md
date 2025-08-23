@@ -2,6 +2,15 @@
 
 ## 变更日志
 
+### v3.0.0 - 思考模型功能支持
+- **新增**: 思考功能支持（Thinking Support）配置，支持不同模型的思考能力管理
+- **新增**: ModelConfig.thinking_support字段，支持三种类型：0-不支持，1-可选，2-强制
+- **新增**: AI使用配置新增chat_thinking字段，用于专门配置思考聊天模型
+- **新增**: 模型列表API支持thinking_support和thinking_required查询参数
+- **新增**: 智能模型选择功能，根据是否需要思考自动选择合适的模型
+- **增强**: AI系统管理支持思考模型的独立配置和管理
+- **优化**: 聊天模型现在支持基于思考需求的动态选择逻辑
+
 ### v2.0.0 - Reader功能重构
 - **重大变更**: Reader功能从模型类型重构为厂商特有功能
 - **新增**: ModelProvider.config.is_reader字段，用于标识厂商是否支持Reader功能
@@ -227,6 +236,7 @@
   "display_name": "GPT-4",
   "model_type": "chat",
   "is_multi_modal": true,
+  "thinking_support": 1,
   "config": {
     "max_tokens": 4096,
     "temperature": 0.7,
@@ -241,6 +251,7 @@
 - `display_name` (string): 显示名称
 - `model_type` (string, required): 模型类型 (chat/embedding/vision/rerank/enhance)
 - `is_multi_modal` (bool): 是否支持多模态
+- `thinking_support` (int): 思考功能支持类型 (0=不支持, 1=可选, 2=强制)
 - `config` (object): 模型配置参数
 
 **响应示例**:
@@ -255,6 +266,7 @@
     "display_name": "GPT-4",
     "model_type": "chat",
     "is_multi_modal": true,
+    "thinking_support": 1,
     "status": 1,
     "config": {
       "max_tokens": 4096,
@@ -283,6 +295,8 @@
 - `provider_id` (string): 按提供商ID过滤
 - `model_type` (string): 按模型类型过滤（支持reader类型）
 - `status` (int): 按状态过滤
+- `thinking_support` (int): 按思考功能支持类型过滤 (0=不支持, 1=可选, 2=强制)
+- `thinking_required` (bool): 按思考功能需求过滤 (true=需要支持思考, false=不需要思考)
 
 **说明**: 
 - 此接口会返回真实的模型配置，同时将支持Reader功能的提供商作为虚拟模型返回

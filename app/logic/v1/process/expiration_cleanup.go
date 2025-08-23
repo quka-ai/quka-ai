@@ -41,42 +41,42 @@ func NewExpirationCleanupTask(core *core.Core, strategy CleanupStrategy) *Expira
 // Run 执行过期内容清理任务
 func (t *ExpirationCleanupTask) Run(ctx context.Context) error {
 	slog.Info("Starting expiration cleanup task", slog.String("strategy", string(t.strategy)))
-	
+
 	batchSize := uint64(1000)
 	totalCleaned := 0
-	
+
 	for {
 		// 分批获取过期的knowledge
 		expiredKnowledges, err := t.core.Store().KnowledgeStore().ListKnowledges(ctx, types.GetKnowledgeOptions{
 			ExpiredOnly: true,
 		}, 1, batchSize)
-		
+
 		if err != nil {
 			slog.Error("Failed to list expired knowledges", slog.Any("error", err))
 			return err
 		}
-		
+
 		// 如果没有过期内容，结束清理
 		if len(expiredKnowledges) == 0 {
 			break
 		}
-		
+
 		// 根据策略处理过期内容
 		cleaned, err := t.cleanupBatch(ctx, expiredKnowledges)
 		if err != nil {
-			slog.Error("Failed to cleanup batch", 
+			slog.Error("Failed to cleanup batch",
 				slog.Int("batch_size", len(expiredKnowledges)),
 				slog.Any("error", err))
 			return err
 		}
-		
+
 		totalCleaned += cleaned
-		
+
 		// 如果批次大小小于预期，说明已经处理完所有过期内容
 		if len(expiredKnowledges) < int(batchSize) {
 			break
 		}
-		
+
 		// 防止过于频繁的数据库操作
 		select {
 		case <-ctx.Done():
@@ -84,18 +84,18 @@ func (t *ExpirationCleanupTask) Run(ctx context.Context) error {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	
-	slog.Info("Expiration cleanup task completed", 
+
+	slog.Info("Expiration cleanup task completed",
 		slog.Int("total_cleaned", totalCleaned),
 		slog.String("strategy", string(t.strategy)))
-	
+
 	return nil
 }
 
 // cleanupBatch 批量清理过期内容
 func (t *ExpirationCleanupTask) cleanupBatch(ctx context.Context, knowledges []*types.Knowledge) (int, error) {
 	cleaned := 0
-	
+
 	for _, knowledge := range knowledges {
 		err := t.cleanupSingle(ctx, knowledge)
 		if err != nil {
@@ -106,13 +106,13 @@ func (t *ExpirationCleanupTask) cleanupBatch(ctx context.Context, knowledges []*
 			continue // 继续处理其他记录，不因单个失败而中断
 		}
 		cleaned++
-		
+
 		slog.Debug("Cleaned up expired knowledge",
 			slog.String("knowledge_id", knowledge.ID),
 			slog.String("title", knowledge.Title),
 			slog.String("resource", knowledge.Resource))
 	}
-	
+
 	return cleaned, nil
 }
 
@@ -137,12 +137,12 @@ func (t *ExpirationCleanupTask) hardDelete(ctx context.Context, knowledge *types
 		if err := t.core.Store().VectorStore().Delete(txCtx, knowledge.SpaceID, knowledge.ID, knowledge.ID); err != nil {
 			slog.Warn("Failed to delete vector data", slog.String("knowledge_id", knowledge.ID), slog.Any("error", err))
 		}
-		
+
 		// 删除chunk数据
 		if err := t.core.Store().KnowledgeChunkStore().BatchDelete(txCtx, knowledge.SpaceID, knowledge.ID); err != nil {
 			slog.Warn("Failed to delete chunk data", slog.String("knowledge_id", knowledge.ID), slog.Any("error", err))
 		}
-		
+
 		// 删除knowledge记录
 		return t.core.Store().KnowledgeStore().Delete(txCtx, knowledge.SpaceID, knowledge.ID)
 	})
@@ -152,7 +152,7 @@ func (t *ExpirationCleanupTask) hardDelete(ctx context.Context, knowledge *types
 func (t *ExpirationCleanupTask) softDelete(ctx context.Context, knowledge *types.Knowledge) error {
 	// 注意：这里需要在Knowledge表中添加deleted_at字段
 	// 目前暂时使用硬删除，后续可以扩展软删除功能
-	slog.Warn("Soft delete not implemented yet, using hard delete", 
+	slog.Warn("Soft delete not implemented yet, using hard delete",
 		slog.String("knowledge_id", knowledge.ID))
 	return t.hardDelete(ctx, knowledge)
 }
@@ -161,7 +161,7 @@ func (t *ExpirationCleanupTask) softDelete(ctx context.Context, knowledge *types
 func (t *ExpirationCleanupTask) archive(ctx context.Context, knowledge *types.Knowledge) error {
 	// 注意：这里需要创建专门的归档表
 	// 目前暂时使用硬删除，后续可以扩展归档功能
-	slog.Warn("Archive not implemented yet, using hard delete", 
+	slog.Warn("Archive not implemented yet, using hard delete",
 		slog.String("knowledge_id", knowledge.ID))
 	return t.hardDelete(ctx, knowledge)
 }
@@ -193,7 +193,7 @@ func NewTaskScheduler(core *core.Core) *TaskScheduler {
 // Start 启动任务调度器
 func (s *TaskScheduler) Start() {
 	slog.Info("Starting task scheduler")
-	
+
 	// 启动过期清理任务，每小时执行一次
 	go s.scheduleExpirationCleanup(time.Hour)
 }
@@ -208,10 +208,10 @@ func (s *TaskScheduler) Stop() {
 func (s *TaskScheduler) scheduleExpirationCleanup(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	
+
 	// 立即执行一次（可选）
 	s.runExpirationCleanup()
-	
+
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -227,9 +227,9 @@ func (s *TaskScheduler) scheduleExpirationCleanup(interval time.Duration) {
 func (s *TaskScheduler) runExpirationCleanup() {
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Minute)
 	defer cancel()
-	
+
 	task := NewExpirationCleanupTask(s.core, StrategyHardDelete)
-	
+
 	// 先获取过期数量用于日志
 	count, err := task.GetExpiredKnowledgesCount(ctx)
 	if err != nil {
@@ -237,7 +237,7 @@ func (s *TaskScheduler) runExpirationCleanup() {
 	} else {
 		slog.Info("Starting scheduled expiration cleanup", slog.Uint64("expired_count", count))
 	}
-	
+
 	// 执行清理任务
 	if err := task.Run(ctx); err != nil {
 		slog.Error("Scheduled expiration cleanup failed", slog.Any("error", err))

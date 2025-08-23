@@ -113,9 +113,13 @@ func (l *ReaderLogic) DescribeImage(imageURL string) (string, error) {
 		return "", errors.New("KnowledgeLogic.DescribeImage.Query", i18n.ERROR_INTERNAL, err)
 	}
 
-	if resp.Usage.CompletionTokens > 0 {
-		process.NewRecordUsageRequest(resp.Model, types.USAGE_TYPE_SYSTEM, types.USAGE_SUB_TYPE_DESCRIBE_IMAGE, "", l.GetUserInfo().User, &resp.Usage)
+	if resp.ResponseMeta.Usage.CompletionTokens > 0 {
+		process.NewRecordUsageRequest(resp.Model, types.USAGE_TYPE_SYSTEM, types.USAGE_SUB_TYPE_DESCRIBE_IMAGE, "", l.GetUserInfo().User, &openai.Usage{
+			PromptTokens:     resp.ResponseMeta.Usage.PromptTokens,
+			CompletionTokens: resp.ResponseMeta.Usage.CompletionTokens,
+			TotalTokens:      resp.ResponseMeta.Usage.TotalTokens,
+		})
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	return resp.Content, nil
 }

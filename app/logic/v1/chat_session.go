@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
 	"github.com/quka-ai/quka-ai/pkg/ai"
@@ -15,6 +16,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/sashabaranov/go-openai"
 )
 
 type ChatSessionLogic struct {
@@ -120,28 +122,27 @@ type NamedSessionResult struct {
 }
 
 func (l *ChatSessionLogic) NamedSession(sessionID, firstQuery string) (NamedSessionResult, error) {
-	tool := l.core.Srv().AI().NewQuery(l.ctx, []*types.MessageContext{{Role: types.USER_ROLE_USER, Content: firstQuery}})
-	prompt := l.core.Prompt().SessionName
-	if prompt == "" {
-		prompt = ai.PROMPT_NAMED_SESSION_DEFAULT_CN
-	}
-	tool.WithPrompt(prompt)
-	resp, err := tool.Query()
+	impl := l.core.Srv().AI().GetChatAI(false)
+	// raw, _ := json.Marshal(impl.Config())
+	// fmt.Println("named session", string(raw))
+	resp, err := impl.Generate(l.ctx, []*schema.Message{
+		schema.SystemMessage(ai.PROMPT_NAMED_SESSION_DEFAULT_CN),
+		schema.UserMessage(firstQuery),
+	})
+
 	if err != nil {
 		return NamedSessionResult{}, errors.New("ChatSessionLogic.NamedSession.ai.Query", i18n.ERROR_INTERNAL, err)
 	}
 
 	spaceID, _ := InjectSpaceID(l.ctx)
-	process.NewRecordSessionUsageRequest(resp.Model, types.USAGE_SUB_TYPE_NAMED_CHAT, spaceID, sessionID, &resp.Usage)
+	process.NewRecordSessionUsageRequest(impl.Config().ModelName, types.USAGE_SUB_TYPE_NAMED_CHAT, spaceID, sessionID, &openai.Usage{
+		TotalTokens:      resp.ResponseMeta.Usage.TotalTokens,
+		PromptTokens:     resp.ResponseMeta.Usage.PromptTokens,
+		CompletionTokens: resp.ResponseMeta.Usage.CompletionTokens,
+	})
 
 	var titleBuilder strings.Builder
-	for _, choice := range resp.Choices {
-		if choice.Message.Content != "" {
-			titleBuilder.WriteString(choice.Message.Content)
-			break
-		}
-	}
-
+	titleBuilder.WriteString(resp.Content)
 	title := titleBuilder.String()
 	if len([]rune(title)) > 30 {
 		title = string([]rune(title)[:30])

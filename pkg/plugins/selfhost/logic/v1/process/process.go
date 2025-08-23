@@ -19,7 +19,7 @@ func findToolInConfig(tools []string, find string) bool {
 
 func SetupProcess(core *commsrv.PluginCore) {
 
-	chunkTaskProcess := NewContentTaskProcess(core)
+	chunkTaskProcess := NewContentTaskProcess(core.AppCore, core.Cfg.ChunkService)
 
 	slog.Info("Register new process", slog.String("name", "content_chunk_task"))
 	register.RegisterFunc(process.ProcessKey{}, func(provider *process.Process) {

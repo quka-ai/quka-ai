@@ -17,8 +17,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
-	commsrv "github.com/quka-ai/quka-ai/pkg/plugins/selfhost/srv"
+	"github.com/quka-ai/quka-ai/pkg/plugins/selfhost/srv"
 	pb "github.com/quka-ai/quka-ai/pkg/proto/filechunker"
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
@@ -26,14 +27,14 @@ import (
 )
 
 type ContentTaskProcess struct {
-	core         *commsrv.PluginCore
+	core         *core.Core
 	grpcConn     *grpc.ClientConn
 	grpcClient   pb.FileChunkerServiceClient
 	PreChunkChan chan *types.ContentTask
 	ChunkChan    chan *types.ContentTask
 }
 
-func NewContentTaskProcess(core *commsrv.PluginCore) *ContentTaskProcess {
+func NewContentTaskProcess(core *core.Core, cfg srv.ChunkService) *ContentTaskProcess {
 	p := &ContentTaskProcess{
 		core:         core,
 		PreChunkChan: make(chan *types.ContentTask, 4),
@@ -41,23 +42,23 @@ func NewContentTaskProcess(core *commsrv.PluginCore) *ContentTaskProcess {
 	}
 
 	// Initialize gRPC client if enabled
-	if core.Cfg.ChunkService.Enabled {
-		timeout := time.Duration(core.Cfg.ChunkService.Timeout) * time.Second
+	if cfg.Enabled {
+		timeout := time.Duration(cfg.Timeout) * time.Second
 		if timeout == 0 {
 			timeout = 30 * time.Second // default timeout
 		}
 
-		conn, err := grpc.NewClient(core.Cfg.ChunkService.Address,
+		conn, err := grpc.NewClient(cfg.Address,
 			grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			slog.Error("Failed to connect to gRPC filechunk service",
-				slog.String("address", core.Cfg.ChunkService.Address),
+				slog.String("address", cfg.Address),
 				slog.String("error", err.Error()))
 		} else {
 			p.grpcConn = conn
 			p.grpcClient = pb.NewFileChunkerServiceClient(conn)
 			slog.Info("gRPC filechunk client initialized successfully",
-				slog.String("address", core.Cfg.ChunkService.Address))
+				slog.String("address", cfg.Address))
 		}
 	}
 
@@ -94,7 +95,7 @@ func removeEmptyLine(text string) string {
 func (p *ContentTaskProcess) ProcessTasks() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	list, err := p.core.AppCore.Store().ContentTaskStore().ListUnprocessedTasks(ctx, types.NO_PAGINATION, types.NO_PAGINATION)
+	list, err := p.core.Store().ContentTaskStore().ListUnprocessedTasks(ctx, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("Failed to load unprocessed tasks, %w", err)
 	}
@@ -144,7 +145,7 @@ func (p *ContentTaskProcess) loop() {
 						slog.Error("Failed to process chunk task", slog.String("error", err.Error()))
 
 						ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-						if err = p.core.AppCore.Store().ContentTaskStore().SetRetryTimes(ctx, req.TaskID, req.RetryTimes+1); err != nil {
+						if err = p.core.Store().ContentTaskStore().SetRetryTimes(ctx, req.TaskID, req.RetryTimes+1); err != nil {
 							slog.Error("Failed to set content task process retry times", slog.String("stage", types.KNOWLEDGE_STAGE_EMBEDDING.String()),
 								slog.String("error", err.Error()),
 								slog.String("space_id", req.SpaceID),
@@ -167,13 +168,13 @@ func (p *ContentTaskProcess) chunkByGRPC(task *types.ContentTask) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
 	defer cancel()
 
-	ok, err := p.core.AppCore.Plugins.TryLock(ctx, fmt.Sprintf("task:chunk:%s", task.TaskID))
+	ok, err := p.core.Plugins.TryLock(ctx, fmt.Sprintf("task:chunk:%s", task.TaskID))
 	if err != nil || !ok {
 		return err
 	}
 
 	// check task exist
-	taskData, err := p.core.AppCore.Store().ContentTaskStore().GetTask(ctx, task.TaskID)
+	taskData, err := p.core.Store().ContentTaskStore().GetTask(ctx, task.TaskID)
 	if err != nil {
 		return err
 	}
@@ -193,7 +194,7 @@ func (p *ContentTaskProcess) chunkByGRPC(task *types.ContentTask) error {
 		// Download file
 		downloadCtx, downloadCtxCancel := context.WithTimeout(context.Background(), time.Minute)
 		defer downloadCtxCancel()
-		res, err := p.core.AppCore.Plugins.FileStorage().DownloadFile(downloadCtx, task.FileURL)
+		res, err := p.core.Plugins.FileStorage().DownloadFile(downloadCtx, task.FileURL)
 		if err != nil {
 			return err
 		}
@@ -214,7 +215,7 @@ func (p *ContentTaskProcess) chunkByGRPC(task *types.ContentTask) error {
 		// }
 
 		// Get enhance model configuration
-		enhanceModel, err := p.core.AppCore.GetActiveModelConfig(ctx, types.AI_USAGE_ENHANCE)
+		enhanceModel, err := p.core.GetActiveModelConfig(ctx, types.AI_USAGE_ENHANCE)
 		if err != nil {
 			slog.Error("Failed to get enhance model configuration", slog.String("error", err.Error()))
 			return err
@@ -290,9 +291,9 @@ func (p *ContentTaskProcess) handlerChunks(task *types.ContentTask, knowledgeChu
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
 	defer cancel()
 	// chunk的第一块存为knowledge meta
-	err := p.core.AppCore.Store().Transaction(ctx, func(ctx context.Context) error {
+	err := p.core.Store().Transaction(ctx, func(ctx context.Context) error {
 		metaID := utils.GenUniqIDStr()
-		err := p.core.AppCore.Store().KnowledgeMetaStore().Create(ctx, types.KnowledgeMeta{
+		err := p.core.Store().KnowledgeMetaStore().Create(ctx, types.KnowledgeMeta{
 			ID:        metaID,
 			SpaceID:   task.SpaceID,
 			MetaInfo:  removeEmptyLine(task.MetaInfo),
@@ -313,7 +314,7 @@ func (p *ContentTaskProcess) handlerChunks(task *types.ContentTask, knowledgeChu
 			if item == "" {
 				continue
 			}
-			encryptContent, _ := p.core.AppCore.Plugins.EncryptData([]byte(item))
+			encryptContent, _ := p.core.Plugins.EncryptData([]byte(item))
 			id := utils.GenUniqIDStr()
 			newKnowledgeIDs = append(newKnowledgeIDs, id)
 			inserts = append(inserts, &types.Knowledge{
@@ -346,7 +347,7 @@ func (p *ContentTaskProcess) handlerChunks(task *types.ContentTask, knowledgeChu
 			chunks = append(chunks, item)
 
 			if (i != 0 && i%5 == 0) || i+1 == len(knowledgeChunks) {
-				vectorResults, err := p.core.AppCore.Srv().AI().EmbeddingForDocument(ctx, "", chunks)
+				vectorResults, err := p.core.Srv().AI().EmbeddingForDocument(ctx, "", chunks)
 				if err != nil {
 					slog.Error("Failed to embedding for document", slog.String("error", err.Error()))
 					return err
@@ -363,11 +364,11 @@ func (p *ContentTaskProcess) handlerChunks(task *types.ContentTask, knowledgeChu
 					vectors[i].Embedding = pgvector.NewVector(v)
 				}
 
-				if err = p.core.AppCore.Store().KnowledgeStore().BatchCreate(ctx, inserts); err != nil {
+				if err = p.core.Store().KnowledgeStore().BatchCreate(ctx, inserts); err != nil {
 					return fmt.Errorf("Failed to batch create knowledge, %w", err)
 				}
 
-				err = p.core.AppCore.Store().VectorStore().BatchCreate(ctx, vectors)
+				err = p.core.Store().VectorStore().BatchCreate(ctx, vectors)
 				if err != nil {
 					slog.Error("Failed to insert vector data into vector store", slog.String("error", err.Error()))
 					return err
@@ -393,12 +394,12 @@ func (p *ContentTaskProcess) handlerChunks(task *types.ContentTask, knowledgeChu
 				chunkIndex++
 				return res
 			})
-			if err = p.core.AppCore.Store().KnowledgeRelMetaStore().BatchCreate(ctx, inserts); err != nil {
+			if err = p.core.Store().KnowledgeRelMetaStore().BatchCreate(ctx, inserts); err != nil {
 				return fmt.Errorf("Failed to batch create knolwedge relevance meta, %w", err)
 			}
 		}
 
-		if err = p.core.AppCore.Store().ContentTaskStore().UpdateStep(ctx, task.TaskID, types.LONG_CONTENT_STEP_FINISHED); err != nil {
+		if err = p.core.Store().ContentTaskStore().UpdateStep(ctx, task.TaskID, types.LONG_CONTENT_STEP_FINISHED); err != nil {
 			return fmt.Errorf("Failed to update task step, %w", err)
 		}
 

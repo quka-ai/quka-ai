@@ -210,6 +210,8 @@ func (s *Core) loadAIUsageFromDB(ctx context.Context) (srv.Usage, error) {
 		switch config.Name {
 		case types.AI_USAGE_CHAT:
 			usage.Chat = modelID
+		case types.AI_USAGE_CHAT_THINKING:
+			usage.ChatThinking = modelID
 		case types.AI_USAGE_EMBEDDING:
 			usage.Embedding = modelID
 		case types.AI_USAGE_VISION:

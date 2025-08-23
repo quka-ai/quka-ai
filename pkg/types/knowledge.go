@@ -205,22 +205,22 @@ func StringToKnowledgeContentType(str string) KnowledgeContentType {
 }
 
 type GetKnowledgeOptions struct {
-	ID              string
-	IDs             []string
-	Kind            []KnowledgeKind
-	ExcludeKind     []KnowledgeKind
-	SpaceID         string
-	UserID          string
-	Resource        *ResourceQuery
-	Stage           KnowledgeStage
-	RetryTimes      int
-	Keywords        string
-	TimeRange       *struct {
+	ID          string
+	IDs         []string
+	Kind        []KnowledgeKind
+	ExcludeKind []KnowledgeKind
+	SpaceID     string
+	UserID      string
+	Resource    *ResourceQuery
+	Stage       KnowledgeStage
+	RetryTimes  int
+	Keywords    string
+	TimeRange   *struct {
 		St int64
 		Et int64
 	}
-	IncludeExpired  bool   // 是否包含过期内容，默认false
-	ExpiredOnly     bool   // 只返回过期内容
+	IncludeExpired bool // 是否包含过期内容，默认false
+	ExpiredOnly    bool // 只返回过期内容
 }
 
 func (opts GetKnowledgeOptions) Apply(query *sq.SelectBuilder) {
@@ -261,7 +261,7 @@ func (opts GetKnowledgeOptions) Apply(query *sq.SelectBuilder) {
 	if opts.TimeRange != nil {
 		*query = query.Where(sq.And{sq.GtOrEq{"created_at": opts.TimeRange.St}, sq.LtOrEq{"created_at": opts.TimeRange.Et}})
 	}
-	
+
 	// 过期检查逻辑（预计算方案，默认排除过期内容）
 	now := GetCurrentTimestamp()
 	if opts.ExpiredOnly {

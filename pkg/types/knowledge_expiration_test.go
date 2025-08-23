@@ -7,7 +7,7 @@ import (
 
 func TestCalculateExpiredAt(t *testing.T) {
 	createdAt := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
-	
+
 	tests := []struct {
 		name      string
 		createdAt int64
@@ -109,7 +109,7 @@ func TestKnowledge_IsExpired(t *testing.T) {
 
 func TestKnowledge_SetExpiredAt(t *testing.T) {
 	createdAt := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
-	
+
 	tests := []struct {
 		name  string
 		cycle int
@@ -133,11 +133,10 @@ func TestKnowledge_SetExpiredAt(t *testing.T) {
 				CreatedAt: createdAt,
 			}
 			k.SetExpiredAt(tt.cycle)
-			
+
 			if k.ExpiredAt != tt.want {
 				t.Errorf("Knowledge.SetExpiredAt() ExpiredAt = %v, want %v", k.ExpiredAt, tt.want)
 			}
 		})
 	}
 }
-

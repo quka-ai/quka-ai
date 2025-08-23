@@ -68,7 +68,7 @@ func (s *KnowledgeStore) BatchCreate(ctx context.Context, datas []*types.Knowled
 		if data.UpdatedAt == 0 {
 			data.UpdatedAt = time.Now().Unix()
 		}
-		
+
 		query = query.Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt)
 	}
 

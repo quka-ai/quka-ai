@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS quka_knowledge (
     maybe_date VARCHAR(20) NOT NULL,
     retry_times SMALLINT NOT NULL DEFAULT 0,
     created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL
+    updated_at BIGINT NOT NULL,
+    expired_at BIGINT NOT NULL DEFAULT 0
 );
 
 -- 添加字段注释
@@ -33,7 +34,9 @@ COMMENT ON COLUMN quka_knowledge.maybe_date IS 'AI分析出的事件发生时间
 COMMENT ON COLUMN quka_knowledge.retry_times IS '流水线相关动作重试次数';
 COMMENT ON COLUMN quka_knowledge.created_at IS '创建时间';
 COMMENT ON COLUMN quka_knowledge.updated_at IS '更新时间';
+COMMENT ON COLUMN quka_knowledge.expired_at IS '过期时间戳，0表示永不过期';
 
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_quka_knowledge_main ON quka_knowledge (space_id, resource);
 CREATE INDEX IF NOT EXISTS idx_quka_knowledge_retry ON quka_knowledge (stage, retry_times);
+CREATE INDEX IF NOT EXISTS idx_quka_knowledge_expired_at ON quka_knowledge(expired_at);

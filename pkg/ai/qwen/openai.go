@@ -109,10 +109,6 @@ func (s *Driver) NewVisionQuery(ctx context.Context, model string, query []*type
 	return opts
 }
 
-func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
-	return ai.NewEnhance(ctx, s)
-}
-
 func convertModelToVLModel(model string) string {
 	if strings.Contains(model, "vl") {
 		return model

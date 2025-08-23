@@ -105,10 +105,6 @@ func (s *Driver) NewQuery(ctx context.Context, model string, query []*types.Mess
 	return ai.NewQueryOptions(ctx, s, model, query)
 }
 
-func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
-	return ai.NewEnhance(ctx, s)
-}
-
 func (s *Driver) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 	tokenNum, err := ai.NumTokens(lo.Map(msgs, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 		return openai.ChatCompletionMessage{

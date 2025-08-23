@@ -23,5 +23,3 @@ func RegisterConstants(siteTitle, siteDescription string) {
 	SITE_TITLE = siteTitle
 	SITE_DESCRIPTION = siteDescription
 }
-
-

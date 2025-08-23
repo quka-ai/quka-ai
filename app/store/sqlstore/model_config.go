@@ -27,7 +27,7 @@ func NewModelConfigStore(provider SqlProviderAchieve) *ModelConfigStore {
 	repo := &ModelConfigStore{}
 	repo.SetProvider(provider)
 	repo.SetTable(types.TABLE_MODEL_CONFIG)
-	repo.SetAllColumns("id", "provider_id", "model_name", "display_name", "model_type", "is_multi_modal", "status", "config", "created_at", "updated_at")
+	repo.SetAllColumns("id", "provider_id", "model_name", "display_name", "model_type", "is_multi_modal", "thinking_support", "status", "config", "created_at", "updated_at")
 	return repo
 }
 
@@ -42,8 +42,8 @@ func (s *ModelConfigStore) Create(ctx context.Context, data types.ModelConfig) e
 	}
 
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "provider_id", "model_name", "display_name", "model_type", "is_multi_modal", "status", "config", "created_at", "updated_at").
-		Values(data.ID, data.ProviderID, data.ModelName, data.DisplayName, data.ModelType, data.IsMultiModal, data.Status, data.Config, data.CreatedAt, data.UpdatedAt)
+		Columns("id", "provider_id", "model_name", "display_name", "model_type", "is_multi_modal", "thinking_support", "status", "config", "created_at", "updated_at").
+		Values(data.ID, data.ProviderID, data.ModelName, data.DisplayName, data.ModelType, data.IsMultiModal, data.ThinkingSupport, data.Status, data.Config, data.CreatedAt, data.UpdatedAt)
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -79,14 +79,15 @@ func (s *ModelConfigStore) Update(ctx context.Context, id string, data types.Mod
 
 	query := sq.Update(s.GetTable()).
 		SetMap(map[string]interface{}{
-			"provider_id":    data.ProviderID,
-			"model_name":     data.ModelName,
-			"display_name":   data.DisplayName,
-			"model_type":     data.ModelType,
-			"is_multi_modal": data.IsMultiModal,
-			"status":         data.Status,
-			"config":         data.Config,
-			"updated_at":     data.UpdatedAt,
+			"provider_id":      data.ProviderID,
+			"model_name":       data.ModelName,
+			"display_name":     data.DisplayName,
+			"model_type":       data.ModelType,
+			"is_multi_modal":   data.IsMultiModal,
+			"thinking_support": data.ThinkingSupport,
+			"status":           data.Status,
+			"config":           data.Config,
+			"updated_at":       data.UpdatedAt,
 		}).
 		Where(sq.Eq{"id": id})
 
@@ -145,7 +146,7 @@ func (s *ModelConfigStore) List(ctx context.Context, opts types.ListModelConfigO
 // ListWithProvider 分页获取模型配置列表，包含提供商信息
 func (s *ModelConfigStore) ListWithProvider(ctx context.Context, opts types.ListModelConfigOptions) ([]*types.ModelConfig, error) {
 	// 构建联合查询
-	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).OrderBy("provider_id ASC, model_name ASC")
+	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).OrderBy("provider_id DESC, model_name ASC")
 	opts.Apply(&query)
 
 	queryString, args, err := query.ToSql()

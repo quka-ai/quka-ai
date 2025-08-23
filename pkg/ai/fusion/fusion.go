@@ -130,9 +130,6 @@ func (s *Driver) NewVisionQuery(ctx context.Context, query []*types.MessageConte
 	return ai.NewQueryOptions(ctx, s, s.model, query)
 }
 
-func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
-	return ai.NewEnhance(ctx, s)
-}
 
 func (s *Driver) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 	tokenNum, err := ai.NumTokens(lo.Map(msgs, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
@@ -147,37 +144,6 @@ func (s *Driver) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 	}
 
 	return tokenNum > 80000
-}
-
-func (s *Driver) EnhanceQuery(ctx context.Context, messages []openai.ChatCompletionMessage) (ai.EnhanceQueryResult, error) {
-	slog.Debug("EnhanceQuery", slog.String("driver", NAME))
-
-	req := openai.ChatCompletionRequest{
-		Model:       s.model,
-		Messages:    messages,
-		Temperature: 0.1,
-		MaxTokens:   200,
-	}
-
-	var (
-		result ai.EnhanceQueryResult
-	)
-
-	resp, err := s.client.CreateChatCompletion(ctx, req)
-	if err != nil || len(resp.Choices) != 1 {
-		return result, fmt.Errorf("Completion error: err:%v len(choices):%v\n", err,
-			len(resp.Choices))
-	}
-
-	var enhanceQuerys []string
-	if err = json.Unmarshal([]byte(resp.Choices[0].Message.Content), &enhanceQuerys); err != nil {
-		return result, fmt.Errorf("failed to unmarshal query enhance result, %w", err)
-	}
-
-	result.News = enhanceQuerys
-	result.Model = resp.Model
-	result.Usage = &resp.Usage
-	return result, nil
 }
 
 func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {

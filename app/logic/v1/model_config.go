@@ -32,22 +32,24 @@ func NewModelConfigLogic(ctx context.Context, core *core.Core) *ModelConfigLogic
 
 // CreateModelRequest 创建模型配置请求
 type CreateModelRequest struct {
-	ProviderID   string          `json:"provider_id" binding:"required"`  // 提供商ID
-	ModelName    string          `json:"model_name" binding:"required"`   // 模型名称
-	DisplayName  string          `json:"display_name" binding:"required"` // 显示名称
-	ModelType    string          `json:"model_type" binding:"required"`   // 模型类型
-	IsMultiModal bool            `json:"is_multi_modal"`                  // 是否多模态
-	Config       json.RawMessage `json:"config,omitempty"`                // 模型配置
+	ProviderID      string          `json:"provider_id" binding:"required"`  // 提供商ID
+	ModelName       string          `json:"model_name" binding:"required"`   // 模型名称
+	DisplayName     string          `json:"display_name" binding:"required"` // 显示名称
+	ModelType       string          `json:"model_type" binding:"required"`   // 模型类型
+	IsMultiModal    bool            `json:"is_multi_modal"`                  // 是否多模态
+	ThinkingSupport int             `json:"thinking_support"`                // 思考功能支持类型
+	Config          json.RawMessage `json:"config,omitempty"`                // 模型配置
 }
 
 // UpdateModelRequest 更新模型配置请求
 type UpdateModelRequest struct {
-	ModelName    string          `json:"model_name,omitempty"`     // 模型名称
-	DisplayName  string          `json:"display_name,omitempty"`   // 显示名称
-	ModelType    string          `json:"model_type,omitempty"`     // 模型类型
-	IsMultiModal *bool           `json:"is_multi_modal,omitempty"` // 是否多模态
-	Status       *int            `json:"status,omitempty"`         // 状态
-	Config       json.RawMessage `json:"config,omitempty"`         // 模型配置
+	ModelName       string          `json:"model_name,omitempty"`       // 模型名称
+	DisplayName     string          `json:"display_name,omitempty"`     // 显示名称
+	ModelType       string          `json:"model_type,omitempty"`       // 模型类型
+	IsMultiModal    *bool           `json:"is_multi_modal,omitempty"`   // 是否多模态
+	ThinkingSupport *int            `json:"thinking_support,omitempty"` // 思考功能支持类型
+	Status          *int            `json:"status,omitempty"`           // 状态
+	Config          json.RawMessage `json:"config,omitempty"`           // 模型配置
 }
 
 // CreateModel 创建模型配置
@@ -93,16 +95,17 @@ func (l *ModelConfigLogic) CreateModel(req CreateModelRequest) (*types.ModelConf
 	// 创建模型配置
 	modelID := utils.GenUniqIDStr()
 	model := types.ModelConfig{
-		ID:           modelID,
-		ProviderID:   req.ProviderID,
-		ModelName:    req.ModelName,
-		DisplayName:  req.DisplayName,
-		ModelType:    req.ModelType,
-		IsMultiModal: req.IsMultiModal,
-		Status:       types.StatusEnabled,
-		Config:       req.Config,
-		CreatedAt:    time.Now().Unix(),
-		UpdatedAt:    time.Now().Unix(),
+		ID:              modelID,
+		ProviderID:      req.ProviderID,
+		ModelName:       req.ModelName,
+		DisplayName:     req.DisplayName,
+		ModelType:       req.ModelType,
+		IsMultiModal:    req.IsMultiModal,
+		ThinkingSupport: req.ThinkingSupport,
+		Status:          types.StatusEnabled,
+		Config:          req.Config,
+		CreatedAt:       time.Now().Unix(),
+		UpdatedAt:       time.Now().Unix(),
 	}
 
 	if err := l.core.Store().ModelConfigStore().Create(l.ctx, model); err != nil {
@@ -176,6 +179,9 @@ func (l *ModelConfigLogic) UpdateModel(id string, req UpdateModelRequest) (*type
 	}
 	if req.IsMultiModal != nil {
 		updated.IsMultiModal = *req.IsMultiModal
+	}
+	if req.ThinkingSupport != nil {
+		updated.ThinkingSupport = *req.ThinkingSupport
 	}
 	if req.Status != nil {
 		updated.Status = *req.Status
@@ -322,13 +328,14 @@ func (l *ModelConfigLogic) convertProviderToReaderModel(providers []*types.Model
 }
 
 // GetModelTotal 获取模型配置总数
-func (l *ModelConfigLogic) GetModelTotal(providerID, modelType, modelName string, status *int, isMultiModal *bool) (int64, error) {
+func (l *ModelConfigLogic) GetModelTotal(providerID, modelType, modelName string, status *int, isMultiModal *bool, thinkingSupport *int) (int64, error) {
 	opts := types.ListModelConfigOptions{
-		ProviderID:   providerID,
-		ModelType:    modelType,
-		ModelName:    modelName,
-		Status:       status,
-		IsMultiModal: isMultiModal,
+		ProviderID:      providerID,
+		ModelType:       modelType,
+		ModelName:       modelName,
+		Status:          status,
+		IsMultiModal:    isMultiModal,
+		ThinkingSupport: thinkingSupport,
 	}
 
 	total, err := l.core.Store().ModelConfigStore().Total(l.ctx, opts)
@@ -340,12 +347,13 @@ func (l *ModelConfigLogic) GetModelTotal(providerID, modelType, modelName string
 }
 
 // GetAvailableModels 获取可用的模型配置（只返回启用的）
-func (l *ModelConfigLogic) GetAvailableModels(modelType string, isMultiModal *bool) ([]*types.ModelConfig, error) {
+func (l *ModelConfigLogic) GetAvailableModels(modelType string, isMultiModal *bool, thinkingRequired *bool) ([]*types.ModelConfig, error) {
 	enabledStatus := types.StatusEnabled
 	opts := types.ListModelConfigOptions{
-		ModelType:    modelType,
-		Status:       &enabledStatus,
-		IsMultiModal: isMultiModal,
+		ModelType:        modelType,
+		Status:           &enabledStatus,
+		IsMultiModal:     isMultiModal,
+		ThinkingRequired: thinkingRequired,
 	}
 
 	models, err := l.core.Store().ModelConfigStore().ListWithProvider(l.ctx, opts)
@@ -361,4 +369,54 @@ func (l *ModelConfigLogic) GetAvailableModels(modelType string, isMultiModal *bo
 	}
 
 	return models, nil
+}
+
+// GetAvailableThinkingModels 根据思考需求获取可用模型
+func (l *ModelConfigLogic) GetAvailableThinkingModels(needsThinking bool) ([]*types.ModelConfig, error) {
+	enabledStatus := types.StatusEnabled
+	opts := types.ListModelConfigOptions{
+		ModelType:        types.MODEL_TYPE_CHAT,
+		Status:           &enabledStatus,
+		ThinkingRequired: &needsThinking,
+	}
+
+	return l.core.Store().ModelConfigStore().ListWithProvider(l.ctx, opts)
+}
+
+// ValidateThinkingConfig 验证模型的思考功能配置
+func (l *ModelConfigLogic) ValidateThinkingConfig(modelID string, enableThinking bool) error {
+	model, err := l.GetModel(modelID)
+	if err != nil {
+		return err
+	}
+
+	// 验证思考配置是否合法
+	switch model.ThinkingSupport {
+	case types.ThinkingSupportNone:
+		if enableThinking {
+			return errors.New("model does not support thinking", i18n.ERROR_MODEL_THINKING_NOT_SUPPORTED, nil).Code(http.StatusBadRequest)
+		}
+	case types.ThinkingSupportForced:
+		if !enableThinking {
+			return errors.New("model requires thinking to be enabled", i18n.ERROR_MODEL_THINKING_REQUIRED, nil).Code(http.StatusBadRequest)
+		}
+	case types.ThinkingSupportOptional:
+		// 可选，无需验证
+	default:
+		return errors.New("invalid thinking support type", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
+	}
+
+	return nil
+}
+
+// GetModelsByThinkingSupport 根据思考支持类型获取模型
+func (l *ModelConfigLogic) GetModelsByThinkingSupport(thinkingSupport int) ([]*types.ModelConfig, error) {
+	enabledStatus := types.StatusEnabled
+	opts := types.ListModelConfigOptions{
+		ModelType:       types.MODEL_TYPE_CHAT,
+		Status:          &enabledStatus,
+		ThinkingSupport: &thinkingSupport,
+	}
+
+	return l.core.Store().ModelConfigStore().ListWithProvider(l.ctx, opts)
 }

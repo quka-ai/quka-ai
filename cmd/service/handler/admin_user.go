@@ -84,8 +84,8 @@ func (s *HttpSrv) AdminCreateUser(c *gin.Context) {
 type AdminListUsersRequest struct {
 	Page       uint64 `json:"page" form:"page" binding:"required,min=1"`
 	PageSize   uint64 `json:"pagesize" form:"pagesize" binding:"required,min=1,max=50"`
-	Name       string `json:"name" form:"name"`           // 用户名模糊搜索
-	Email      string `json:"email" form:"email"`         // 邮箱模糊搜索
+	Name       string `json:"name" form:"name"`               // 用户名模糊搜索
+	Email      string `json:"email" form:"email"`             // 邮箱模糊搜索
 	GlobalRole string `json:"global_role" form:"global_role"` // 全局角色过滤
 }
 
@@ -120,8 +120,8 @@ func (s *HttpSrv) AdminListUsers(c *gin.Context) {
 
 	// 构建搜索条件
 	opts := types.ListUserOptions{
-		Name:      req.Name,   // 用户名模糊搜索
-		EmailLike: req.Email,  // 邮箱模糊搜索
+		Name:      req.Name,  // 用户名模糊搜索
+		EmailLike: req.Email, // 邮箱模糊搜索
 	}
 
 	// 复用logic实例

@@ -35,7 +35,6 @@ require (
 	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/playwright-community/playwright-go v0.5101.0
 	github.com/prometheus/client_golang v1.20.3
-	github.com/quka-ai/commercial v0.0.0-20250716164915-43712744e824
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/samber/lo v1.47.0
 	github.com/sashabaranov/go-openai v1.40.3

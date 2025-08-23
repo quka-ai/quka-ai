@@ -3,9 +3,15 @@ package srv
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
+	"github.com/cloudwego/eino-ext/components/model/deepseek"
+	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	"github.com/samber/lo"
 	oai "github.com/sashabaranov/go-openai"
 
@@ -16,29 +22,18 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
-type ChatAI interface {
-	Summarize(ctx context.Context, doc *string) (ai.SummarizeResult, error)
-	Chunk(ctx context.Context, doc *string) (ai.ChunkResult, error)
-	MsgIsOverLimit(msgs []*types.MessageContext) bool
-	NewQuery(ctx context.Context, msgs []*types.MessageContext) *ai.QueryOptions
-	Lang() string
-}
-
-type EnhanceAI interface {
-	NewEnhance(ctx context.Context) *ai.EnhanceOptions
-}
-
 type EmbeddingAI interface {
 	EmbeddingForQuery(ctx context.Context, content []string) (ai.EmbeddingResult, error)
 	EmbeddingForDocument(ctx context.Context, title string, content []string) (ai.EmbeddingResult, error)
 }
 
-type ReaderAI interface {
-	Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error)
+type SummarizeAI interface {
+	Summarize(ctx context.Context, doc *string) (*ai.SummarizeResult, error)
+	Chunk(ctx context.Context, doc *string) (*ai.ChunkResult, error)
 }
 
-type VisionAI interface {
-	NewVisionQuery(ctx context.Context, msgs []*types.MessageContext) *ai.QueryOptions
+type ReaderAI interface {
+	Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error)
 }
 
 type RerankAI interface {
@@ -47,14 +42,16 @@ type RerankAI interface {
 
 type AIDriver interface {
 	EmbeddingAI
-	EnhanceAI
-	ChatAI
+	SummarizeAI
 	ReaderAI
-	VisionAI
 	RerankAI
-	DescribeImage(ctx context.Context, lang, imageURL string) (*oai.ChatCompletionResponse, error)
-
+	Lang() string
+	DescribeImage(ctx context.Context, lang, imageURL string) (*DescribeImageResult, error)
+	MsgIsOverLimit(msgs []*types.MessageContext) bool
 	GetConfig(modelType string) types.ModelConfig
+	GetChatAI(needsThinking bool) types.ChatModel
+	GetVisionAI() types.ChatModel
+	GetEnhanceAI() types.ChatModel
 }
 
 type AIConfig struct {
@@ -83,90 +80,168 @@ type Jina struct {
 }
 
 type AI struct {
-	chatDrivers    map[string]ChatAI
-	embedDrivers   map[string]EmbeddingAI
-	enhanceDrivers map[string]ai.Enhance
-	visionDrivers  map[string]VisionAI
-	readerDrivers  map[string]ReaderAI
-	rerankDrivers  map[string]RerankAI
+	chatDrivers         map[string]types.ChatModel
+	chatThinkingDrivers map[string]types.ChatModel
+	embedDrivers        map[string]EmbeddingAI
+	enhanceDrivers      map[string]types.ChatModel
+	visionDrivers       map[string]types.ChatModel
+	readerDrivers       map[string]ReaderAI
+	rerankDrivers       map[string]RerankAI
 
-	chatUsage    map[string]ChatAI
-	enhanceUsage map[string]ai.Enhance
-	embedUsage   map[string]EmbeddingAI
-	readerUsage  map[string]ReaderAI
-	visionUsage  map[string]VisionAI
-	rerankUsage  map[string]RerankAI
+	summarize SummarizeAI
 
-	chatDefault    ChatAI
-	enhanceDefault ai.Enhance
-	embedDefault   EmbeddingAI
-	readerDefault  ReaderAI
-	visionDefault  VisionAI
-	rerankDefault  RerankAI
+	chatDefault         types.ChatModel
+	chatThinkingDefault types.ChatModel // 思考聊天模型
+	enhanceDefault      types.ChatModel
+	embedDefault        EmbeddingAI
+	readerDefault       ReaderAI
+	visionDefault       types.ChatModel
+	rerankDefault       RerankAI
 
 	allModels map[string]types.ModelConfig
 	usage     Usage
 }
 
-func (s *AI) GetConfig(modelType string) types.ModelConfig {
-	switch modelType {
-	case types.ModelTypeChat:
-		return s.allModels[s.usage.Chat]
-	case types.ModelTypeEmbedding:
-		return s.allModels[s.usage.Embedding]
-	case types.MODEL_TYPE_ENHANCE:
-		return s.allModels[s.usage.Enhance]
-	case types.MODEL_TYPE_VISION:
-		return s.allModels[s.usage.Vision]
-	case types.MODEL_TYPE_RERANK:
-		return s.allModels[s.usage.Rerank]
-	case types.MODEL_TYPE_READER:
-		return s.allModels[s.usage.Reader]
+func (s *AI) MsgIsOverLimit(msgs []*types.MessageContext) bool {
+	tokenNum, err := ai.NumTokens(lo.Map(msgs, func(item *types.MessageContext, _ int) oai.ChatCompletionMessage {
+		return oai.ChatCompletionMessage{
+			Role:    item.Role.String(),
+			Content: item.Content,
+		}
+	}), "")
+	if err != nil {
+		slog.Error("Failed to tik request token", slog.String("error", err.Error()))
+		return false
 	}
-	return types.ModelConfig{}
+
+	return tokenNum > 80000
 }
 
-func (s *AI) DescribeImage(ctx context.Context, lang, imageURL string) (*oai.ChatCompletionResponse, error) {
-	opts := s.NewVisionQuery(ctx, []*types.MessageContext{
+func (s *AI) GetConfig(id string) types.ModelConfig {
+	return s.allModels[id]
+}
+
+// GetChatConfig 根据思考需求获取聊天模型配置
+func (s *AI) GetChatConfig(needsThinking bool) types.ModelConfig {
+	if needsThinking {
+		// 如果需要思考，优先返回思考模型
+		if s.usage.ChatThinking != "" {
+			if config, exists := s.allModels[s.usage.ChatThinking]; exists {
+				return config
+			}
+		}
+
+		// 如果没有配置专用的思考模型，检查默认chat模型是否支持思考
+		if s.usage.Chat != "" {
+			if config, exists := s.allModels[s.usage.Chat]; exists {
+				if config.ThinkingSupport == types.ThinkingSupportOptional ||
+					config.ThinkingSupport == types.ThinkingSupportForced {
+					return config
+				}
+			}
+		}
+	} else {
+		// 如果不需要思考，优先返回普通chat模型
+		if s.usage.Chat != "" {
+			if config, exists := s.allModels[s.usage.Chat]; exists {
+				if config.ThinkingSupport != types.ThinkingSupportForced {
+					return config
+				}
+			}
+		}
+
+		// 如果普通chat模型强制思考，尝试思考模型（如果它支持关闭思考）
+		if s.usage.ChatThinking != "" {
+			if config, exists := s.allModels[s.usage.ChatThinking]; exists {
+				if config.ThinkingSupport == types.ThinkingSupportOptional {
+					return config
+				}
+			}
+		}
+	}
+
+	// 兜底返回默认chat配置
+	return s.GetConfig(types.MODEL_TYPE_CHAT)
+}
+
+// GetChatAI 根据思考需求获取预组装的ChatAI实例
+func (s *AI) GetChatAI(needsThinking bool) types.ChatModel {
+	raw, _ := json.Marshal(s.usage)
+	fmt.Println(111, string(raw))
+	if needsThinking {
+		impl, exist := s.chatThinkingDrivers[s.usage.ChatThinking]
+		if exist {
+			return impl
+		}
+		// 如果需要思考且有专用的思考模型
+		if s.chatThinkingDefault != nil {
+			return s.chatThinkingDefault
+		}
+	}
+
+	impl, exist := s.chatDrivers[s.usage.Chat]
+	if exist {
+		return impl
+	}
+
+	return s.chatDefault
+}
+
+// GetEnhanceAI 获取增强AI模型
+func (s *AI) GetEnhanceAI() types.ChatModel {
+	if d := s.enhanceDrivers[s.usage.Enhance]; d != nil {
+		return d
+	}
+	return s.enhanceDefault
+}
+
+// GetEnhanceAI 获取增强AI模型
+func (s *AI) GetVisionAI() types.ChatModel {
+	if d := s.visionDrivers[s.usage.Vision]; d != nil {
+		return d
+	}
+	return s.visionDefault
+}
+
+type DescribeImageResult struct {
+	*schema.Message
+	Model string
+}
+
+func (s *AI) DescribeImage(ctx context.Context, lang, imageURL string) (*DescribeImageResult, error) {
+	impl, exist := s.visionDrivers[s.usage.Vision]
+	if !exist {
+		return nil, fmt.Errorf("not support vision model")
+	}
+
+	prompt := strings.ReplaceAll(ai.IMAGE_GENERATE_PROMPT_CN, "${lang}", lang)
+
+	result, err := impl.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(prompt),
 		{
-			Role: types.USER_ROLE_USER,
-			MultiContent: []oai.ChatMessagePart{
+			Role: schema.User,
+			MultiContent: []schema.ChatMessagePart{
 				{
-					Type: oai.ChatMessagePartTypeImageURL,
-					ImageURL: &oai.ChatMessageImageURL{
+					Type: schema.ChatMessagePartTypeImageURL,
+					ImageURL: &schema.ChatMessageImageURL{
 						URL: imageURL,
 					},
 				},
 			},
 		},
 	})
-
-	opts.WithPrompt(lo.If(s.Lang() == ai.MODEL_BASE_LANGUAGE_CN, ai.IMAGE_GENERATE_PROMPT_CN).Else(ai.IMAGE_GENERATE_PROMPT_EN))
-	opts.WithVar("${lang}", lang)
-	resp, err := opts.Query()
 	if err != nil {
-		return resp, err
+		return nil, err
 	}
 
-	return resp, nil
-}
-
-func (s *AI) NewQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	if d := s.chatUsage["query"]; d != nil {
-		return d.NewQuery(ctx, query)
-	}
-	return s.chatDefault.NewQuery(ctx, query)
-}
-
-func (s *AI) NewVisionQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	if d := s.visionUsage["vision"]; d != nil {
-		return d.NewVisionQuery(ctx, query)
-	}
-	return s.chatDefault.NewQuery(ctx, query)
+	return &DescribeImageResult{
+		Message: result,
+		Model:   impl.Config().ModelName,
+	}, nil
 }
 
 func (s *AI) Rerank(ctx context.Context, query string, docs []*ai.RerankDoc) ([]ai.RankDocItem, *ai.Usage, error) {
-	if d := s.rerankUsage["rerank"]; d != nil {
+	if d := s.rerankDrivers[s.usage.Rerank]; d != nil {
 		return d.Rerank(ctx, query, docs)
 	}
 
@@ -176,51 +251,163 @@ func (s *AI) Rerank(ctx context.Context, query string, docs []*ai.RerankDoc) ([]
 	return s.rerankDefault.Rerank(ctx, query, docs)
 }
 
-func (s *AI) Lang() string {
-	if d := s.chatUsage["query"]; d != nil {
-		return d.Lang()
-	}
-	return s.chatDefault.Lang()
-}
-
 func (s *AI) EmbeddingForQuery(ctx context.Context, content []string) (ai.EmbeddingResult, error) {
-	if d := s.embedUsage["embedding"]; d != nil {
+	if d := s.embedDrivers[s.usage.Embedding]; d != nil {
 		return d.EmbeddingForQuery(ctx, content)
 	}
 	return s.embedDefault.EmbeddingForQuery(ctx, content)
 }
 
 func (s *AI) EmbeddingForDocument(ctx context.Context, title string, content []string) (ai.EmbeddingResult, error) {
-	if d := s.embedUsage["embedding"]; d != nil {
+	if d := s.embedDrivers[s.usage.Embedding]; d != nil {
 		return d.EmbeddingForDocument(ctx, title, content)
 	}
 	return s.embedDefault.EmbeddingForQuery(ctx, content)
 }
 
-func (s *AI) Summarize(ctx context.Context, doc *string) (ai.SummarizeResult, error) {
-	if d := s.chatUsage["summarize"]; d != nil {
-		return d.Summarize(ctx, doc)
+func (s *AI) Summarize(ctx context.Context, doc *string) (*ai.SummarizeResult, error) {
+	// 使用 enhance driver 进行摘要
+	enhanceAI := s.GetEnhanceAI()
+	if enhanceAI == nil {
+		return nil, fmt.Errorf("enhance AI not available")
 	}
-	return s.chatDefault.Summarize(ctx, doc)
+
+	// 定义工具的参数 schema
+	params := map[string]*schema.ParameterInfo{
+		"tags": {
+			Type:     schema.Array,
+			Desc:     "从用户描述中提取相关关键词或技术标签，以帮助用户稍后对相关内容进行分类。将这些值以数组格式组织。",
+			Required: true,
+		},
+		"title": {
+			Type:     schema.String,
+			Desc:     "为用户提供的内容生成标题并填入此字段。",
+			Required: true,
+		},
+		"summary": {
+			Type:     schema.String,
+			Desc:     "处理后的摘要内容。",
+			Required: true,
+		},
+		"date_time": {
+			Type:     schema.String,
+			Desc:     "用户内容中提到的时间，格式为'年-月-日 时:分'。如果无法提取时间，则留空。",
+			Required: false,
+		},
+	}
+
+	// 创建工具信息
+	toolInfo := &schema.ToolInfo{
+		Name:        "summarize",
+		Desc:        "处理后的摘要内容。",
+		ParamsOneOf: schema.NewParamsOneOfByParams(params),
+	}
+
+	// 构建消息
+	messages := []*schema.Message{
+		schema.SystemMessage(ai.ReplaceVarCN(ai.PROMPT_PROCESS_CONTENT_EN)),
+		schema.UserMessage(*doc),
+	}
+
+	// 执行带工具调用的生成
+	response, err := enhanceAI.Generate(ctx, messages, model.WithTools([]*schema.ToolInfo{toolInfo}))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate with tools: %w", err)
+	}
+
+	result := ai.SummarizeResult{
+		Model: enhanceAI.Config().ModelName,
+	}
+
+	// 处理工具调用结果
+	if len(response.ToolCalls) > 0 {
+		for _, toolCall := range response.ToolCalls {
+			if toolCall.Function.Name == "summarize" {
+				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &result); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal tool call arguments: %w", err)
+				}
+				result.Model = enhanceAI.Config().ModelName
+				return &result, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("failed to summarize knowledge, unexcept ai response %v", response)
 }
 
-func (s *AI) Chunk(ctx context.Context, doc *string) (ai.ChunkResult, error) {
-	if d := s.chatUsage["summarize"]; d != nil {
-		return d.Chunk(ctx, doc)
+func (s *AI) Chunk(ctx context.Context, doc *string) (*ai.ChunkResult, error) {
+	// 使用 enhance driver 进行分块
+	enhanceAI := s.GetEnhanceAI()
+	if enhanceAI == nil {
+		return nil, fmt.Errorf("enhance AI not available")
 	}
-	return s.chatDefault.Chunk(ctx, doc)
+
+	// 定义工具的参数 schema
+	params := map[string]*schema.ParameterInfo{
+		"tags": {
+			Type:     schema.Array,
+			Desc:     "从用户描述中提取相关关键词或技术标签，以帮助用户稍后对相关内容进行分类。将这些值以数组格式组织。",
+			Required: true,
+		},
+		"title": {
+			Type:     schema.String,
+			Desc:     "为用户提供的内容生成标题并填入此字段。",
+			Required: true,
+		},
+		"chunks": {
+			Type:     schema.Array,
+			Desc:     "处理后的分块内容。",
+			Required: true,
+		},
+		"date_time": {
+			Type:     schema.String,
+			Desc:     "用户内容中提到的时间，格式为'年-月-日 时:分'。如果无法提取时间，则留空。",
+			Required: false,
+		},
+	}
+
+	// 创建工具信息
+	toolInfo := &schema.ToolInfo{
+		Name:        "chunk",
+		Desc:        "处理后的分块内容。",
+		ParamsOneOf: schema.NewParamsOneOfByParams(params),
+	}
+
+	// 构建消息
+	messages := []*schema.Message{
+		schema.SystemMessage(ai.ReplaceVarCN(ai.PROMPT_CHUNK_CONTENT_EN)),
+		schema.UserMessage(strings.ReplaceAll(*doc, "\n", "")),
+	}
+
+	// 执行带工具调用的生成
+	response, err := enhanceAI.Generate(ctx, messages, model.WithTools([]*schema.ToolInfo{toolInfo}))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate with tools: %w", err)
+	}
+
+	result := ai.ChunkResult{}
+
+	// 处理工具调用结果
+	if len(response.ToolCalls) > 0 {
+		for _, toolCall := range response.ToolCalls {
+			if toolCall.Function.Name == "chunk" {
+				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &result); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal tool call arguments: %w", err)
+				}
+				result.Model = enhanceAI.Config().ModelName
+				return &result, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("failed to chunk knowledge, unexcept ai response %v", response)
 }
 
 func (s *AI) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
-	if d := s.enhanceUsage["enhance_query"]; d != nil {
+	if d := s.enhanceDrivers[s.usage.Enhance]; d != nil {
 		return ai.NewEnhance(ctx, d)
 	}
 	return ai.NewEnhance(ctx, s.enhanceDefault)
-}
-
-func (s *AI) MsgIsOverLimit(msgs []*types.MessageContext) bool {
-	// TODO
-	return false
 }
 
 type ReaderProvider interface {
@@ -246,7 +433,7 @@ func (s *AI) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, err
 		}
 	}
 
-	if d := s.readerUsage["reader"]; d != nil {
+	if d := s.readerDrivers[s.usage.Reader]; d != nil {
 		return d.Reader(ctx, endpoint)
 	}
 
@@ -258,11 +445,12 @@ func (s *AI) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, err
 
 type Usage struct {
 	// 模型级别配置（指向model_id）
-	Chat      string `json:"chat"`
-	Embedding string `json:"embedding"`
-	Vision    string `json:"vision"`
-	Rerank    string `json:"rerank"`
-	Enhance   string `json:"enhance"`
+	Chat         string `json:"chat"`
+	ChatThinking string `json:"chat_thinking"` // 思考聊天模型ID
+	Embedding    string `json:"embedding"`
+	Vision       string `json:"vision"`
+	Rerank       string `json:"rerank"`
+	Enhance      string `json:"enhance"`
 
 	// 提供商级别配置（指向provider_id）
 	Reader string `json:"reader"`
@@ -296,18 +484,13 @@ func SetupReader(s *AI, providers []types.ModelProvider) error {
 
 func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) (*AI, error) {
 	a := &AI{
-		chatDrivers:    make(map[string]ChatAI),
-		chatUsage:      make(map[string]ChatAI),
-		enhanceDrivers: make(map[string]ai.Enhance),
-		enhanceUsage:   make(map[string]ai.Enhance),
-		embedDrivers:   make(map[string]EmbeddingAI),
-		embedUsage:     make(map[string]EmbeddingAI),
-		readerDrivers:  make(map[string]ReaderAI),
-		readerUsage:    make(map[string]ReaderAI),
-		visionDrivers:  make(map[string]VisionAI),
-		visionUsage:    make(map[string]VisionAI),
-		rerankDrivers:  make(map[string]RerankAI),
-		rerankUsage:    make(map[string]RerankAI),
+		chatDrivers:         make(map[string]types.ChatModel),
+		chatThinkingDrivers: make(map[string]types.ChatModel),
+		enhanceDrivers:      make(map[string]types.ChatModel),
+		embedDrivers:        make(map[string]EmbeddingAI),
+		readerDrivers:       make(map[string]ReaderAI),
+		visionDrivers:       make(map[string]types.ChatModel),
+		rerankDrivers:       make(map[string]RerankAI),
 
 		allModels: lo.SliceToMap(models, func(item types.ModelConfig) (string, types.ModelConfig) {
 			return item.ID, item
@@ -321,20 +504,40 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 			continue
 		}
 
-		d := fusion.New(v.Provider.ApiKey, v.Provider.ApiUrl, v.ModelName)
 		switch v.ModelType {
-		case "chat":
-			a.chatDrivers[v.ID] = d
+		case types.MODEL_TYPE_CHAT:
+			d, err := SetupAIDriver(context.Background(), v)
+			if err != nil {
+				return nil, err
+			}
+
+			if v.ThinkingSupport == types.ThinkingSupportForced {
+				a.chatThinkingDrivers[v.ID] = d
+				a.chatThinkingDefault = d
+			} else {
+				a.chatDrivers[v.ID] = d
+			}
 			a.chatDefault = d
+		case types.MODEL_TYPE_ENHANCE:
+			d, err := SetupAIDriver(context.Background(), v)
+			if err != nil {
+				return nil, err
+			}
 			a.enhanceDrivers[v.ID] = d
 			a.enhanceDefault = d
-		case "embedding":
+		case types.MODEL_TYPE_EMBEDDING:
+			d := fusion.New(v.Provider.ApiKey, v.Provider.ApiUrl, v.ModelName)
 			a.embedDrivers[v.ID] = d
 			a.embedDefault = d
-		case "rerank":
+		case types.MODEL_TYPE_RERANK:
+			d := fusion.New(v.Provider.ApiKey, v.Provider.ApiUrl, v.ModelName)
 			a.rerankDrivers[v.ID] = d
 			a.rerankDefault = d
-		case "vision":
+		case types.MODEL_TYPE_VISION:
+			d, err := SetupAIDriver(context.Background(), v)
+			if err != nil {
+				return nil, err
+			}
 			a.visionDrivers[v.ID] = d
 			a.visionDefault = d
 		}
@@ -344,39 +547,71 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 		return nil, err
 	}
 
-	a.embedUsage["embedding"] = a.embedDrivers[usage.Embedding]
-	if a.embedDefault == nil {
-		a.embedDefault = a.embedDrivers[usage.Embedding]
-	}
+	return a, nil
+}
 
-	a.enhanceUsage["enhance_query"] = a.enhanceDrivers[usage.Enhance]
-	if a.enhanceDefault == nil {
-		a.enhanceDefault = a.enhanceDrivers[usage.Enhance]
-	}
+func (a *AI) Lang() string {
+	return types.LANGUAGE_CN_KEY
+}
 
-	a.visionUsage["vision"] = a.visionDrivers[usage.Vision]
-	if a.visionDefault == nil {
-		a.visionDefault = a.visionDrivers[usage.Vision]
+func SetupAIDriver(ctx context.Context, modelConfig types.ModelConfig) (types.ChatModel, error) {
+	a := &types.CommonAIWithMeta{
+		Cfg: modelConfig,
 	}
-
-	a.rerankUsage["rerank"] = a.rerankDrivers[usage.Rerank]
-	if a.rerankDefault == nil {
-		a.rerankDefault = a.rerankDrivers[usage.Rerank]
-	}
-
-	a.chatUsage["query"] = a.chatDrivers[usage.Chat]
-	if a.chatDefault == nil {
-		a.chatDefault = a.chatDrivers[usage.Chat]
-	}
-
-	// 设置Reader usage配置（使用provider_id）
-	if usage.Reader != "" {
-		a.readerUsage["reader"] = a.readerDrivers[usage.Reader]
-		if a.readerDefault == nil {
-			a.readerDefault = a.readerDrivers[usage.Reader]
+	boolPoint := modelConfig.ThinkingSupport == types.ThinkingSupportForced
+	if strings.HasPrefix(strings.ToLower(modelConfig.ModelName), "qwen") {
+		// 创建 Qwen 模型
+		// chatModel, err := qwen.NewChatModel(ctx, &qwen.ChatModelConfig{
+		// 	APIKey:         modelConfig.Provider.ApiKey,
+		// 	BaseURL:        modelConfig.Provider.ApiUrl,
+		// 	Model:          modelConfig.ModelName,
+		// 	Timeout:        5 * time.Minute,
+		// 	EnableThinking: &boolPoint,
+		// })
+		chatModel, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+			APIKey:  modelConfig.Provider.ApiKey,
+			BaseURL: modelConfig.Provider.ApiUrl,
+			Model:   modelConfig.ModelName,
+			Timeout: 5 * time.Minute,
+			ExtraFields: map[string]any{
+				"enable_thinking": &boolPoint,
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create qwen chat model: %w", err)
 		}
+
+		a.ToolCallingChatModel = chatModel
+		return a, nil
+	} else if strings.Contains(strings.ToLower(modelConfig.ModelName), "deepseek") {
+		chatModel, err := deepseek.NewChatModel(ctx, &deepseek.ChatModelConfig{
+			APIKey:  modelConfig.Provider.ApiKey,
+			BaseURL: modelConfig.Provider.ApiUrl,
+			Model:   modelConfig.ModelName,
+			Timeout: 5 * time.Minute,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create deepseek chat model: %w", err)
+		}
+		a.ToolCallingChatModel = chatModel
+		return a, nil
 	}
 
+	// 创建 OpenAI 模型
+	chatModel, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+		APIKey:  modelConfig.Provider.ApiKey,
+		BaseURL: modelConfig.Provider.ApiUrl,
+		Model:   modelConfig.ModelName,
+		Timeout: 5 * time.Minute,
+		ExtraFields: map[string]any{
+			"enable_thinking": &boolPoint,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create openai chat model: %w", err)
+	}
+
+	a.ToolCallingChatModel = chatModel
 	return a, nil
 }
 
