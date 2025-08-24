@@ -5,34 +5,38 @@ package jina
 // - rerank
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/quka-ai/quka-ai/pkg/ai"
-	"github.com/samber/lo"
-	"github.com/sashabaranov/go-openai"
 )
 
 type Driver struct {
-	client *http.Client
-	token  string
-	models map[string]string
+	client   *http.Client
+	endpoint string
+	token    string
+}
+
+type JinaConfig struct {
+	Endpoint string `json:"endpoint"`
+	Token    string `json:"token"`
 }
 
 const (
 	NAME = "jina"
 )
 
-func New(token string, models map[string]string) *Driver {
+func New(token string, endpoint string) *Driver {
+	endpoint = strings.TrimSuffix(endpoint, "/")
 	return &Driver{
-		client: &http.Client{},
-		token:  token,
-		models: models,
+		client:   &http.Client{},
+		endpoint: endpoint,
+		token:    token,
 	}
 }
 
@@ -49,9 +53,9 @@ type ReaderResponse struct {
 }
 
 func (s *Driver) Reader(ctx context.Context, endpoint string) (*ai.ReaderResult, error) {
-	slog.Debug("Reader", slog.String("driver", NAME))
+	slog.Debug("Reader", slog.String("driver", NAME), slog.String("full_path", s.endpoint+"/"+endpoint))
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://r.jina.ai/"+endpoint, nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.endpoint+"/"+endpoint, nil)
 	s.applyBaseHeader(req)
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -98,55 +102,55 @@ type RerankResponseItem struct {
 	RelevanceScore float64 `json:"relevance_score"`
 }
 
-func (s *Driver) Rerank(ctx context.Context, query string, docs []*ai.RerankDoc) ([]ai.RankDocItem, *ai.Usage, error) {
-	slog.Debug("Rerank", slog.String("driver", NAME))
-	model := s.models["rerank"]
-	request := RerankRequestBody{
-		Model: model,
-		Query: query,
-		TopN:  len(docs),
-		Documents: lo.Map(docs, func(item *ai.RerankDoc, _ int) string {
-			return item.Content
-		}),
-	}
+// Deprecated: Use fusion rerank instead
+// func (s *Driver) Rerank(ctx context.Context, query string, docs []*ai.RerankDoc) ([]ai.RankDocItem, *ai.Usage, error) {
+// 	slog.Debug("Rerank", slog.String("driver", NAME))
+// 	request := RerankRequestBody{
+// 		Model: "",
+// 		Query: query,
+// 		TopN:  len(docs),
+// 		Documents: lo.Map(docs, func(item *ai.RerankDoc, _ int) string {
+// 			return item.Content
+// 		}),
+// 	}
 
-	raw, _ := json.Marshal(request)
+// 	raw, _ := json.Marshal(request)
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.jina.ai/v1/rerank", bytes.NewReader(raw))
-	s.applyBaseHeader(req)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to request jina reader: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, err
-	}
+// 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.jina.ai/v1/rerank", bytes.NewReader(raw))
+// 	s.applyBaseHeader(req)
+// 	resp, err := s.client.Do(req)
+// 	if err != nil {
+// 		return nil, nil, fmt.Errorf("Failed to request jina reader: %w", err)
+// 	}
+// 	defer resp.Body.Close()
+// 	body, err := io.ReadAll(resp.Body)
+// 	if err != nil {
+// 		return nil, nil, err
+// 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("Failed to request rerank api, %s", string(body))
-	}
+// 	if resp.StatusCode != http.StatusOK {
+// 		return nil, nil, fmt.Errorf("Failed to request rerank api, %s", string(body))
+// 	}
 
-	var result RerankResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, nil, err
-	}
+// 	var result RerankResponse
+// 	if err := json.Unmarshal(body, &result); err != nil {
+// 		return nil, nil, err
+// 	}
 
-	var rank []ai.RankDocItem
+// 	var rank []ai.RankDocItem
 
-	for _, v := range result.Results {
-		item := docs[v.Index]
-		rank = append(rank, ai.RankDocItem{
-			ID:    item.ID,
-			Score: v.RelevanceScore,
-		})
-	}
+// 	for _, v := range result.Results {
+// 		item := docs[v.Index]
+// 		rank = append(rank, ai.RankDocItem{
+// 			ID:    item.ID,
+// 			Score: v.RelevanceScore,
+// 		})
+// 	}
 
-	return rank, &ai.Usage{
-		Model: model,
-		Usage: &openai.Usage{
-			PromptTokens: result.Usage.TotalTokens,
-		},
-	}, nil
-}
+// 	return rank, &ai.Usage{
+// 		Model: model,
+// 		Usage: &openai.Usage{
+// 			PromptTokens: result.Usage.TotalTokens,
+// 		},
+// 	}, nil
+// }

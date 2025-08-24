@@ -12,22 +12,14 @@ const (
 	PROMPT_VAR_QUERY            = "${query}"
 )
 
-var CurrentSymbols = strings.Join([]string{"$hidden[]"}, ",")
+var CurrentSymbols = strings.Join([]string{"$hidden[xxxx]"}, ",")
 
 var (
-	SITE_TITLE       = "极核"
-	SITE_DESCRIPTION = "极核，快速构建个人第二大脑"
+	SITE_TITLE       = "Quka"
+	SITE_DESCRIPTION = "QukaAI，快速构建个人第二大脑"
 )
 
 func RegisterConstants(siteTitle, siteDescription string) {
 	SITE_TITLE = siteTitle
 	SITE_DESCRIPTION = siteDescription
 }
-
-const APPEND_PROMPT_CN = `
-系统支持的 Markdown 数学公式语法需要使用 ${math}$ 包住表示inline，否则使用
-$$
-{math}
-$$
-包住表示block。
-`

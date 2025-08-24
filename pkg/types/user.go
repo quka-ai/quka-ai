@@ -17,10 +17,19 @@ type User struct {
 	CreatedAt int64  `json:"created_at" db:"created_at"` // 创建时间，Unix时间戳
 }
 
+// UserWithRole 用户信息（包含全局角色）
+type UserWithRole struct {
+	User
+	GlobalRole string `json:"global_role"` // 用户全局角色
+}
+
 type ListUserOptions struct {
-	Appid string
-	IDs   []string
-	Email string
+	Appid     string
+	IDs       []string
+	Email     string
+	Source    string // 用户来源过滤
+	Name      string // 用户名模糊搜索
+	EmailLike string // 邮箱模糊搜索
 }
 
 func (opt ListUserOptions) Apply(query *sq.SelectBuilder) {
@@ -32,6 +41,15 @@ func (opt ListUserOptions) Apply(query *sq.SelectBuilder) {
 	}
 	if opt.Email != "" {
 		*query = query.Where(sq.Eq{"email": opt.Email})
+	}
+	if opt.Source != "" {
+		*query = query.Where(sq.Eq{"source": opt.Source})
+	}
+	if opt.Name != "" {
+		*query = query.Where(sq.Like{"name": "%" + opt.Name + "%"})
+	}
+	if opt.EmailLike != "" {
+		*query = query.Where(sq.Like{"email": "%" + opt.EmailLike + "%"})
 	}
 }
 

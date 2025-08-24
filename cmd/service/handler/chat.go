@@ -16,7 +16,7 @@ import (
 )
 
 func (s *HttpSrv) GenMessageID(c *gin.Context) {
-	response.APISuccess(c, s.Core.Plugins.AIChatLogic("", nil).GenMessageID())
+	response.APISuccess(c, s.Core.Plugins.GenMessageID())
 }
 
 type ListChatSessionRequest struct {
@@ -131,9 +131,9 @@ func (s *HttpSrv) DeleteChatSession(c *gin.Context) {
 }
 
 type GetChatSessionHistoryRequest struct {
-	Page           uint64 `json:"page" form:"page" binding:"required"`
-	PageSize       uint64 `json:"pagesize" form:"pagesize" binding:"required"`
-	AfterMessageID string `json:"after_message_id" form:"after_message_id"`
+	Page          uint64 `json:"page" form:"page" binding:"required"`
+	PageSize      uint64 `json:"pagesize" form:"pagesize" binding:"required"`
+	AfterSequence int64  `json:"after_sequence" form:"after_sequence"`
 }
 
 type GetChatSessionHistoryResponse struct {
@@ -166,7 +166,7 @@ func (s *HttpSrv) GetChatSessionHistory(c *gin.Context) {
 	}
 
 	historyLogic := v1.NewHistoryLogic(c, s.Core)
-	list, total, err := historyLogic.GetHistoryMessage(space, sessionID, req.AfterMessageID, req.Page, req.PageSize)
+	list, total, err := historyLogic.GetHistoryMessage(space, sessionID, req.AfterSequence, req.Page, req.PageSize)
 	if err != nil {
 		response.APIError(c, err)
 		return
@@ -179,11 +179,14 @@ func (s *HttpSrv) GetChatSessionHistory(c *gin.Context) {
 }
 
 type CreateChatMessageRequest struct {
-	MessageID string               `json:"message_id" binding:"required"`
-	Message   string               `json:"message" binding:"required"`
-	Resource  *types.ResourceQuery `json:"resource"`
-	Agent     string               `json:"agent"`
-	Files     []types.ChatAttach   `json:"files"`
+	MessageID       string               `json:"message_id" binding:"required"`
+	Message         string               `json:"message" binding:"required"`
+	Resource        *types.ResourceQuery `json:"resource"`
+	Agent           string               `json:"agent"`
+	EnableSearch    bool                 `json:"enable_search"`
+	EnableThinking  bool                 `json:"enable_thinking"`
+	EnableKnowledge bool                 `json:"enable_knowledge"`
+	Files           []types.ChatAttach   `json:"files"`
 }
 
 type CreateChatMessageResponse struct {
@@ -217,12 +220,15 @@ func (s *HttpSrv) CreateChatMessage(c *gin.Context) {
 
 	chatLogic := v1.NewChatLogic(c, s.Core)
 	msgSequence, err := chatLogic.NewUserMessage(session, types.CreateChatMessageArgs{
-		ID:         req.MessageID,
-		Message:    req.Message,
-		Agent:      req.Agent,
-		ChatAttach: req.Files,
-		MsgType:    types.MESSAGE_TYPE_TEXT,
-		SendTime:   time.Now().Unix(),
+		ID:              req.MessageID,
+		Message:         req.Message,
+		Agent:           req.Agent,
+		ChatAttach:      req.Files,
+		EnableThinking:  req.EnableThinking,
+		EnableSearch:    req.EnableSearch,
+		EnableKnowledge: req.EnableKnowledge,
+		MsgType:         types.MESSAGE_TYPE_TEXT,
+		SendTime:        time.Now().Unix(),
 	}, req.Resource)
 	if err != nil {
 		response.APIError(c, err)
@@ -258,7 +264,6 @@ func (s *HttpSrv) GetChatMessageExt(c *gin.Context) {
 func (s *HttpSrv) StopChatStream(c *gin.Context) {
 	spaceID, _ := c.Params.Get("spaceid")
 	sessionID, _ := c.Params.Get("session")
-	messageID, _ := c.Params.Get("messageid")
 
 	sessionLogic := v1.NewChatSessionLogic(c, s.Core)
 	_, err := sessionLogic.CheckUserChatSession(spaceID, sessionID)
@@ -267,7 +272,7 @@ func (s *HttpSrv) StopChatStream(c *gin.Context) {
 		return
 	}
 
-	if err := v1.NewChatLogic(c, s.Core).StopStream(messageID); err != nil {
+	if err := v1.NewChatLogic(c, s.Core).StopStream(sessionID); err != nil {
 		response.APIError(c, err)
 		return
 	}

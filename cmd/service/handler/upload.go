@@ -1,12 +1,11 @@
 package handler
 
 import (
-	"fmt"
-
 	"github.com/gin-gonic/gin"
 
 	v1 "github.com/quka-ai/quka-ai/app/logic/v1"
 	"github.com/quka-ai/quka-ai/app/response"
+	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
@@ -41,8 +40,14 @@ func (s *HttpSrv) GenUploadKey(c *gin.Context) {
 		return
 	}
 
+	presignURL, err := s.Core.Plugins.FileStorage().GenGetObjectPreSignURL(result.FullPath)
+	if err != nil {
+		response.APIError(c, errors.New("GenUploadKey.GenGetObjectPreSignURL", "Failed to generate presigned URL", err))
+		return
+	}
+
 	response.APISuccess(c, GenUploadKeyResponse{
 		UploadKey: result,
-		URL:       fmt.Sprintf("%s%s", result.StaticDomain, result.FullPath),
+		URL:       presignURL,
 	})
 }

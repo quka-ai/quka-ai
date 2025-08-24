@@ -30,7 +30,7 @@ func (opts ListSpaceApplicationOptions) Apply(query *sq.SelectBuilder) {
 		*query = query.Where(sq.Eq{"status": opts.Status})
 	}
 	if opts.Keywords != "" {
-		*query = query.InnerJoin(fmt.Sprintf("%s as u ON u.id = %s.user_id", TABLE_USER.Name(), TABLE_USER_SPACE.Name())).Where(sq.Or{sq.Eq{"u.id": opts.Keywords}, sq.Like{"u.name": "%" + opts.Keywords + "%"}, sq.Eq{"email": opts.Keywords}})
+		*query = query.InnerJoin(fmt.Sprintf("%s as u ON u.id = %s.user_id", TABLE_USER.Name(), TABLE_SPACE_APPLICATION.Name())).Where(sq.Or{sq.Eq{"u.id": opts.Keywords}, sq.Like{"u.name": "%" + opts.Keywords + "%"}, sq.Eq{"email": opts.Keywords}})
 	}
 }
 

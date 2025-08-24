@@ -17,7 +17,7 @@ type PGConfig struct {
 }
 
 func (m *PGConfig) FromENV() {
-	m.DSN = os.Getenv("BREW_API_POSTGRESQL_DSN")
+	m.DSN = os.Getenv("QUKA_API_POSTGRESQL_DSN")
 }
 
 func (m PGConfig) FormatDSN() string {

@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package filechunker;
+
+option go_package = "github.com/quka-ai/quka-ai/pkg/proto/filechunker";
+
+// 文件分块服务定义
+service FileChunkerService {
+  // 对文件进行智能分块处理（Genie 模式）
+  rpc ChunkFile(ChunkFileRequest) returns (ChunkFileResponse);
+  
+  // 获取支持的 LLM 提供商和模型
+  rpc GetSupportedLLMs(GetSupportedLLMsRequest) returns (GetSupportedLLMsResponse);
+  
+  // 健康检查
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// Genie 模式分块策略
+enum GenieStrategy {
+  SLUMBER = 0;         // SlumberChunker - LLM 驱动的语义分块
+  RECURSIVE = 1;       // RecursiveChunker - 递归分块（降级选项）
+  TOKEN = 2;           // TokenChunker - 基于令牌的分块（降级选项）
+}
+
+// LLM 提供商
+enum LLMProvider {
+  OPENAI = 0;          // OpenAI GPT 系列
+  GEMINI = 1;          // Google Gemini 系列
+  AUTO = 2;            // 自动选择最佳提供商
+}
+
+// 分块请求
+message ChunkFileRequest {
+  bytes file_content = 1;           // 文件内容
+  string filename = 2;              // 文件名
+  string mime_type = 3;             // MIME类型
+  GenieStrategy strategy = 4;       // Genie 分块策略
+  GenieConfig config = 5;           // Genie 配置
+}
+
+// Genie 配置
+message GenieConfig {
+  LLMProvider llm_provider = 1;     // LLM 提供商
+  string model_name = 2;            // 模型名称
+  string api_key = 3;               // API 密钥
+  string llm_host = 4;              // LLM 服务主机地址（可选，用于自托管服务）
+  int32 target_chunk_size = 5;      // 目标分块大小
+  float semantic_threshold = 6;     // 语义相似度阈值
+  string custom_prompt = 7;         // 自定义提示词
+  map<string, string> llm_params = 8; // LLM 参数
+}
+
+// 分块响应
+message ChunkFileResponse {
+  bool success = 1;                // 是否成功
+  string message = 2;              // 消息
+  repeated GenieChunk chunks = 3;  // Genie 分块结果
+  FileMetadata metadata = 4;       // 文件元数据
+  LLMUsage llm_usage = 5;         // LLM 使用情况
+}
+
+// Genie 分块
+message GenieChunk {
+  string id = 1;                   // 分块ID
+  string text = 2;                 // 分块文本内容
+  int32 token_count = 3;           // token数量
+  int32 start_index = 4;           // 开始位置
+  int32 end_index = 5;             // 结束位置
+  float semantic_score = 6;        // 语义得分
+  string semantic_summary = 7;     // 语义摘要
+  repeated string key_concepts = 8; // 关键概念
+  map<string, string> metadata = 9; // 分块元数据
+}
+
+// 文件元数据
+message FileMetadata {
+  string original_filename = 1;     // 原始文件名
+  string mime_type = 2;             // MIME类型
+  int64 file_size = 3;              // 文件大小
+  string converted_format = 4;      // 转换后的格式
+  int32 total_chunks = 5;           // 总分块数
+  int32 total_tokens = 6;           // 总token数
+  string content_type = 7;          // 内容类型分析
+  float complexity_score = 8;       // 内容复杂度得分
+}
+
+// LLM 使用情况
+message LLMUsage {
+  string provider = 1;             // 使用的提供商
+  string model = 2;                // 使用的模型
+  int32 prompt_tokens = 3;         // 提示词token数
+  int32 completion_tokens = 4;     // 完成token数
+  int32 total_tokens = 5;          // 总token数
+  float estimated_cost = 6;        // 预估成本
+}
+
+// 获取支持的LLM请求
+message GetSupportedLLMsRequest {}
+
+// 获取支持的LLM响应
+message GetSupportedLLMsResponse {
+  repeated LLMInfo supported_llms = 1;  // 支持的LLM列表
+}
+
+// LLM 信息
+message LLMInfo {
+  LLMProvider provider = 1;        // 提供商
+  string name = 2;                 // 名称
+  repeated string models = 3;      // 支持的模型列表
+  bool requires_api_key = 4;       // 是否需要API密钥
+  string description = 5;          // 描述
+}
+
+// 健康检查请求
+message HealthCheckRequest {}
+
+// 健康检查响应
+message HealthCheckResponse {
+  bool healthy = 1;                // 是否健康
+  string version = 2;              // 服务版本
+  string status = 3;               // 状态信息
+  repeated string available_llms = 4; // 可用的LLM列表
+} 

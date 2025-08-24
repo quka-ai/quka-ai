@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -67,10 +66,8 @@ func randomFileName(fileName string) string {
 func (l *UploadLogic) GenClientUploadKey(objectType, kind, fileName string, size int64) (UploadKey, error) {
 	userID := l.UserInfo.GetUserInfo().User
 	spaceID, _ := InjectSpaceID(l.ctx)
-	filePath := genUserFilePath(spaceID, objectType)
 	fileName = randomFileName(fileName)
-
-	fullPath := filepath.Join(filePath, fileName)
+	fullPath := types.GenS3FilePath(spaceID, objectType, fileName)
 	exist, err := l.core.Store().FileManagementStore().GetByID(l.ctx, spaceID, fullPath)
 	if err != nil && err != sql.ErrNoRows {
 		return UploadKey{}, errors.New("UploadLogic.FileManagementStore.GetById", i18n.ERROR_INTERNAL, err)
@@ -90,10 +87,11 @@ func (l *UploadLogic) GenClientUploadKey(objectType, kind, fileName string, size
 
 	var meta core.UploadFileMeta
 	err = l.core.Store().Transaction(l.ctx, func(ctx context.Context) error {
+
 		err := l.core.Store().FileManagementStore().Create(l.ctx, types.FileManagement{
 			SpaceID:    spaceID,
 			UserID:     userID,
-			File:       filepath.Join(filePath, fileName),
+			File:       fullPath,
 			FileSize:   size,
 			Status:     types.FILE_UPLOAD_STATUS_UNKNOWN,
 			Kind:       kind,
@@ -104,7 +102,7 @@ func (l *UploadLogic) GenClientUploadKey(objectType, kind, fileName string, size
 			return errors.New("UploadLogic.GenClientUploadKey.FileManagementStore.Create", i18n.ERROR_INTERNAL, err)
 		}
 
-		meta, err = l.core.Plugins.FileStorage().GenUploadFileMeta(filePath, fileName, size)
+		meta, err = l.core.Plugins.FileStorage().GenUploadFileMeta(fullPath, size)
 		if err != nil {
 			return errors.New("UploadLogic.GenClientUploadKey.FileUploader.GenUploadFileMeta", i18n.ERROR_INTERNAL, err)
 		}
@@ -119,8 +117,4 @@ func (l *UploadLogic) GenClientUploadKey(objectType, kind, fileName string, size
 		FullPath:     meta.FullPath,
 		StaticDomain: l.core.FileStorage().GetStaticDomain(),
 	}, nil
-}
-
-func genUserFilePath(userID, _type string) string {
-	return filepath.Join("/brew/", userID, _type, time.Now().Format("20060102"))
 }

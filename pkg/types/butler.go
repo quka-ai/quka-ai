@@ -1,7 +1,7 @@
 package types
 
 // ButlerTable 数据表结构，请注意，该结构应该定义在 "your/path/types" 中
-// 注意，这个一定要提醒用户，提醒用户我们将提供基于 bw_bulter (注意没有包含表前缀) 数据表的 Golang CRUD 操作代码。
+// 注意，这个一定要提醒用户，提醒用户我们将提供基于 quka_bulter (注意没有包含表前缀) 数据表的 Golang CRUD 操作代码。
 // 这个结构体的每个字段后面都附有对应的中文注释，这些注释应与SQL字段注释一致。
 type ButlerTable struct {
 	TableID          string `json:"table_id" db:"table_id"` // 记录ID, 自动递增

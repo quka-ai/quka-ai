@@ -23,7 +23,7 @@ func init() {
 }
 
 func new() *openai.Driver {
-	return openai.New(os.Getenv("BREW_API_AI_AZURE_OPENAI_TOKEN"), os.Getenv("BREW_API_AI_AZURE_OPENAI_ENDPOINT"), ai.ModelName{
+	return openai.New(os.Getenv("QUKA_API_AI_AZURE_OPENAI_TOKEN"), os.Getenv("QUKA_API_AI_AZURE_OPENAI_ENDPOINT"), ai.ModelName{
 		ChatModel:      oai.GPT4oMini,
 		EmbeddingModel: string(oai.LargeEmbedding3),
 	})
@@ -61,7 +61,7 @@ func Test_Generate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
-	opts := d.NewQuery(ctx, []*types.MessageContext{
+	opts := d.NewQuery(ctx, "gpt-4o-mini", []*types.MessageContext{
 		{
 			Role:    types.USER_ROLE_USER,
 			Content: "我的车现在停在哪里？",

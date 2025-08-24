@@ -48,7 +48,7 @@ func AcceptLanguage() gin.HandlerFunc {
 			return
 		}
 
-		ctx.Set(v1.LANGUAGE_KEY, lo.If[string](strings.Contains(res[0].Tag, "zh"), types.LANGUAGE_CN_KEY).Else(types.LANGUAGE_EN_KEY))
+		ctx.Set(v1.LANGUAGE_KEY, lo.If(strings.Contains(res[0].Tag, "zh"), types.LANGUAGE_CN_KEY).Else(types.LANGUAGE_EN_KEY))
 	}
 }
 
@@ -168,6 +168,71 @@ func checkAuthToken(c *gin.Context, core *core.Core) (bool, error) {
 	return ParseAuthToken(c, tokenValue, core)
 }
 
+func FlexibleAuth(core *core.Core) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 1. 尝试 Header 认证 (X-Access-Token)
+		matched, err := checkAccessToken(c, core)
+		if err != nil {
+			response.APIError(c, errors.Trace("middleware.FlexibleAuth.checkAccessToken", err))
+			return
+		}
+
+		if matched {
+			return
+		}
+
+		// 2. 尝试 Header 认证 (X-Authorization)
+		matched, err = checkAuthToken(c, core)
+		if err != nil {
+			response.APIError(c, errors.Trace("middleware.FlexibleAuth.checkAuthToken", err))
+			return
+		}
+
+		if matched {
+			return
+		}
+
+		// 3. 尝试 Cookie 认证 (quka-auth)
+		if cookieToken, err := c.Cookie("quka-auth"); err == nil && cookieToken != "" {
+			passed, authErr := ParseAuthToken(c, cookieToken, core)
+			if authErr != nil {
+				response.APIError(c, errors.Trace("middleware.FlexibleAuth.ParseCookieToken", authErr))
+				return
+			}
+
+			if passed {
+				return
+			}
+		}
+
+		// 4. 尝试查询参数认证
+		tokenValue := c.Query("token")
+		tokenType := c.Query("token-type")
+
+		if tokenValue != "" {
+			var passed bool
+			var authErr error
+
+			if tokenType == "authorization" {
+				passed, authErr = ParseAuthToken(c, tokenValue, core)
+			} else {
+				passed, authErr = ParseAccessToken(c, tokenValue, core)
+			}
+
+			if authErr != nil {
+				response.APIError(c, errors.Trace("middleware.FlexibleAuth.ParseQueryToken", authErr))
+				return
+			}
+
+			if passed {
+				return
+			}
+		}
+
+		response.APIError(c, errors.New("middleware.FlexibleAuth", i18n.ERROR_UNAUTHORIZED, nil).Code(http.StatusUnauthorized))
+	}
+}
+
 func PaymentRequired(c *gin.Context) {
 	tokenClaim, exist := c.Get(v1.TOKEN_CONTEXT_KEY)
 	if !exist {
@@ -272,4 +337,98 @@ func UseLimit(appCore *core.Core, operation string, genKeyFunc func(c *gin.Conte
 			response.APIError(c, errors.New("middleware.limiter", i18n.ERROR_TOO_MANY_REQUESTS, nil).Code(http.StatusTooManyRequests))
 		}
 	}
+}
+
+// VerifyUserRole 验证用户是否拥有指定角色的通用中间件
+func VerifyUserRole(core *core.Core, requiredRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, exists := c.Get(v1.TOKEN_CONTEXT_KEY)
+		if !exists {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.GetToken", i18n.ERROR_UNAUTHORIZED, nil).Code(http.StatusUnauthorized))
+			c.Abort()
+			return
+		}
+
+		tokenClaims, ok := claims.(security.TokenClaims)
+		if !ok {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.TokenClaims", i18n.ERROR_UNAUTHORIZED, nil).Code(http.StatusUnauthorized))
+			c.Abort()
+			return
+		}
+
+		// 获取用户信息
+		user, err := core.Store().UserStore().GetUser(c, tokenClaims.Appid, tokenClaims.User)
+		if err != nil {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.GetUser", i18n.ERROR_INTERNAL, err))
+			c.Abort()
+			return
+		}
+
+		// 获取用户的全局角色
+		userRole, err := getUserGlobalRole(core, user)
+		if err != nil {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.GetGlobalRole", i18n.ERROR_INTERNAL, err))
+			c.Abort()
+			return
+		}
+
+		// 检查用户角色是否匹配任意一个要求的角色
+		hasPermission := false
+		for _, requiredRole := range requiredRoles {
+			if userRole == requiredRole {
+				hasPermission = true
+				break
+			}
+		}
+
+		if !hasPermission {
+			response.APIError(c, errors.New("middleware.VerifyUserRole.Check", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden))
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// VerifyAdminPermission 验证管理员权限（admin或chief角色）
+func VerifyAdminPermission(core *core.Core) gin.HandlerFunc {
+	return VerifyUserRole(core, types.GlobalRoleAdmin, types.GlobalRoleChief)
+}
+
+// getUserGlobalRole 获取用户的全局角色
+func getUserGlobalRole(core *core.Core, user *types.User) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	// 首先查询用户全局角色表
+	globalRole, err := core.Store().UserGlobalRoleStore().GetUserRole(ctx, user.Appid, user.ID)
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Println(*globalRole)
+
+	// 如果找到全局角色记录，直接返回
+	if globalRole == nil {
+		return types.GlobalRoleMember, nil
+	}
+
+	return globalRole.Role, nil
+}
+
+// createUserGlobalRole 创建用户全局角色记录（辅助函数）
+func createUserGlobalRole(core *core.Core, appid, userID, role string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	globalRole := types.UserGlobalRole{
+		UserID:    userID,
+		Appid:     appid,
+		Role:      role,
+		CreatedAt: time.Now().Unix(),
+		UpdatedAt: time.Now().Unix(),
+	}
+
+	return core.Store().UserGlobalRoleStore().Create(ctx, globalRole)
 }

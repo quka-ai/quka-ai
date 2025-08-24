@@ -63,7 +63,7 @@ func (s *ChatMessageStore) GetOne(ctx context.Context, id string) (*types.ChatMe
 	return &msg, nil
 }
 
-func (s *ChatMessageStore) RewriteMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete int32) error {
+func (s *ChatMessageStore) RewriteMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete types.MessageProgress) error {
 	query := sq.Update(s.GetTable()).Set("message", message).Set("complete", complete).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID, "id": id})
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -89,7 +89,7 @@ func (s *ChatMessageStore) SaveEncrypt(ctx context.Context, id string, message j
 	return nil
 }
 
-func (s *ChatMessageStore) AppendMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete int32) error {
+func (s *ChatMessageStore) AppendMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete types.MessageProgress) error {
 	query := sq.Update(s.GetTable()).Set("message", sq.Expr("message || ?", message)).Set("complete", complete).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID, "id": id})
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -103,7 +103,7 @@ func (s *ChatMessageStore) AppendMessage(ctx context.Context, spaceID, sessionID
 	return nil
 }
 
-func (s *ChatMessageStore) UpdateMessageCompleteStatus(ctx context.Context, sessionID, id string, complete int32) error {
+func (s *ChatMessageStore) UpdateMessageCompleteStatus(ctx context.Context, sessionID, id string, complete types.MessageProgress) error {
 	query := sq.Update(s.GetTable()).Set("complete", complete).Where(sq.Eq{"session_id": sessionID, "id": id})
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -170,10 +170,10 @@ func (s *ChatMessageStore) DeleteAll(ctx context.Context, spaceID string) error 
 	return nil
 }
 
-func (s *ChatMessageStore) ListSessionMessageUpToGivenID(ctx context.Context, spaceID, sessionID, msgID string, page, pageSize uint64) ([]*types.ChatMessage, error) {
-	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID}).Where(sq.LtOrEq{"id": msgID}).OrderBy("id DESC")
+func (s *ChatMessageStore) ListSessionMessageUpToGivenID(ctx context.Context, spaceID, sessionID string, msgSequenceID int64, page, pageSize uint64) ([]*types.ChatMessage, error) {
+	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID}).Where(sq.LtOrEq{"sequence": msgSequenceID}).OrderBy("id DESC")
 
-	if page != types.NO_PAGING || pageSize != types.NO_PAGING {
+	if page != types.NO_PAGINATION || pageSize != types.NO_PAGINATION {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
 	queryString, args, err := query.ToSql()
@@ -188,12 +188,12 @@ func (s *ChatMessageStore) ListSessionMessageUpToGivenID(ctx context.Context, sp
 	return list, nil
 }
 
-func (s *ChatMessageStore) ListSessionMessage(ctx context.Context, spaceID, sessionID, msgID string, page, pageSize uint64) ([]*types.ChatMessage, error) {
-	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID}).OrderBy("send_time DESC, id DESC")
-	if msgID != "" {
-		query = query.Where(sq.Gt{"id": msgID})
+func (s *ChatMessageStore) ListSessionMessage(ctx context.Context, spaceID, sessionID string, msgSquence int64, page, pageSize uint64) ([]*types.ChatMessage, error) {
+	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID}).OrderBy("sequence DESC, send_time DESC")
+	if msgSquence != 0 {
+		query = query.Where(sq.Gt{"sequence": msgSquence})
 	}
-	if page != types.NO_PAGING || pageSize != types.NO_PAGING {
+	if page != types.NO_PAGINATION || pageSize != types.NO_PAGINATION {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
 	queryString, args, err := query.ToSql()
@@ -212,7 +212,7 @@ func (s *ChatMessageStore) ListUnEncryptMessage(ctx context.Context, page, pageS
 	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).
 		Where(sq.And{sq.NotEq{"is_encrypt": types.MESSAGE_IS_ENCRYPT}, sq.Eq{"complete": types.MESSAGE_PROGRESS_COMPLETE}})
 
-	if page != types.NO_PAGING || pageSize != types.NO_PAGING {
+	if page != types.NO_PAGINATION || pageSize != types.NO_PAGINATION {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
 	queryString, args, err := query.ToSql()
@@ -227,10 +227,10 @@ func (s *ChatMessageStore) ListUnEncryptMessage(ctx context.Context, page, pageS
 	return list, nil
 }
 
-func (s *ChatMessageStore) TotalSessionMessage(ctx context.Context, spaceID, sessionID, msgID string) (int64, error) {
+func (s *ChatMessageStore) TotalSessionMessage(ctx context.Context, spaceID, sessionID string, msgSequence int64) (int64, error) {
 	query := sq.Select("COUNT(*)").From(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "session_id": sessionID})
-	if msgID != "" {
-		query = query.Where(sq.Gt{"id": msgID})
+	if msgSequence != 0 {
+		query = query.Where(sq.Gt{"sequence": msgSequence})
 	}
 	queryString, args, err := query.ToSql()
 	if err != nil {

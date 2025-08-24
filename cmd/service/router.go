@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/quka-ai/quka-ai/app/core"
@@ -18,7 +20,11 @@ func serve(core *core.Core) {
 	}
 	setupHttpRouter(httpSrv)
 
-	core.HttpEngine().Run(core.Cfg().Addr)
+	address := core.Cfg().Addr
+	if address == "" {
+		address = ":33033"
+	}
+	core.HttpEngine().Run(address)
 }
 
 func GetIPLimitBuilder(appCore *core.Core) middleware.LimiterFunc {
@@ -63,7 +69,14 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	s.Engine.LoadHTMLGlob("./tpls/*")
 	s.Engine.GET("/s/k/:token", s.BuildKnowledgeSharePage)
 	s.Engine.GET("/s/s/:token", s.BuildSessionSharePage)
-	s.Engine.GET("/s/sp/:token", s.BuildSpaceSharePage)
+  s.Engine.GET("/s/sp/:token", s.BuildSpaceSharePage)
+
+	// 公共资源路由（无需认证）
+	s.Engine.GET("/public/*object_path", s.ObjectHandler)
+
+	// 图片代理路由（支持多种认证方式，用于 <img> 标签）
+	s.Engine.GET("/image/*object_path", middleware.FlexibleAuth(s.Core), s.ObjectHandler)
+
 	// auth
 	s.Engine.Use(middleware.I18n(), response.NewResponse())
 	s.Engine.Use(middleware.Cors)
@@ -107,6 +120,13 @@ func setupHttpRouter(s *handler.HttpSrv) {
 
 			space.POST("", userLimit("modify_space"), s.CreateUserSpace)
 
+			editorSpace := space.Group("/:spaceid").Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionEdit))
+			editorSpace.POST("/task/file-chunk", aiLimit("file_chunk", core.WithLimit(10), core.WithRange(time.Hour)), s.CreateFileChunkTask)
+			editorSpace.GET("/task/list", s.GetFileChunkTaskList)
+			editorSpace.GET("/task/status", s.GetTaskStatus)
+			editorSpace.DELETE("/task/file-chunk", s.DeleteChunkTask)
+			editorSpace.POST("/invite", s.SpaceInvitation)
+
 			space.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionAdmin))
 			space.DELETE("/:spaceid", s.DeleteUserSpace)
 			space.PUT("/:spaceid", userLimit("modify_space"), s.UpdateSpace)
@@ -123,6 +143,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			object := space.Group("/:spaceid/object")
 			{
 				object.POST("/upload/key", userLimit("upload"), s.GenUploadKey)
+				object.GET("/proxy/*object_path", middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView), s.ObjectHandler)
 			}
 
 			journal := space.Group("/:spaceid/journal")
@@ -141,6 +162,8 @@ func setupHttpRouter(s *handler.HttpSrv) {
 				viewScope.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView))
 				viewScope.GET("", s.GetKnowledge)
 				viewScope.GET("/list", spaceLimit("knowledge_list"), s.ListKnowledge)
+				viewScope.GET("/chunk/list", spaceLimit("knowledge_list"), s.ListContentTask)
+				viewScope.GET("/chunk/knowledge", spaceLimit("knowledge_list"), s.GetTaskKnowledge)
 				viewScope.POST("/query", spaceLimit("chat_message"), s.Query)
 				viewScope.GET("/time/list", spaceLimit("knowledge_list"), s.GetDateCreatedKnowledge)
 			}
@@ -175,6 +198,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			chat.GET("/list", s.ListChatSession)
 			chat.POST("/:session/message/id", middleware.PaymentRequired, s.GenMessageID)
 			chat.PUT("/:session/named", spaceLimit("named_session"), middleware.PaymentRequired, s.RenameChatSession)
+			chat.POST("/:session/stop", s.StopChatStream)
 
 			history := chat.Group("/:session/history")
 			{
@@ -184,7 +208,6 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			message := chat.Group("/:session/message")
 			{
 				message.GET("/:messageid/ext", s.GetChatMessageExt)
-				message.POST("/:messageid/stop", s.StopChatStream)
 				message.Use(spaceLimit("create_message"), middleware.PaymentRequired)
 				message.POST("", aiLimit("chat_message"), s.CreateChatMessage)
 			}
@@ -195,6 +218,49 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			tools.Use(userLimit("tools"))
 			tools.GET("/reader", s.ToolsReader)
 			tools.POST("/describe/image", s.DescribeImage)
+		}
+
+		// 管理员路由（需要管理员权限）
+		admin := authed.Group("/admin")
+		admin.Use(middleware.VerifyAdminPermission(s.Core))
+		{
+			// 模型提供商管理
+			providers := admin.Group("/model/providers")
+			{
+				providers.POST("", s.CreateModelProvider)       // 创建提供商
+				providers.GET("", s.ListModelProviders)         // 获取提供商列表
+				providers.GET("/:id", s.GetModelProvider)       // 获取提供商详情
+				providers.PUT("/:id", s.UpdateModelProvider)    // 更新提供商
+				providers.DELETE("/:id", s.DeleteModelProvider) // 删除提供商
+			}
+
+			// 模型配置管理
+			configs := admin.Group("/model/configs")
+			{
+				configs.POST("", s.CreateModelConfig)       // 创建模型配置
+				configs.GET("", s.ListModelConfigs)         // 获取模型配置列表
+				configs.GET("/:id", s.GetModelConfig)       // 获取模型配置详情
+				configs.PUT("/:id", s.UpdateModelConfig)    // 更新模型配置
+				configs.DELETE("/:id", s.DeleteModelConfig) // 删除模型配置
+			}
+
+			// AI系统管理
+			aiSystem := admin.Group("/ai/system")
+			{
+				aiSystem.POST("/reload", s.ReloadAIConfig) // 重新加载AI配置
+				aiSystem.GET("/status", s.GetAIStatus)     // 获取AI系统状态
+				aiSystem.PUT("/usage", s.UpdateAIUsage)    // 更新AI使用配置
+				aiSystem.GET("/usage", s.GetAIUsage)       // 获取AI使用配置
+			}
+
+			// 用户管理
+			users := admin.Group("/users")
+			{
+				users.POST("", s.AdminCreateUser)                  // 创建单个用户
+				users.GET("", s.AdminListUsers)                    // 获取用户列表
+				users.POST("/token", s.AdminRegenerateAccessToken) // 重新生成AccessToken
+				users.DELETE("", s.AdminDeleteUser)                // 删除用户
+			}
 		}
 	}
 }

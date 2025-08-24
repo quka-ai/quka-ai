@@ -13,6 +13,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/response"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type HttpSrv struct {
@@ -97,7 +98,8 @@ func (s *HttpSrv) CreateKnowledge(c *gin.Context) {
 }
 
 type GetKnowledgeRequest struct {
-	ID string `json:"id" form:"id" binding:"required"`
+	ID          string `json:"id" form:"id" binding:"required"`
+	OnlyPreview bool   `json:"only_preview" form:"only_preview"`
 }
 
 func (s *HttpSrv) GetKnowledge(c *gin.Context) {
@@ -114,6 +116,11 @@ func (s *HttpSrv) GetKnowledge(c *gin.Context) {
 	knowledge, err := v1.NewKnowledgeLogic(c, s.Core).GetKnowledge(spaceID, req.ID)
 	if err != nil {
 		response.APIError(c, err)
+		return
+	}
+
+	if req.OnlyPreview {
+		response.APISuccess(c, KnowledgeToKnowledgeResponseLite(knowledge))
 		return
 	}
 
@@ -148,17 +155,88 @@ func (s *HttpSrv) ListKnowledge(c *gin.Context) {
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
-	list, total, err := v1.NewKnowledgeLogic(c, s.Core).ListKnowledges(spaceID, req.Keywords, resource, req.Page, req.PageSize)
+	list, total, err := v1.NewKnowledgeLogic(c, s.Core).ListUserKnowledges(spaceID, req.Keywords, resource, req.Page, req.PageSize)
 	if err != nil {
 		response.APIError(c, err)
 		return
 	}
 
-	knowledgeList := lo.Map[*types.Knowledge, *types.KnowledgeResponse](list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
-		return KnowledgeToKnowledgeResponse(item)
+	knowledgeList := lo.Map(list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
+		liteContent := KnowledgeToKnowledgeResponseLite(item)
+		liteContent.Content = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(liteContent.Content, s.Core.Plugins.FileStorage())
+		return liteContent
 	})
 
 	response.APISuccess(c, ListKnowledgeResponse{
+		List:  knowledgeList,
+		Total: total,
+	})
+}
+
+type ListContentTaskRequest struct {
+	Page     uint64 `json:"page" form:"page" binding:"required"`
+	PageSize uint64 `json:"pagesize" form:"pagesize" binding:"required,lte=50"`
+}
+
+type ListContentTaskResponse struct {
+	List  []v1.ChunkTaskDetail `json:"list"`
+	Total uint64               `json:"total"`
+}
+
+func (s *HttpSrv) ListContentTask(c *gin.Context) {
+	var req ListContentTaskRequest
+
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	spaceID, _ := v1.InjectSpaceID(c)
+	list, total, err := v1.NewAIFileDisposeLogic(c, s.Core).GetLongContentTaskList(spaceID, req.Page, req.PageSize)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	response.APISuccess(c, ListContentTaskResponse{
+		List:  list,
+		Total: uint64(total),
+	})
+}
+
+type GetTaskKnowledgeRequest struct {
+	TaskID   string `json:"task_id" form:"task_id" binding:"required"`
+	Page     uint64 `json:"page" form:"page" binding:"required"`
+	PageSize uint64 `json:"pagesize" form:"pagesize" binding:"required,lte=50"`
+}
+
+type GetTaskKnowledgeResponse struct {
+	List  []*types.KnowledgeResponse `json:"list"`
+	Total uint64                     `json:"total"`
+}
+
+func (s *HttpSrv) GetTaskKnowledge(c *gin.Context) {
+	var req GetTaskKnowledgeRequest
+
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	spaceID, _ := v1.InjectSpaceID(c)
+	list, total, err := v1.NewKnowledgeLogic(c, s.Core).GetTaskKnowledges(spaceID, req.TaskID, req.Page, req.PageSize)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	knowledgeList := lo.Map(list, func(item *types.Knowledge, index int) *types.KnowledgeResponse {
+		liteContent := KnowledgeToKnowledgeResponseLite(item)
+		liteContent.Content = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(liteContent.Content, s.Core.Plugins.FileStorage())
+		return liteContent
+	})
+
+	response.APISuccess(c, GetTaskKnowledgeResponse{
 		List:  knowledgeList,
 		Total: total,
 	})
@@ -179,14 +257,46 @@ func KnowledgeToKnowledgeResponse(item *types.Knowledge) *types.KnowledgeRespons
 		CreatedAt:   item.CreatedAt,
 	}
 
-	result.Content = string(item.Content)
 	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
 		result.Blocks = json.RawMessage(item.Content)
-		var err error
-		result.Content, err = utils.ConvertEditorJSBlocksToMarkdown(result.Blocks)
+	} else {
+		result.Content = string(item.Content)
+	}
+	return result
+}
+
+func KnowledgeToKnowledgeResponseLite(item *types.Knowledge) *types.KnowledgeResponse {
+	result := &types.KnowledgeResponse{
+		ID:          item.ID,
+		SpaceID:     item.SpaceID,
+		Title:       item.Title,
+		ContentType: item.ContentType,
+		Tags:        item.Tags,
+		Kind:        item.Kind,
+		Resource:    item.Resource,
+		UserID:      item.UserID,
+		Stage:       item.Stage,
+		UpdatedAt:   item.UpdatedAt,
+		CreatedAt:   item.CreatedAt,
+	}
+
+	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
+		blocks, err := editorjs.ParseRawToBlocks(json.RawMessage(item.Content))
+		if err != nil {
+			slog.Error("Failed to parse editor blocks", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
+		}
+
+		if len(blocks.Blocks) > 6 {
+			blocks.Blocks = blocks.Blocks[:6]
+		}
+
+		result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
+		result.Content, err = editorjs.ConvertEditorJSBlocksToMarkdown(blocks.Blocks)
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
 		}
+	} else {
+		result.Content = string(item.Content)
 	}
 	return result
 }

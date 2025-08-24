@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,11 +12,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/quka-ai/quka-ai/app/core/srv"
 	"github.com/quka-ai/quka-ai/app/store"
 	"github.com/quka-ai/quka-ai/app/store/sqlstore"
+	"github.com/quka-ai/quka-ai/pkg/types"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type Core struct {
@@ -57,15 +62,65 @@ func MustSetupCore(cfg CoreConfig) *Core {
 		httpEngine: gin.New(),
 		prompt:     cfg.Prompt,
 	}
+	editorjs.SetupGlobalEditorJS(cfg.ObjectStorage.StaticDomain)
 
 	// setup store
-	setupMysqlStore(core)
+	setupSqlStore(core)
 
-	core.srv = srv.SetupSrvs(srv.ApplyAI(cfg.AI), // ai provider select
+	// 初始化时加载AI配置
+	aiApplyFunc := core.loadInitialAIConfig()
+	core.srv = srv.SetupSrvs(aiApplyFunc, // ai provider select
 		// web socket
 		srv.ApplyTower())
 
 	return core
+}
+
+// loadAIConfigFromDB 从数据库加载AI配置的公共方法
+func (s *Core) loadAIConfigFromDB(ctx context.Context) ([]types.ModelConfig, []types.ModelProvider, srv.Usage, error) {
+	statusEnabled := types.StatusEnabled
+
+	// 1. 从数据库获取启用的模型配置
+	models, err := s.Store().ModelConfigStore().ListWithProvider(ctx, types.ListModelConfigOptions{
+		Status: &statusEnabled,
+	})
+	if err != nil {
+		return nil, nil, srv.Usage{}, err
+	}
+
+	// 2. 获取启用的模型提供商配置
+	modelProviders, err := s.Store().ModelProviderStore().List(ctx, types.ListModelProviderOptions{
+		Status: &statusEnabled,
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
+	if err != nil {
+		return nil, nil, srv.Usage{}, err
+	}
+
+	// 3. 获取使用配置
+	usage, err := s.loadAIUsageFromDB(ctx)
+	if err != nil {
+		return nil, nil, srv.Usage{}, err
+	}
+
+	// 转换模型配置
+	modelConfigs := lo.Map(models, func(item *types.ModelConfig, _ int) types.ModelConfig {
+		return *item
+	})
+
+	return modelConfigs, modelProviders, usage, nil
+}
+
+// loadInitialAIConfig 系统启动时加载AI配置
+func (s *Core) loadInitialAIConfig() srv.ApplyFunc {
+	ctx := context.Background()
+
+	models, providers, usage, err := s.loadAIConfigFromDB(ctx)
+	if err != nil {
+		// 如果加载失败，返回空配置而不是nil
+		return srv.ApplyAI([]types.ModelConfig{}, []types.ModelProvider{}, srv.Usage{})
+	}
+
+	return srv.ApplyAI(models, providers, usage)
 }
 
 // TODO: gen with redis
@@ -106,8 +161,13 @@ func (s *Core) Metrics() *Metrics {
 	return s.metrics
 }
 
-func setupMysqlStore(core *Core) {
+func setupSqlStore(core *Core) {
 	core.stores = sqlstore.MustSetup(core.cfg.Postgres)
+	// 执行数据库表初始化
+	if err := core.stores().Install(); err != nil {
+		panic(err)
+	}
+	fmt.Println("setupSqlStore done")
 }
 
 func (s *Core) Store() *sqlstore.Provider {
@@ -116,4 +176,96 @@ func (s *Core) Store() *sqlstore.Provider {
 
 func (s *Core) Srv() *srv.Srv {
 	return s.srv
+}
+
+// ReloadAI 从数据库重新加载AI配置
+func (s *Core) ReloadAI(ctx context.Context) error {
+	models, providers, usage, err := s.loadAIConfigFromDB(ctx)
+	if err != nil {
+		return err
+	}
+
+	// 热重载AI配置
+	return s.srv.ReloadAI(models, providers, usage)
+}
+
+// loadAIUsageFromDB 从数据库加载使用配置
+func (s *Core) loadAIUsageFromDB(ctx context.Context) (srv.Usage, error) {
+	statusEnabled := types.StatusEnabled
+	configs, err := s.Store().CustomConfigStore().List(ctx, types.ListCustomConfigOptions{
+		Category: types.AI_USAGE_CATEGORY,
+		Status:   &statusEnabled,
+	}, 0, 0)
+	if err != nil {
+		return srv.Usage{}, err
+	}
+
+	usage := srv.Usage{}
+	for _, config := range configs {
+		var modelID string
+		if err := json.Unmarshal(config.Value, &modelID); err != nil {
+			continue
+		}
+
+		switch config.Name {
+		case types.AI_USAGE_CHAT:
+			usage.Chat = modelID
+		case types.AI_USAGE_CHAT_THINKING:
+			usage.ChatThinking = modelID
+		case types.AI_USAGE_EMBEDDING:
+			usage.Embedding = modelID
+		case types.AI_USAGE_VISION:
+			usage.Vision = modelID
+		case types.AI_USAGE_RERANK:
+			usage.Rerank = modelID
+		case types.AI_USAGE_ENHANCE:
+			usage.Enhance = modelID
+		case types.AI_USAGE_READER:
+			// Reader配置存储的是provider_id，不是model_id
+			usage.Reader = modelID
+		}
+	}
+
+	return usage, nil
+}
+
+// GetAIStatus 获取AI系统状态
+func (s *Core) GetAIStatus() map[string]interface{} {
+	return s.srv.GetAIStatus()
+}
+
+func (s *Core) GetActiveModelConfig(ctx context.Context, modelType string) (*types.ModelConfig, error) {
+	// Get model ID from custom_config
+	modelConfig, err := s.Store().CustomConfigStore().Get(ctx, modelType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch %s model ID from custom_config: %w", modelType, err)
+	}
+
+	if modelConfig == nil || len(modelConfig.Value) == 0 {
+		return nil, fmt.Errorf("%s model not configured in custom_config", modelType)
+	}
+
+	var modelID string
+	if err := json.Unmarshal(modelConfig.Value, &modelID); err != nil {
+		return nil, fmt.Errorf("failed to parse %s model ID: %w", modelType, err)
+	}
+
+	// Fetch model configuration
+	model, err := s.Store().ModelConfigStore().Get(ctx, modelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch %s model details: %w", modelType, err)
+	}
+
+	if model == nil {
+		return nil, fmt.Errorf("%s model not found: %s", modelType, modelID)
+	}
+
+	// Fetch provider information
+	provider, err := s.Store().ModelProviderStore().Get(ctx, model.ProviderID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch %s model provider: %w", modelType, err)
+	}
+
+	model.Provider = provider
+	return model, nil
 }

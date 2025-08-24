@@ -156,7 +156,7 @@ func (s *ChatSessionStore) List(ctx context.Context, spaceID, userID string, pag
 		Where(sq.Eq{"space_id": spaceID, "user_id": userID}).
 		OrderBy("latest_access_time DESC")
 
-	if page != types.NO_PAGING || pageSize != types.NO_PAGING {
+	if page != types.NO_PAGINATION || pageSize != types.NO_PAGINATION {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
 
@@ -176,7 +176,7 @@ func (s *ChatSessionStore) ListBeforeTime(ctx context.Context, t time.Time, page
 	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).
 		Where(sq.Lt{"created_at": t.Unix()})
 
-	if page != types.NO_PAGING || pageSize != types.NO_PAGING {
+	if page != types.NO_PAGINATION || pageSize != types.NO_PAGINATION {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
 

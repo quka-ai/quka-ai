@@ -41,7 +41,7 @@ func (s *HttpSrv) GetUser(c *gin.Context) {
 type UpdateUserProfileRequest struct {
 	UserName string `json:"user_name" form:"user_name" binding:"required,max=32"`
 	Email    string `json:"email" form:"email" binding:"required,email"`
-	Avatar   string `json:"avatar" form:"avatar" binding:"required,url"`
+	Avatar   string `json:"avatar" form:"avatar"`
 }
 
 func (s *HttpSrv) UpdateUserProfile(c *gin.Context) {

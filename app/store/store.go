@@ -36,6 +36,8 @@ type KnowledgeStore interface {
 	SetRetryTimes(ctx context.Context, spaceID, id string, retryTimes int) error
 	ListProcessingKnowledges(ctx context.Context, retryTimes int, page, pageSize uint64) ([]types.Knowledge, error)
 	ListFailedKnowledges(ctx context.Context, stage types.KnowledgeStage, retryTimes int, page, pageSize uint64) ([]types.Knowledge, error)
+	// UpdateExpiredAt 更新单个knowledge的过期时间
+	UpdateExpiredAt(ctx context.Context, knowledgeID string, expiredAt int64) error
 }
 
 // KnowledgeChunkStore 定义 KnowledgeChunkStore 的接口
@@ -108,6 +110,7 @@ type ResourceStore interface {
 	GetResource(ctx context.Context, spaceID, id string) (*types.Resource, error)
 	Update(ctx context.Context, spaceID, id, title, desc, prompt string, cycle int) error
 	Delete(ctx context.Context, spaceID, id string) error
+	DeleteAll(ctx context.Context, spaceID string) error
 	ListResources(ctx context.Context, spaceID string, page, pageSize uint64) ([]types.Resource, error)
 	ListUserResources(ctx context.Context, userID string, page, pageSize uint64) ([]types.Resource, error)
 }
@@ -122,8 +125,23 @@ type UserStore interface {
 	Delete(ctx context.Context, appid, id string) error
 	ListUsers(ctx context.Context, opts types.ListUserOptions, page, pageSize uint64) ([]types.User, error)
 	Total(ctx context.Context, opts types.ListUserOptions) (int64, error)
+	ListUsersWithGlobalRole(ctx context.Context, opts types.ListUserOptions, globalRole string, page, pageSize uint64) ([]types.UserWithRole, error)
+	TotalWithGlobalRole(ctx context.Context, opts types.ListUserOptions, globalRole string) (int64, error)
 	UpdateUserPlan(ctx context.Context, appid, id, planID string) error
 	BatchUpdateUserPlan(ctx context.Context, appid string, ids []string, planID string) error
+}
+
+// UserGlobalRoleStore 全局用户角色存储接口
+type UserGlobalRoleStore interface {
+	sqlstore.SqlCommons // 继承通用SQL操作
+	Create(ctx context.Context, data types.UserGlobalRole) error
+	GetUserRole(ctx context.Context, appid, userID string) (*types.UserGlobalRole, error)
+	UpdateUserRole(ctx context.Context, appid, userID, role string) error
+	Delete(ctx context.Context, appid, userID string) error
+	ListUsersByRole(ctx context.Context, opts types.ListUserGlobalRoleOptions, page, pageSize uint64) ([]types.UserGlobalRole, error)
+	Total(ctx context.Context, opts types.ListUserGlobalRoleOptions) (int64, error)
+	ListUserIDsByRole(ctx context.Context, appid, role string) ([]string, error)
+	DeleteAll(ctx context.Context, appid string) error
 }
 
 type ChatSessionStore interface {
@@ -145,16 +163,16 @@ type ChatMessageStore interface {
 	sqlstore.SqlCommons // 继承通用SQL操作
 	Create(ctx context.Context, data *types.ChatMessage) error
 	GetOne(ctx context.Context, id string) (*types.ChatMessage, error)
-	RewriteMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete int32) error
-	AppendMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete int32) error
-	UpdateMessageCompleteStatus(ctx context.Context, sessionID, id string, complete int32) error
+	RewriteMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete types.MessageProgress) error
+	AppendMessage(ctx context.Context, spaceID, sessionID, id string, message json.RawMessage, complete types.MessageProgress) error
+	UpdateMessageCompleteStatus(ctx context.Context, sessionID, id string, complete types.MessageProgress) error
 	UpdateMessageAttach(ctx context.Context, sessionID, id string, attach types.ChatMessageAttach) error
 	DeleteMessage(ctx context.Context, id string) error
 	DeleteAll(ctx context.Context, spaceID string) error
 	DeleteSessionMessage(ctx context.Context, spaceID, sessionID string) error
-	ListSessionMessageUpToGivenID(ctx context.Context, spaceID, sessionID, msgID string, page, pageSize uint64) ([]*types.ChatMessage, error)
-	ListSessionMessage(ctx context.Context, spaceID, sessionID, afterMsgID string, page, pageSize uint64) ([]*types.ChatMessage, error)
-	TotalSessionMessage(ctx context.Context, spaceID, sessionID, afterMsgID string) (int64, error)
+	ListSessionMessageUpToGivenID(ctx context.Context, spaceID, sessionID string, msgSequence int64, page, pageSize uint64) ([]*types.ChatMessage, error)
+	ListSessionMessage(ctx context.Context, spaceID, sessionID string, msgSequence int64, page, pageSize uint64) ([]*types.ChatMessage, error)
+	TotalSessionMessage(ctx context.Context, spaceID, sessionID string, msgSequence int64) (int64, error)
 	Exist(ctx context.Context, spaceID, sessionID, msgID string) (bool, error)
 	GetMessagesByIDs(ctx context.Context, msgIDs []string) ([]*types.ChatMessage, error)
 	GetSessionLatestMessage(ctx context.Context, spaceID, sessionID string) (*types.ChatMessage, error)
@@ -189,6 +207,8 @@ type FileManagementStore interface {
 	GetByID(ctx context.Context, spaceID, file string) (*types.FileManagement, error)
 	UpdateStatus(ctx context.Context, spaceID string, files []string, status int) error
 	Delete(ctx context.Context, spaceID, file string) error
+	ListBySpace(ctx context.Context, spaceID string) ([]types.FileManagement, error)
+	DeleteAll(ctx context.Context, spaceID string) error
 }
 
 type AITokenUsageStore interface {
@@ -208,6 +228,7 @@ type ShareTokenStore interface {
 	GetByToken(ctx context.Context, token string) (*types.ShareToken, error)
 	UpdateExpireTime(ctx context.Context, id, expireAt int64) error
 	Delete(ctx context.Context, token string) error
+	DeleteBySpace(ctx context.Context, spaceID string) error
 }
 
 type JournalStore interface {
@@ -251,4 +272,83 @@ type SpaceApplicationStore interface {
 	Delete(ctx context.Context, spaceID, userID string) error
 	Total(ctx context.Context, spaceID string, opts types.ListSpaceApplicationOptions) (int64, error)
 	List(ctx context.Context, spaceID string, opts types.ListSpaceApplicationOptions, page, pagesize uint64) ([]types.SpaceApplication, error)
+}
+
+type ModelProviderStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.ModelProvider) error
+	Get(ctx context.Context, id string) (*types.ModelProvider, error)
+	Update(ctx context.Context, id string, data types.ModelProvider) error
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context, opts types.ListModelProviderOptions, page, pageSize uint64) ([]types.ModelProvider, error)
+	Total(ctx context.Context, opts types.ListModelProviderOptions) (int64, error)
+}
+
+type ModelConfigStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.ModelConfig) error
+	Get(ctx context.Context, id string) (*types.ModelConfig, error)
+	Update(ctx context.Context, id string, data types.ModelConfig) error
+	Delete(ctx context.Context, id string) error
+	DeleteByProviderID(ctx context.Context, providerID string) error
+	List(ctx context.Context, opts types.ListModelConfigOptions) ([]types.ModelConfig, error)
+	ListWithProvider(ctx context.Context, opts types.ListModelConfigOptions) ([]*types.ModelConfig, error)
+	Total(ctx context.Context, opts types.ListModelConfigOptions) (int64, error)
+}
+
+type CustomConfigStore interface {
+	sqlstore.SqlCommons
+	Upsert(ctx context.Context, data types.CustomConfig) error
+	BatchUpsert(ctx context.Context, configs []types.CustomConfig) error
+	Get(ctx context.Context, name string) (*types.CustomConfig, error)
+	Delete(ctx context.Context, name string) error
+	List(ctx context.Context, opts types.ListCustomConfigOptions, page, pageSize uint64) ([]types.CustomConfig, error)
+	Total(ctx context.Context, opts types.ListCustomConfigOptions) (int64, error)
+}
+
+type SpaceInvitationStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.Invitation) error
+	Get(ctx context.Context, appid, inviterID, inviteeEmail string) (*types.Invitation, error)
+	GetByID(ctx context.Context, appid string, id int64) (*types.Invitation, error)
+	UpdateStatus(ctx context.Context, appid string, id int64, status types.SpaceInvitationStatus) error
+	Delete(ctx context.Context, appid string, id int64) error
+	List(ctx context.Context, appid, spaceID string, opts types.ListSpaceInvitationOptions, page, pageSize uint64) ([]types.Invitation, error)
+	Total(ctx context.Context, appid, spaceID string, opts types.ListSpaceInvitationOptions) (int64, error)
+}
+
+type ContentTaskStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.ContentTask) error
+	Update(ctx context.Context, taskID string, data types.ContentTask) error
+	GetTask(ctx context.Context, taskID string) (*types.ContentTask, error)
+	UpdateStep(ctx context.Context, taskID string, step int) error
+	ListTasks(ctx context.Context, spaceID string, page, pageSize uint64) ([]types.ContentTask, error)
+	Delete(ctx context.Context, taskID string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	UpdateAIFileID(ctx context.Context, taskID, aiFileID string) error
+	ListUnprocessedTasks(ctx context.Context, page, pageSize uint64) ([]*types.ContentTask, error)
+	SetRetryTimes(ctx context.Context, id string, retryTimes int) error
+	ListTasksStatus(ctx context.Context, taskIDs []string) ([]types.TaskStatus, error)
+	Total(ctx context.Context, spaceID string) (int64, error)
+}
+
+type KnowledgeMetaStore interface {
+	Create(ctx context.Context, data types.KnowledgeMeta) error
+	GetKnowledgeMeta(ctx context.Context, id string) (*types.KnowledgeMeta, error)
+	Update(ctx context.Context, id string, data types.KnowledgeMeta) error
+	Delete(ctx context.Context, id string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	ListKnowledgeMetas(ctx context.Context, ids []string) ([]*types.KnowledgeMeta, error)
+}
+
+type KnowledgeRelMetaStore interface {
+	Create(ctx context.Context, data types.KnowledgeRelMeta) error
+	BatchCreate(ctx context.Context, datas []types.KnowledgeRelMeta) error
+	Get(ctx context.Context, id string) (*types.KnowledgeRelMeta, error)
+	Update(ctx context.Context, id string, data types.KnowledgeRelMeta) error
+	Delete(ctx context.Context, id string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	ListKnowledgesMeta(ctx context.Context, knowledgeIDs []string) ([]*types.KnowledgeRelMeta, error)
+	ListRelMetaWithKnowledgeContent(ctx context.Context, opts []types.MergeDataQuery) ([]*types.RelMetaWithKnowledge, error)
 }

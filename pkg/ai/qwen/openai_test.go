@@ -24,8 +24,8 @@ func init() {
 }
 
 func new() *qwen.Driver {
-	fmt.Println(os.Getenv("BREW_API_AI_ALI_TOKEN"), os.Getenv("BREW_API_AI_ALI_ENDPOINT"))
-	return qwen.New(os.Getenv("BREW_API_AI_ALI_TOKEN"), os.Getenv("BREW_API_AI_ALI_ENDPOINT"), ai.ModelName{
+	fmt.Println(os.Getenv("QUKA_API_AI_ALI_TOKEN"), os.Getenv("QUKA_API_AI_ALI_ENDPOINT"))
+	return qwen.New(os.Getenv("QUKA_API_AI_ALI_TOKEN"), os.Getenv("QUKA_API_AI_ALI_ENDPOINT"), ai.ModelName{
 		ChatModel:      "qwen-plus",
 		EmbeddingModel: "text-embedding-v3",
 	})
@@ -65,7 +65,7 @@ func Test_Generate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
-	opts := d.NewQuery(ctx, []*types.MessageContext{
+	opts := d.NewQuery(ctx, "qwen-plus", []*types.MessageContext{
 		{
 			Role:    types.USER_ROLE_USER,
 			Content: "我的车现在停在哪里？",
@@ -143,19 +143,6 @@ pgvector/pgvector:pg16
 	t.Log(resp)
 }
 
-func Test_EnhanceQuery(t *testing.T) {
-	query := "喝小红有什么作用？"
-
-	d := new()
-	opts := ai.NewEnhance(context.Background(), d)
-	opts.WithPrompt(ai.PROMPT_ENHANCE_QUERY_CN)
-	res, err := opts.EnhanceQuery(query)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(res, res.Usage)
-}
-
 func Test_Chunk(t *testing.T) {
 	content := `通过docker部署向量数据库postgres，pgvector的docker部署方式：
 docker run --restart=always \
@@ -181,7 +168,7 @@ pgvector/pgvector:pg16`
 
 func Test_DescribeImage(t *testing.T) {
 	d := new()
-	opts := d.NewQuery(context.Background(), []*types.MessageContext{
+	opts := d.NewQuery(context.Background(), "qwen-plus", []*types.MessageContext{
 		{
 			Role: types.USER_ROLE_USER,
 			MultiContent: []openai.ChatMessagePart{
@@ -201,5 +188,5 @@ func Test_DescribeImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Log(resp.Message())
+	t.Log(resp.Choices[0].Message.Content)
 }

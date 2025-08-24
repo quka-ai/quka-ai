@@ -21,11 +21,10 @@ type AccessToken struct {
 	ExpiresAt int64  `json:"expires_at" db:"expires_at"` // 过期时间，UNIX时间戳
 }
 
-func (s *AccessToken) TokenClaims() (*security.TokenClaims, error) {
+func (s *AccessToken) TokenClaims() (security.TokenClaims, error) {
 	if s.Version != "" && s.Version != DEFAULT_ACCESS_TOKEN_VERSION {
-		return nil, errors.New("unkown access token version")
+		return security.TokenClaims{}, errors.New("unkown access token version")
 	}
-	// TODO: get appname to replace 'brew'
-	claim := security.NewTokenClaims(s.Appid, "brew", s.UserID, s.UserID, "cs", s.ExpiresAt)
-	return &claim, nil
+	claim := security.NewTokenClaims(s.Appid, "quka", s.UserID, s.UserID, "cs", s.ExpiresAt)
+	return claim, nil
 }

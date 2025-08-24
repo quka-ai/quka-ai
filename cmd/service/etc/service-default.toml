@@ -24,6 +24,13 @@ endpoint = ""
 embedding_model = ""
 chat_model = ""
 
+[ai.baishan]
+token = ""
+endpoint = "https://api.edgefn.net/v1"
+[ai.baishan.models]
+rerank_model = "bge-reranker-v2-m3"
+chat_model = "Qwen3-32B-FP8"
+
 [ai.usage]
 # which ai driver you want to ...
 "embedding.query"=""  # eg: qwen 

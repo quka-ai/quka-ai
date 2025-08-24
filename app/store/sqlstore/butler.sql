@@ -1,5 +1,5 @@
--- 创建 bw_butler 表
-CREATE TABLE bw_butler (
+-- 创建 quka_butler 表
+CREATE TABLE IF NOT EXISTS quka_butler (
     table_id VARCHAR(32) PRIMARY KEY,  -- 记录ID, 自动递增
     user_id VARCHAR(32) NOT NULL, -- 关联用户id
     table_name VARCHAR(255) NOT NULL,  -- 日常事项名称
@@ -10,13 +10,13 @@ CREATE TABLE bw_butler (
 );
 
 -- 为表的字段添加注释
-COMMENT ON COLUMN bw_butler.table_id IS '记录ID, 自动递增';
-COMMENT ON COLUMN bw_butler.user_id IS '关联用户id';
-COMMENT ON COLUMN bw_butler.table_name IS '日常事项的名称';
-COMMENT ON COLUMN bw_butler.table_description IS '事项的详细描述';
-COMMENT ON COLUMN bw_butler.table_data IS '与事项相关的额外数据，支持结构化存储';
-COMMENT ON COLUMN bw_butler.created_at IS '记录的创建时间，Unix时间戳';
-COMMENT ON COLUMN bw_butler.updated_at IS '记录的最后更新时间，Unix时间戳';
+COMMENT ON COLUMN quka_butler.table_id IS '记录ID, 自动递增';
+COMMENT ON COLUMN quka_butler.user_id IS '关联用户id';
+COMMENT ON COLUMN quka_butler.table_name IS '日常事项的名称';
+COMMENT ON COLUMN quka_butler.table_description IS '事项的详细描述';
+COMMENT ON COLUMN quka_butler.table_data IS '与事项相关的额外数据，支持结构化存储';
+COMMENT ON COLUMN quka_butler.created_at IS '记录的创建时间，Unix时间戳';
+COMMENT ON COLUMN quka_butler.updated_at IS '记录的最后更新时间，Unix时间戳';
 
 -- 创建索引，方便通过名称查询
-CREATE INDEX idx_bulter_user_id ON bw_butler (user_id);
+CREATE INDEX IF NOT EXISTS idx_bulter_user_id ON quka_butler (user_id);

@@ -24,8 +24,8 @@ func init() {
 }
 
 func new() *openai.Driver {
-	fmt.Println(os.Getenv("BREW_API_AI_OPENAI_ENDPOINT"))
-	return openai.New(os.Getenv("BREW_API_AI_OPENAI_TOKEN"), os.Getenv("BREW_API_AI_OPENAI_ENDPOINT"), ai.ModelName{
+	fmt.Println(os.Getenv("QUKA_API_AI_OPENAI_ENDPOINT"))
+	return openai.New(os.Getenv("QUKA_API_AI_OPENAI_TOKEN"), os.Getenv("QUKA_API_AI_OPENAI_ENDPOINT"), ai.ModelName{
 		ChatModel:      "openai/gpt-4o-mini",
 		EmbeddingModel: string(oai.LargeEmbedding3),
 	})
@@ -162,5 +162,5 @@ func Test_DescribeImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Log(resp.Message())
+	t.Log(resp.Choices[0].Message.Content)
 }

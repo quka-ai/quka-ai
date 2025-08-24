@@ -29,7 +29,7 @@ func NewKnowledgeStore(provider SqlProviderAchieve) *KnowledgeStore {
 	store := &KnowledgeStore{}
 	store.SetProvider(provider)
 	store.SetTable(types.TABLE_KNOWLEDGE)
-	store.SetAllColumns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at")
+	store.SetAllColumns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at")
 	return store
 }
 
@@ -41,9 +41,10 @@ func (s *KnowledgeStore) Create(ctx context.Context, data types.Knowledge) error
 	if data.UpdatedAt == 0 {
 		data.UpdatedAt = time.Now().Unix()
 	}
+
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at").
-		Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt)
+		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at").
+		Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt)
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -59,12 +60,16 @@ func (s *KnowledgeStore) Create(ctx context.Context, data types.Knowledge) error
 
 func (s *KnowledgeStore) BatchCreate(ctx context.Context, datas []*types.Knowledge) error {
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at")
+		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at")
 	for _, data := range datas {
 		if data.CreatedAt == 0 {
 			data.CreatedAt = time.Now().Unix()
 		}
-		query = query.Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt)
+		if data.UpdatedAt == 0 {
+			data.UpdatedAt = time.Now().Unix()
+		}
+
+		query = query.Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt)
 	}
 
 	queryString, args, err := query.ToSql()
@@ -345,4 +350,19 @@ func (s *KnowledgeStore) Total(ctx context.Context, opts types.GetKnowledgeOptio
 		return 0, err
 	}
 	return total, nil
+}
+
+// UpdateExpiredAt 更新单个knowledge的过期时间
+func (s *KnowledgeStore) UpdateExpiredAt(ctx context.Context, knowledgeID string, expiredAt int64) error {
+	query := sq.Update(s.GetTable()).
+		Set("expired_at", expiredAt).
+		Where(sq.Eq{"id": knowledgeID})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return ErrorSqlBuild(err)
+	}
+
+	_, err = s.GetMaster(ctx).Exec(queryString, args...)
+	return err
 }

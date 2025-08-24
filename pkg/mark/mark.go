@@ -1,11 +1,17 @@
 package mark
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
+
+type VariableHandler interface {
+	Do(text string) string
+	Undo(text string) string
+}
 
 type sensitiveWorker struct {
 	contents []string
@@ -16,17 +22,23 @@ var (
 	HiddenRegexp = regexp.MustCompile(`\$hidden\[(.*?)\]`)
 )
 
-func ResolveHidden(text string, getValueFunc func(fakeValue string) string) (string, bool) {
+func ResolveHidden(text string, getValueFunc func(fakeValue string) string, trimVar bool) (string, bool) {
 	matches := HiddenRegexp.FindAllStringSubmatch(text, -1)
 	for _, match := range matches {
-		text = strings.Replace(text, match[0], getValueFunc(match[0]), 1)
+		actualValue := getValueFunc(match[0])
+		if trimVar {
+			actualValue = strings.TrimPrefix(actualValue, "$hidden[")
+			actualValue = strings.TrimSuffix(actualValue, "]")
+		}
+		text = strings.Replace(text, match[0], actualValue, 1)
 	}
+
 	return text, len(matches) > 0
 }
 
 func (s *sensitiveWorker) Do(text string) string {
+	fmt.Println("do", text)
 	matches := HiddenRegexp.FindAllStringSubmatch(text, -1)
-
 	for _, match := range matches {
 		s.contents = append(s.contents, match[0])
 		n := strings.ReplaceAll(match[0], match[1], utils.RandomStr(10))
@@ -39,6 +51,7 @@ func (s *sensitiveWorker) Do(text string) string {
 }
 
 func (s *sensitiveWorker) Undo(text string) string {
+	fmt.Println("undo", text, s.index)
 	for n, o := range s.index {
 		text = strings.ReplaceAll(text, n, o)
 	}

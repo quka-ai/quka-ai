@@ -3,15 +3,16 @@ package v1
 import (
 	"context"
 
+	"github.com/samber/lo"
+
 	"github.com/quka-ai/quka-ai/pkg/security"
 	"github.com/quka-ai/quka-ai/pkg/types"
-	"github.com/samber/lo"
 )
 
 const (
-	TOKEN_CONTEXT_KEY = "__brew.access_token"
-	LANGUAGE_KEY      = "__brew.accept_language"
-	APPID_KEY         = "__brew.appid"
+	TOKEN_CONTEXT_KEY = "__quka.access_token"
+	LANGUAGE_KEY      = "__quka.accept_language"
+	APPID_KEY         = "__quka.appid"
 )
 
 func InjectAppid(ctx context.Context) (string, bool) {
@@ -25,7 +26,7 @@ func InjectTokenClaim(ctx context.Context) (security.TokenClaims, bool) {
 	return val, ok
 }
 
-const SPACEID_CONTEXT_KEY = "__brew.spaceid"
+const SPACEID_CONTEXT_KEY = "__quka.spaceid"
 
 func InjectSpaceID(ctx context.Context) (string, bool) {
 	val, ok := ctx.Value(SPACEID_CONTEXT_KEY).(string)

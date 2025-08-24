@@ -54,10 +54,11 @@ func LoadBaseConfigFromENV() CoreConfig {
 }
 
 type CoreConfig struct {
-	Addr     string   `toml:"addr"`
-	Log      Log      `toml:"log"`
-	Postgres PGConfig `toml:"postgres"`
-	Site     Site     `toml:"site"`
+	Addr          string              `toml:"addr"`
+	Log           Log                 `toml:"log"`
+	Postgres      PGConfig            `toml:"postgres"`
+	Site          Site                `toml:"site"`
+	ObjectStorage ObjectStorageDriver `toml:"object_storage"`
 
 	AI srv.AIConfig `toml:"ai"`
 
@@ -66,6 +67,21 @@ type CoreConfig struct {
 	Prompt Prompt `toml:"prompt"`
 
 	bytes []byte `toml:"-"`
+}
+
+type ObjectStorageDriver struct {
+	StaticDomain string    `toml:"static_domain"`
+	Driver       string    `toml:"driver"`
+	S3           *S3Config `toml:"s3"`
+}
+
+type S3Config struct {
+	Bucket       string `toml:"bucket"`
+	Region       string `toml:"region"`
+	Endpoint     string `toml:"endpoint"`
+	AccessKey    string `toml:"access_key"`
+	SecretKey    string `toml:"secret_key"`
+	UsePathStyle bool   `toml:"use_path_style"`
 }
 
 type Site struct {
@@ -96,10 +112,9 @@ type Security struct {
 }
 
 func (c *CoreConfig) FromENV() {
-	c.Addr = os.Getenv("BREW_API_SERVICE_ADDRESS")
+	c.Addr = os.Getenv("QUKA_API_SERVICE_ADDRESS")
 	c.Log.FromENV()
 	c.Postgres.FromENV()
-	c.AI.FromENV()
 }
 
 type PGConfig struct {
@@ -107,7 +122,7 @@ type PGConfig struct {
 }
 
 func (m *PGConfig) FromENV() {
-	m.DSN = os.Getenv("BREW_API_POSTGRESQL_DSN")
+	m.DSN = os.Getenv("QUKA_API_POSTGRESQL_DSN")
 }
 
 func (c PGConfig) FormatDSN() string {
@@ -120,8 +135,8 @@ type Log struct {
 }
 
 func (l *Log) FromENV() {
-	l.Level = os.Getenv("BREW_API_LOG_LEVEL")
-	l.Path = os.Getenv("BREW_API_LOG_PATH")
+	l.Level = os.Getenv("QUKA_API_LOG_LEVEL")
+	l.Path = os.Getenv("QUKA_API_LOG_PATH")
 }
 
 func (l *Log) SlogLevel() slog.Level {

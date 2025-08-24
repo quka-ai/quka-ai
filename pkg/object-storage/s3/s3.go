@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,21 +17,42 @@ import (
 )
 
 type S3 struct {
-	Endpoint string
-	Region   string
-	Bucket   string
-	ak       string
-	sk       string
-	cli      *s3.Client
+	Endpoint                 string
+	Region                   string
+	Bucket                   string
+	ak                       string
+	sk                       string
+	cli                      *s3.Client
+	UsePathStyle             bool
+	PreSignURLExpireDuration time.Duration
 }
 
-func NewS3Client(endpoint, region, bucket, ak, sk string) *S3 {
+type S3Options func(*S3)
+
+func WithPathStyle(usePathStyle bool) S3Options {
+	return func(s *S3) {
+		s.UsePathStyle = usePathStyle
+	}
+}
+
+func WithPreSignURLExpireDuration(duration time.Duration) S3Options {
+	return func(s *S3) {
+		s.PreSignURLExpireDuration = duration
+	}
+}
+
+func NewS3Client(endpoint, region, bucket, ak, sk string, opts ...S3Options) *S3 {
 	cli := &S3{
-		Endpoint: endpoint,
-		Region:   region,
-		Bucket:   bucket,
-		ak:       ak,
-		sk:       sk,
+		Endpoint:                 endpoint,
+		Region:                   region,
+		Bucket:                   bucket,
+		ak:                       ak,
+		sk:                       sk,
+		PreSignURLExpireDuration: 24 * time.Hour * 7,
+	}
+
+	for _, opt := range opts {
+		opt(cli)
 	}
 
 	if _, err := cli.DefaultConfig(context.Background()); err != nil {
@@ -55,13 +75,19 @@ func (s *S3) DefaultConfig(ctx context.Context) (aws.Config, error) {
 			return aws.Endpoint{
 				URL:           s.Endpoint,
 				SigningRegion: s.Region,
+				// 关键配置：强制使用路径样式 URL
+				HostnameImmutable: s.UsePathStyle,
 			}, nil
 		})))
 	if err != nil {
 		return aws.Config{}, err
 	}
 
-	s.cli = s3.NewFromConfig(cfg)
+	// 创建 S3 客户端时启用路径样式
+	s.cli = s3.NewFromConfig(cfg, func(o *s3.Options) {
+		// 强制使用路径样式 URL（endpoint/bucket 而不是 bucket.endpoint）
+		o.UsePathStyle = s.UsePathStyle
+	})
 	return cfg, nil
 }
 
@@ -73,7 +99,7 @@ func (s *S3) GenGetObjectPreSignURL(filePath string) (string, error) {
 	req, err := s3PresignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(strings.TrimPrefix(filePath, "/")),
-	}, s3.WithPresignExpires(time.Minute*5))
+	}, s3.WithPresignExpires(s.PreSignURLExpireDuration))
 	if err != nil {
 		return "", err
 	}
@@ -90,6 +116,8 @@ func (s *S3) GetObject(ctx context.Context, key string) (*GetObjectResult, error
 	// s3M :=	manager.NewDownloader(s.cli)
 	// s3M.Download()
 	key = strings.TrimPrefix(key, "/")
+	fmt.Println("used s3", *s)
+	fmt.Println("GetObject key:", s.Bucket, key)
 
 	resp, err := s.cli.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
@@ -123,15 +151,15 @@ func (s *S3) GetObject(ctx context.Context, key string) (*GetObjectResult, error
 	}, nil
 }
 
-func (s *S3) GenClientUploadKey(filePath, file string, contentLength int64) (string, error) {
+func (s *S3) GenClientUploadKey(fullPath string, contentLength int64) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	filePath = strings.TrimPrefix(filePath, "/")
+	fullPath = strings.TrimPrefix(fullPath, "/")
 
 	s3PresignClient := s3.NewPresignClient(s.cli)
 	req, err := s3PresignClient.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket:        aws.String(s.Bucket),
-		Key:           aws.String(filepath.Join(filePath, file)),
+		Key:           aws.String(fullPath),
 		ContentLength: contentLength,
 	}, s3.WithPresignExpires(20*time.Second))
 	if err != nil {
@@ -141,30 +169,12 @@ func (s *S3) GenClientUploadKey(filePath, file string, contentLength int64) (str
 	return req.URL, nil
 }
 
-func (s *S3) Upload(filePath, file string, body io.Reader) error {
-	filePath = strings.TrimPrefix(filePath, "/")
-	// cfg, err := config.LoadDefaultConfig(
-	// 	context.Background(),
-	// 	config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
-	// 		Value: aws.Credentials{
-	// 			AccessKeyID: s.ak, SecretAccessKey: s.sk,
-	// 		},
-	// 	}),
-	// 	config.WithRegion(s.Region),
-	// 	config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-	// 		return aws.Endpoint{
-	// 			URL: s.Endpoint,
-	// 		}, nil
-	// 	})))
-	// if err != nil {
-	// 	return err
-	// }
-	// s3Client := s3.NewFromConfig(cfg)
+func (s *S3) Upload(fullPath string, body io.Reader) error {
 	s3Manager := manager.NewUploader(s.cli)
-
+	// fullPath = strings.TrimPrefix(fullPath, "/")
 	_, err := s3Manager.Upload(context.Background(), &s3.PutObjectInput{
 		Bucket: aws.String(s.Bucket),
-		Key:    aws.String(filepath.Join(filePath, file)),
+		Key:    aws.String(fullPath),
 		Body:   body,
 	})
 	if err != nil {
@@ -174,24 +184,8 @@ func (s *S3) Upload(filePath, file string, body io.Reader) error {
 }
 
 func (s *S3) Delete(fullPath string) error {
-	cfg, err := config.LoadDefaultConfig(
-		context.Background(),
-		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
-			Value: aws.Credentials{
-				AccessKeyID: s.ak, SecretAccessKey: s.sk,
-			},
-		}),
-		config.WithRegion(s.Region),
-		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-			return aws.Endpoint{
-				URL: s.Endpoint,
-			}, nil
-		})))
-	if err != nil {
-		return err
-	}
-	s3Client := s3.NewFromConfig(cfg)
-	_, err = s3Client.DeleteObject(context.Background(), &s3.DeleteObjectInput{
+	// fullPath = strings.TrimPrefix(fullPath, "/")
+	_, err := s.cli.DeleteObject(context.Background(), &s3.DeleteObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(fullPath),
 	})

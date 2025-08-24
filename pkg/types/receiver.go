@@ -1,7 +1,9 @@
 package types
 
-type ReceiveFunc func(startAt int32, msg MessageContent, progressStatus MessageProgress) error
-type DoneFunc func(startAt int32) error
+import "github.com/quka-ai/quka-ai/pkg/mark"
+
+type ReceiveFunc func(msg MessageContent, progressStatus MessageProgress) error
+type DoneFunc func(err error) error
 
 // websocket 推送实现
 type Messager interface {
@@ -10,7 +12,11 @@ type Messager interface {
 
 type Receiver interface {
 	IsStream() bool
+	Copy() Receiver
 	GetReceiveFunc() ReceiveFunc
 	GetDoneFunc(callback func(msg *ChatMessage)) DoneFunc
-	RecvMessageInit(userReqMsg *ChatMessage, msgID string, seqID int64, ext ChatMessageExt) error
+	RecvMessageInit(ext ChatMessageExt) error
+	MessageID() string
+
+	VariableHandler() mark.VariableHandler
 }

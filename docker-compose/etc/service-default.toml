@@ -1,0 +1,32 @@
+[log]
+level = "debug"
+path = ""
+
+[postgres]
+dsn = "postgresql://quka:quka123@postgres:5432/quka?sslmode=disable"
+
+[site]
+default_avatar = "/image/default_avatar.png"
+[site.share]
+site_title = "Quka.AI"
+site_description = "Quka.AI - 快速构建个人第二大脑"
+
+[object_storage]
+static_domain = "http://{your host}:30080"
+driver = "s3"
+
+[object_storage.s3]
+bucket = "quka-bucket"
+region = ""
+endpoint = "http://minio:9000"
+access_key = "myminioadmin"
+secret_key = "minio-secret-key-change-me"
+use_path_style = true
+
+[custom_config]
+encrypt_key="aaaaaaaaaaaaaaaa"
+
+[custom_config.chunk_service]
+enabled=true 
+address="chunker:35051"
+timeout=10

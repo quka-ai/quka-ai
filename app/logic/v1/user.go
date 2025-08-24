@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/quka-ai/quka-ai/app/core"
@@ -121,6 +122,11 @@ func (l *UserLogic) GetUser(appid, id string) (*types.User, error) {
 		return nil, errors.New("AuthedUserLogin.GetUser.UserStore.GetUser.nil", i18n.ERROR_INTERNAL, nil).Code(http.StatusNotFound)
 	}
 
+	// 处理存储URL，如果是本地存储的文件则生成预签名URL
+	if user.Avatar, err = utils.ProcessStorageURL(user.Avatar, l.core.Plugins.FileStorage().GetStaticDomain(), l.core.Plugins.FileStorage().GenGetObjectPreSignURL); err != nil {
+		return nil, errors.New("AuthedUserLogin.GetUser.FileStorage.GenGetObjectPreSignURL", i18n.ERROR_INTERNAL, err)
+	}
+
 	return user, nil
 }
 
@@ -141,6 +147,19 @@ func NewAuthedUserLogic(ctx context.Context, core *core.Core) *AuthedUserLogic {
 }
 
 func (l *AuthedUserLogic) UpdateUserProfile(userName, email, avatar string) error {
+	// 检测avatar的host是否为对象存储的静态host，如果是则去除host只保留路径
+	if avatar != "" {
+		staticDomain := l.core.Plugins.FileStorage().GetStaticDomain()
+		if staticDomain != "" && strings.HasPrefix(avatar, staticDomain) {
+			// 去除静态host，只保留路径部分
+			avatar = strings.TrimPrefix(avatar, staticDomain)
+			// 确保路径以/开头
+			if !strings.HasPrefix(avatar, "/") {
+				avatar = "/" + avatar
+			}
+		}
+	}
+
 	err := l.core.Store().UserStore().UpdateUserProfile(l.ctx, l.GetUserInfo().Appid, l.GetUserInfo().User, userName, email, avatar)
 	if err != nil {
 		return errors.New("AuthedUserLogic.UpdateUserProfile.UserStore.UpdateUserProfile", i18n.ERROR_INTERNAL, err)

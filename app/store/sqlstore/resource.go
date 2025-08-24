@@ -16,7 +16,6 @@ func init() {
 	})
 }
 
-// ResourceStore 处理 bw_resource 表的操作
 type ResourceStore struct {
 	CommonFields
 }
@@ -134,4 +133,17 @@ func (s *ResourceStore) ListUserResources(ctx context.Context, userID string, pa
 		return nil, err
 	}
 	return res, nil
+}
+
+// DeleteAll 删除指定空间下的所有资源
+func (s *ResourceStore) DeleteAll(ctx context.Context, spaceID string) error {
+	query := sq.Delete(s.GetTable()).Where(sq.Eq{"space_id": spaceID})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return ErrorSqlBuild(err)
+	}
+
+	_, err = s.GetMaster(ctx).Exec(queryString, args...)
+	return err
 }

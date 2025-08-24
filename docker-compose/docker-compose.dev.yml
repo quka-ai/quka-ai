@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: docker.1ms.run/library/nginx:alpine
+    networks:
+      - quka-network
+    ports:
+      - "33001:80"
+    volumes:
+      - ./etc/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      #- qukaweb
+      #- qukaai
+      - minio
+    restart: unless-stopped
+  # qukaai:
+  #   user: "${UID}:${GID}"
+  #   image: docker.1ms.run/holdno/quka:v0.1.0
+  #   volumes:
+  #     - ./etc:/app/etc
+  # 权限初始化容器
+  chunker: 
+    image: holdnowby/filechunk-service:v0.2.0
+    networks:
+      - quka-network
+    ports:
+      - "33003:35051"
+    command: python scripts/start_server.py --host 0.0.0.0 --port 35051
+  postgres:
+    user: "${UID}:${GID}"
+    image: docker.1ms.run/pgvector/pgvector:pg17
+    networks:
+      - quka-network
+    restart: always
+    ports:
+      - "33004:5432"
+    environment:
+      POSTGRES_USER: ${QUKA_POSTGRES_USER:-quka}
+      POSTGRES_PASSWORD: ${QUKA_POSTGRES_PASSWORD:-quka123}
+    volumes:
+      # 选项1：使用命名卷（推荐，避免权限问题）
+      - ./data/postgres:/var/lib/postgresql/data
+      # 选项2：使用主机目录挂载（如果你需要直接访问数据）
+      # - ./data/postgres:/var/lib/postgresql/data
+  # MinIO 权限初始化容器
+  minio:
+    user: "${UID}:${GID}"
+    image: quay.io/minio/minio:latest
+    networks:
+      - quka-network
+    ports:
+      - "33005:9000"
+      - "33006:9001"
+    environment:
+      MINIO_ROOT_USER: ${QUKA_MINIO_ROOT_USER:-myminioadmin}
+      MINIO_ROOT_PASSWORD: ${QUKA_MINIO_ROOT_PASSWORD:-minio-secret-key-change-me}
+    volumes:
+      - ./data/minio:/mnt/data
+    command: server /mnt/data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      - minio
+    environment:
+      MINIO_ROOT_USER: ${QUKA_MINIO_ROOT_USER:-myminioadmin}
+      MINIO_ROOT_PASSWORD: ${QUKA_MINIO_ROOT_PASSWORD:-minio-secret-key-change-me}
+      MINIO_BUCKET: ${QUKA_MINIO_BUCKET:-quka-bucket}
+    entrypoint: >
+      /bin/sh -c "
+      echo '⏳ 等待 MinIO 启动...';
+      until /usr/bin/mc alias set minio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do
+        echo '   MinIO 还未就绪，等待中...';
+        sleep 2;
+      done;
+      echo '✅ MinIO 已启动，开始初始化...';
+      if /usr/bin/mc ls minio/$$MINIO_BUCKET >/dev/null 2>&1; then
+        echo '✅ Bucket 已存在: '$$MINIO_BUCKET;
+      else
+        echo '📦 创建 bucket: '$$MINIO_BUCKET;
+        /usr/bin/mc mb minio/$$MINIO_BUCKET;
+        echo '✅ Bucket 创建成功: '$$MINIO_BUCKET;
+      fi;
+      /usr/bin/mc cors set --json '{\"CORSRules\":[{\"AllowedOrigins\":[\"*\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"POST\",\"DELETE\"],\"AllowedHeaders\":[\"*\"]}]}' minio/$$MINIO_BUCKET;
+      echo '🎉 MinIO 初始化完成！';
+      echo '   - Bucket: '$$MINIO_BUCKET;
+      echo '   - Web UI: http://localhost:9001';
+      echo '   - 用户名: '$$MINIO_ROOT_USER;
+      exit 0;
+      "
+
+networks:
+  quka-network:
+    driver: bridge

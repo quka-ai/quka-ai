@@ -10,7 +10,7 @@ import (
 )
 
 type CreateResourceRequest struct {
-	ID          string `json:"id" binding:"required"`
+	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Cycle       *int   `json:"cycle"`
 	Tag         string `json:"tag" binding:"required"`
@@ -33,6 +33,9 @@ func (s *HttpSrv) CreateResource(c *gin.Context) {
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
+	if req.ID == "" {
+		req.ID = utils.GenUniqIDStr()
+	}
 	err = v1.NewResourceLogic(c, s.Core).CreateResource(spaceID, req.ID, req.Title, req.Description, req.Tag, cycle)
 	if err != nil {
 		response.APIError(c, err)

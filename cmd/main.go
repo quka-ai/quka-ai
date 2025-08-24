@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/quka-ai/quka-ai/cmd/service"
 	"github.com/spf13/cobra"
+
+	"github.com/quka-ai/quka-ai/cmd/service"
+	_ "github.com/quka-ai/quka-ai/pkg/plugins/selfhost"
 )
 
 func main() {

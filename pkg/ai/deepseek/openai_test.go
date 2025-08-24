@@ -19,8 +19,8 @@ func init() {
 }
 
 func new() *openai.Driver {
-	return openai.New(os.Getenv("BREW_API_AI_DEEPSEEK_TOKEN"), os.Getenv("BREW_API_AI_DEEPSEEK_ENDPOINT"), ai.ModelName{
-		ChatModel: os.Getenv("BREW_API_AI_DEEPSEEK_CHAT_MODEL"),
+	return openai.New(os.Getenv("QUKA_API_AI_DEEPSEEK_TOKEN"), os.Getenv("QUKA_API_AI_DEEPSEEK_ENDPOINT"), ai.ModelName{
+		ChatModel: os.Getenv("QUKA_API_AI_DEEPSEEK_CHAT_MODEL"),
 	})
 }
 
@@ -29,7 +29,7 @@ func Test_Generate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
-	opts := d.NewQuery(ctx, []*types.MessageContext{
+	opts := d.NewQuery(ctx, "deepseek-chat-v3", []*types.MessageContext{
 		{
 			Role:    types.USER_ROLE_USER,
 			Content: "我的车现在停在哪里？",
@@ -105,17 +105,4 @@ pgvector/pgvector:pg16
 	}
 
 	t.Log(resp)
-}
-
-func Test_EnhanceQuery(t *testing.T) {
-	query := "喝小红有什么作用？"
-
-	d := new()
-	opts := ai.NewEnhance(context.Background(), d)
-	opts.WithPrompt(ai.PROMPT_ENHANCE_QUERY_CN)
-	res, err := opts.EnhanceQuery(query)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(res, res.Usage)
 }

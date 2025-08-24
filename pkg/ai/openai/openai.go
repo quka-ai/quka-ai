@@ -110,11 +110,7 @@ func (s *Driver) EmbeddingForDocument(ctx context.Context, title string, content
 }
 
 func (s *Driver) NewQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	return ai.NewQueryOptions(ctx, s, query)
-}
-
-func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
-	return ai.NewEnhance(ctx, s)
+	return ai.NewQueryOptions(ctx, s, s.model.ChatModel, query)
 }
 
 func (s *Driver) MsgIsOverLimit(msgs []*types.MessageContext) bool {
@@ -163,22 +159,7 @@ func (s *Driver) EnhanceQuery(ctx context.Context, messages []openai.ChatComplet
 	return result, nil
 }
 
-func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionStream, error) {
-
-	req := openai.ChatCompletionRequest{
-		Model:  s.model.ChatModel,
-		Stream: true,
-		Messages: lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
-			return openai.ChatCompletionMessage{
-				Role:    item.Role.String(),
-				Content: item.Content,
-			}
-		}),
-		StreamOptions: &openai.StreamOptions{
-			IncludeUsage: true,
-		},
-	}
-
+func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
 	resp, err := s.client.CreateChatCompletionStream(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("Completion error: %w", err)
@@ -189,7 +170,7 @@ func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext)
 	return resp, nil
 }
 
-func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.GenerateResponse, error) {
+func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionResponse, error) {
 
 	req := openai.ChatCompletionRequest{
 		Model: s.model.ChatModel,
@@ -202,19 +183,36 @@ func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.G
 		}),
 	}
 
-	var result ai.GenerateResponse
 	resp, err := s.client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return result, fmt.Errorf("Completion error: %w", err)
+		return nil, fmt.Errorf("Completion error: %w", err)
 
 	}
 
 	slog.Debug("Query", slog.Any("query", req), slog.String("driver", NAME), slog.String("model", s.model.ChatModel))
 
-	result.Received = append(result.Received, resp.Choices[0].Message.Content)
-	result.Usage = &resp.Usage
+	return &resp, nil
+}
 
-	return result, nil
+func (s *Driver) Chat(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionResponse, error) {
+
+	resp, err := s.client.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("Completion error: %w", err)
+	}
+
+	slog.Debug("Query", slog.Any("query_stream", req), slog.String("driver", NAME), slog.String("model", s.model.ChatModel))
+
+	return &resp, nil
+}
+
+func (s *Driver) ChatStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
+	resp, err := s.client.CreateChatCompletionStream(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("Completion error: %w", err)
+	}
+
+	return resp, nil
 }
 
 const SummarizeFuncName = "summarize"

@@ -22,7 +22,7 @@ func init() {
 }
 
 func new() *gemini.Driver {
-	return gemini.New(os.Getenv("BREW_API_AI_GEMINI_TOKEN"))
+	return gemini.New(os.Getenv("QUKA_API_AI_GEMINI_TOKEN"))
 }
 
 func Test_Embedding(t *testing.T) {
@@ -101,7 +101,7 @@ func Test_Summarize(t *testing.T) {
 }
 
 func Test_Tool(t *testing.T) {
-	client, err := genai.NewClient(context.Background(), option.WithAPIKey(os.Getenv("BREW_API_AI_GEMINI_TOKEN")))
+	client, err := genai.NewClient(context.Background(), option.WithAPIKey(os.Getenv("QUKA_API_AI_GEMINI_TOKEN")))
 	if err != nil {
 		t.Fatal(err)
 	}

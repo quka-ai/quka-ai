@@ -1,9 +1,12 @@
 package types
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
+	"github.com/quka-ai/quka-ai/pkg/object-storage/s3"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 	"github.com/samber/lo"
 	"github.com/sashabaranov/go-openai"
@@ -27,13 +30,57 @@ type ChatMessage struct {
 
 type ChatMessageAttach []ChatAttach
 
-func (s ChatMessageAttach) ToMultiContent(text string) []openai.ChatMessagePart {
+func (s ChatMessageAttach) ToMultiContent(text string, fileReader interface {
+	DownloadFile(ctx context.Context, filePath string) (*s3.GetObjectResult, error)
+}) []openai.ChatMessagePart {
 	return lo.Map(s, func(item ChatAttach, _ int) openai.ChatMessagePart {
+		var (
+			base64Image string
+			err         error
+		)
+		if item.SignURL != "" {
+			base64Image, err = utils.FileToBase64(lo.If(item.SignURL != "", item.SignURL).Else(item.URL))
+			if err != nil {
+				slog.Error("Failed to convert file to base64", "error", err, "file", lo.If(item.SignURL != "", item.SignURL).Else(item.URL))
+				return openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: fmt.Sprintf("Failed to download file: %s", item.URL),
+				}
+			}
+		} else {
+			if fileReader != nil {
+				res, err := fileReader.DownloadFile(context.Background(), item.URL)
+				if err != nil {
+					slog.Error("Failed to download file", "error", err, "file", item.URL)
+					return openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeText,
+						Text: fmt.Sprintf("Failed to download file: %s", item.URL),
+					}
+				}
+
+				if base64Image, err = utils.FileBytesToBase64(res.File, res.FileType); err != nil {
+					slog.Error("Failed to convert file bytes to base64", "error", err, "file", item.URL)
+					return openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeText,
+						Text: fmt.Sprintf("Failed to convert file bytes to base64: %s", item.URL),
+					}
+				}
+			} else {
+				base64Image, err = utils.FileToBase64(item.URL)
+				if err != nil {
+					slog.Error("Failed to convert file to base64", "error", err, "file", item.URL)
+					return openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeText,
+						Text: fmt.Sprintf("Failed to convert file to base64: %s", item.URL),
+					}
+				}
+			}
+		}
 		return openai.ChatMessagePart{
 			Type: openai.ChatMessagePartTypeImageURL,
 			Text: text,
 			ImageURL: &openai.ChatMessageImageURL{
-				URL: lo.If(item.SignURL != "", item.SignURL).Else(item.URL),
+				URL: base64Image,
 			},
 		}
 	})
@@ -81,7 +128,6 @@ type PassageInfo struct {
 	Content  string `json:"content"`
 	Resource string `json:"resource"`
 	DateTime string `json:"date_time"`
-	SW       Undo   `json:"-"`
 }
 
 type Undo interface {
@@ -90,12 +136,15 @@ type Undo interface {
 }
 
 type CreateChatMessageArgs struct {
-	ID         string
-	Message    string
-	MsgType    MessageType
-	SendTime   int64
-	Agent      string
-	ChatAttach []ChatAttach
+	ID              string
+	Message         string
+	MsgType         MessageType
+	SendTime        int64
+	Agent           string
+	ChatAttach      []ChatAttach
+	EnableThinking  bool
+	EnableSearch    bool
+	EnableKnowledge bool
 }
 
 type ChatAttach struct {
@@ -112,6 +161,7 @@ const (
 	USER_ROLE_USER      MessageUserRole = 1 // 用户
 	USER_ROLE_ASSISTANT MessageUserRole = 2 // bot
 	USER_ROLE_SYSTEM    MessageUserRole = 3
+	USER_ROLE_TOOL      MessageUserRole = 4 // 工具
 )
 
 func (s MessageUserRole) String() string {
@@ -126,6 +176,8 @@ func GetMessageUserRoleStr(r MessageUserRole) string {
 		return "user"
 	case USER_ROLE_SYSTEM:
 		return "system"
+	case USER_ROLE_TOOL:
+		return "tool"
 	default:
 		return "unknown"
 	}
@@ -139,6 +191,8 @@ func GetMessageUserRole(r string) MessageUserRole {
 		return USER_ROLE_USER
 	case "system":
 		return USER_ROLE_SYSTEM
+	case "tool":
+		return USER_ROLE_TOOL
 	default:
 		return USER_ROLE_UNKNOWN
 	}
@@ -160,8 +214,9 @@ const (
 type MessageType int8
 
 const (
-	MESSAGE_TYPE_UNKNOWN MessageType = 0
-	MESSAGE_TYPE_TEXT    MessageType = 1
+	MESSAGE_TYPE_UNKNOWN   MessageType = 0
+	MESSAGE_TYPE_TEXT      MessageType = 1
+	MESSAGE_TYPE_TOOL_TIPS MessageType = 2
 )
 
 type EvaluateType int8
@@ -212,14 +267,17 @@ type MessageExt struct {
 	IsRead           []string     `json:"is_read"`
 	RelDocs          []string     `json:"rel_docs"`
 	Evaluate         EvaluateType `json:"evaluate"`
+	ToolName         string       `json:"tool_name"`
+	ToolArgs         string       `json:"tool_args"`
 	IsEvaluateEnable bool         `json:"is_evaluate_enable"`
 }
 
 type StreamMessage struct {
-	MessageID string      `json:"message_id"`
-	SessionID string      `json:"session_id"`
-	Message   string      `json:"message"`
-	StartAt   int32       `json:"start_at"`
-	Complete  int32       `json:"complete"`
-	MsgType   MessageType `json:"msg_type"`
+	MessageID string          `json:"message_id"`
+	SessionID string          `json:"session_id"`
+	Message   string          `json:"message,omitempty"`
+	ToolTips  json.RawMessage `json:"tool_tips,omitempty"`
+	StartAt   int             `json:"start_at"`
+	Complete  int32           `json:"complete"`
+	MsgType   MessageType     `json:"msg_type"`
 }

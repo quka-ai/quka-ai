@@ -39,32 +39,65 @@ func (l *AuthLogic) GetAccessTokenDetail(appid, token string) (*types.AccessToke
 	return data, nil
 }
 
-func (l *AuthLogic) GenAccessToken(appid, desc, userID string, expiresAt int64) (string, error) {
-	tokenStore := l.core.Store().AccessTokenStore()
-REGEN:
-	accessToken := utils.RandomStr(100)
-	exist, err := tokenStore.GetAccessToken(l.ctx, appid, accessToken)
-	if err != nil && err != sql.ErrNoRows {
-		return "", errors.New("AuthLogic.GenNewAccessToken.GetAccessToken", i18n.ERROR_INTERNAL, err)
-	}
+func (l *AuthLogic) InitAdminUser(appid string) (string, error) {
+	userID := utils.GenRandomID()
+	var accessToken string
+	l.core.Store().Transaction(l.ctx, func(ctx context.Context) error {
+		// 创建管理员用户
+		err := l.core.Store().UserStore().Create(l.ctx, types.User{
+			ID:        userID,
+			Appid:     appid,
+			Name:      "Admin",
+			Avatar:    "",
+			PlanID:    types.USER_PLAN_ULTRA,
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
+		})
+		if err != nil {
+			return errors.New("AuthLogic.InitAdminUser.CreateUser", i18n.ERROR_INTERNAL, err)
+		}
 
-	if exist != nil {
-		// TODO: limit
-		goto REGEN
-	}
+		// 创建管理员的全局角色记录（设为超级管理员）
+		globalRole := types.UserGlobalRole{
+			UserID:    userID,
+			Appid:     appid,
+			Role:      types.GlobalRoleChief,
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
+		}
+		if err := l.core.Store().UserGlobalRoleStore().Create(l.ctx, globalRole); err != nil {
+			return errors.New("AuthLogic.InitAdminUser.CreateGlobalRole", i18n.ERROR_INTERNAL, err)
+		}
 
-	err = tokenStore.Create(l.ctx, types.AccessToken{
-		Appid:     appid,
-		UserID:    userID,
-		Version:   types.DEFAULT_ACCESS_TOKEN_VERSION,
-		Token:     accessToken,
-		ExpiresAt: expiresAt,
-		Info:      desc,
+		// 创建AccessToken
+		tokenStore := l.core.Store().AccessTokenStore()
+	REGEN:
+		accessToken = utils.RandomStr(100)
+		exist, err := tokenStore.GetAccessToken(l.ctx, appid, accessToken)
+		if err != nil && err != sql.ErrNoRows {
+			return errors.New("AuthLogic.GenNewAccessToken.GetAccessToken", i18n.ERROR_INTERNAL, err)
+		}
+
+		if exist != nil {
+			// TODO: limit
+			goto REGEN
+		}
+
+		err = tokenStore.Create(l.ctx, types.AccessToken{
+			Appid:     appid,
+			UserID:    userID,
+			Version:   types.DEFAULT_ACCESS_TOKEN_VERSION,
+			Token:     accessToken,
+			ExpiresAt: time.Now().AddDate(999, 0, 0).Unix(),
+			Info:      "Admin user token",
+			CreatedAt: time.Now().Unix(),
+		})
+
+		if err != nil {
+			return errors.New("AuthLogic.GenNewAccessToken.Create", i18n.ERROR_INTERNAL, err)
+		}
+		return nil
 	})
-
-	if err != nil {
-		return "", errors.New("AuthLogic.GenNewAccessToken.Create", i18n.ERROR_INTERNAL, err)
-	}
 
 	return accessToken, nil
 }

@@ -19,7 +19,9 @@ type Plugins interface {
 	UseLimiter(c *gin.Context, key string, method string, opts ...LimitOption) Limiter
 	FileStorage() FileStorage
 	CreateUserDefaultPlan(ctx context.Context, appid, userID string) (string, error)
-	AIChatLogic(agentType string, receiver types.Receiver) AIChatLogic
+	AIChatLogic(agentType string) AIChatLogic
+	GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error)
+	GenMessageID() string
 	EncryptData(data []byte) ([]byte, error)
 	DecryptData(data []byte) ([]byte, error)
 	DeleteSpace(ctx context.Context, spaceID string) error
@@ -54,10 +56,7 @@ type Cache interface {
 }
 
 type AIChatLogic interface {
-	InitAssistantMessage(ctx context.Context, msgID string, seqID int64, userReqMessage *types.ChatMessage, ext types.ChatMessageExt) (*types.ChatMessage, error)
-	RequestAssistant(ctx context.Context, docs types.RAGDocs, reqMsgInfo *types.ChatMessage) error
-	GetChatSessionSeqID(ctx context.Context, spaceID, sessionID string) (int64, error)
-	GenMessageID() string
+	RequestAssistant(ctx context.Context, reqMsgInfo *types.ChatMessage, receiver types.Receiver, opts *types.AICallOptions) error
 }
 
 type UploadFileMeta struct {
@@ -70,8 +69,8 @@ type UploadFileMeta struct {
 // FileStorage interface defines methods for file operations.
 type FileStorage interface {
 	GetStaticDomain() string
-	GenUploadFileMeta(filePath, fileName string, contentLength int64) (UploadFileMeta, error)
-	SaveFile(filePath, fileName string, content []byte) error
+	GenUploadFileMeta(fullPath string, contentLength int64) (UploadFileMeta, error)
+	SaveFile(fullPath string, content []byte) error
 	DeleteFile(fullFilePath string) error
 	GenGetObjectPreSignURL(url string) (string, error)
 	DownloadFile(ctx context.Context, filePath string) (*s3.GetObjectResult, error)
@@ -84,6 +83,8 @@ type Limiter interface {
 type SetupFunc func() Plugins
 
 func (c *Core) InstallPlugins(p Plugins) {
-	p.Install(c)
+	if err := p.Install(c); err != nil {
+		panic(err)
+	}
 	c.Plugins = p
 }

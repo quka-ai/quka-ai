@@ -99,18 +99,14 @@ func (s *Driver) EmbeddingForDocument(ctx context.Context, title string, content
 	return s.embedding(ctx, title, content)
 }
 
-func (s *Driver) NewQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	opts := ai.NewQueryOptions(ctx, s, query)
+func (s *Driver) NewQuery(ctx context.Context, model string, query []*types.MessageContext) *ai.QueryOptions {
+	opts := ai.NewQueryOptions(ctx, s, model, query)
 	return opts
 }
 
-func (s *Driver) NewVisionQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	opts := ai.NewQueryOptions(ctx, s, query)
+func (s *Driver) NewVisionQuery(ctx context.Context, model string, query []*types.MessageContext) *ai.QueryOptions {
+	opts := ai.NewQueryOptions(ctx, s, model, query)
 	return opts
-}
-
-func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
-	return ai.NewEnhance(ctx, s)
 }
 
 func convertModelToVLModel(model string) string {
@@ -127,28 +123,17 @@ func convertModelToVLModel(model string) string {
 	}
 }
 
-func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionStream, error) {
+func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
 	needToSwitchVL := false
-	messages := lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
-		if len(item.MultiContent) > 0 {
+	for _, v := range req.Messages {
+		if len(v.MultiContent) > 0 {
 			needToSwitchVL = true
+			break
 		}
-		return openai.ChatCompletionMessage{
-			Role:         item.Role.String(),
-			Content:      item.Content,
-			MultiContent: item.MultiContent,
-		}
-	})
+	}
 
-	model := lo.If(needToSwitchVL, convertModelToVLModel(s.model.ChatModel)).Else(s.model.ChatModel)
-	req := openai.ChatCompletionRequest{
-		Model:    model,
-		Stream:   true,
-		Messages: messages,
-		StreamOptions: &openai.StreamOptions{
-			IncludeUsage: true,
-		},
-		TopP: 0.2,
+	if needToSwitchVL {
+		req.Model = convertModelToVLModel(req.Model)
 	}
 
 	resp, err := s.client.CreateChatCompletionStream(ctx, req)
@@ -161,7 +146,7 @@ func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext)
 	return resp, nil
 }
 
-func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.GenerateResponse, error) {
+func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionResponse, error) {
 	needToSwitchVL := false
 	messages := lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 		if len(item.MultiContent) > 0 {
@@ -181,17 +166,12 @@ func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.G
 
 	slog.Debug("Query", slog.Any("query", req), slog.String("driver", NAME))
 
-	var result ai.GenerateResponse
 	resp, err := s.client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return result, fmt.Errorf("Completion error: %w", err)
+		return nil, fmt.Errorf("Completion error: %w", err)
 	}
 
-	result.Received = append(result.Received, resp.Choices[0].Message.Content)
-	result.Usage = &resp.Usage
-	result.Model = resp.Model
-
-	return result, nil
+	return &resp, nil
 }
 
 const SummarizeFuncName = "summarize"

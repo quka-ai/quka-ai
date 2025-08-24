@@ -23,8 +23,8 @@ func init() {
 }
 
 func new() *ollama.Driver {
-	fmt.Println(os.Getenv("BREW_API_AI_OLLAMA_TOKEN"), os.Getenv("BREW_API_AI_OLLAMA_ENDPOINT"))
-	return ollama.New(os.Getenv("BREW_API_AI_OLLAMA_TOKEN"), os.Getenv("BREW_API_AI_OLLAMA_ENDPOINT"), ai.ModelName{
+	fmt.Println(os.Getenv("QUKA_API_AI_OLLAMA_TOKEN"), os.Getenv("QUKA_API_AI_OLLAMA_ENDPOINT"))
+	return ollama.New(os.Getenv("QUKA_API_AI_OLLAMA_TOKEN"), os.Getenv("QUKA_API_AI_OLLAMA_ENDPOINT"), ai.ModelName{
 		EmbeddingModel: "bge-m3",
 	})
 }

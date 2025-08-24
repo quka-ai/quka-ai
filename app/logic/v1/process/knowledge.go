@@ -20,6 +20,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 var (
@@ -292,7 +293,7 @@ func (p *KnowledgeProcess) processEmbedding(req *EmbeddingRequest) {
 
 		markdownContent := string(req.data.Content)
 		if req.data.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			markdownContent, err = utils.ConvertEditorJSBlocksToMarkdown(json.RawMessage(req.data.Content))
+			markdownContent, err = editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(req.data.Content))
 			if err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", append(logAttrs, slog.String("error", err.Error()))...)
 				return
@@ -457,7 +458,7 @@ func (p *KnowledgeProcess) processSummary(req *SummaryRequest) {
 	sw := mark.NewSensitiveWork()
 	markdownContent := string(req.data.Content)
 	if req.data.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		markdownContent, err = utils.ConvertEditorJSBlocksToMarkdown(json.RawMessage(req.data.Content))
+		markdownContent, err = editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(req.data.Content))
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", append(logAttrs, slog.String("error", err.Error()))...)
 			return
@@ -543,7 +544,7 @@ func (p *KnowledgeProcess) processSummary(req *SummaryRequest) {
 			}
 		}
 
-		if err = p.core.Store().KnowledgeStore().FinishedStageSummarize(req.ctx, req.data.SpaceID, req.data.ID, summary); err != nil {
+		if err = p.core.Store().KnowledgeStore().FinishedStageSummarize(req.ctx, req.data.SpaceID, req.data.ID, *summary); err != nil {
 			slog.Error("Failed to set finished summary stage", append(logAttrs, slog.String("error", err.Error()))...)
 			return err
 		}

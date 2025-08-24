@@ -2,6 +2,7 @@ package srv
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	"github.com/holdno/firetower/protocol"
@@ -47,11 +48,14 @@ func SetupSocketSrv() (*Tower, error) {
 		return nil, err
 	}
 
-	return &Tower{
+	t := &Tower{
 		pusher:              pusher,
 		Manager:             tower,
 		systemEventRegistry: newEventRegistry(),
-	}, nil
+	}
+
+	t.RegisterServerSideTopic()
+	return t, nil
 }
 
 func ApplyTower() ApplyFunc {
@@ -121,10 +125,12 @@ func (t *Tower) RegisterServerSideTopic() {
 	serverSideTower.Subscribe(fire.Context, []string{ // 订阅事件
 		types.TOWER_EVENT_CLOSE_CHAT_STREAM,
 	})
+	fmt.Println("register server side topic", types.TOWER_EVENT_CLOSE_CHAT_STREAM)
 	serverSideTower.SetReceivedHandler(func(fi fireprotocol.ReadOnlyFire[PublishData]) (ignore bool) {
 		slog.Debug("new signal", slog.String("topic", fi.GetMessage().Topic))
 		switch fi.GetMessage().Topic {
 		case types.TOWER_EVENT_CLOSE_CHAT_STREAM:
+			fmt.Println("close chat stream", fi.GetMessage().Data.Subject)
 			// 关闭GPT消息回复状态
 			closeFunc, exist := t.systemEventRegistry.ChatStreamSignal.Get(fi.GetMessage().Data.Subject)
 			if exist {
@@ -147,18 +153,19 @@ func newEventRegistry() *EventRegistry {
 	}
 }
 
-func (e *Tower) RegisterStreamSignal(msgID string, closeFunc func()) (removeFunc func()) {
-	e.systemEventRegistry.ChatStreamSignal.Set(msgID, closeFunc)
+func (e *Tower) RegisterStreamSignal(sessionID string, closeFunc func()) (removeFunc func()) {
+	e.systemEventRegistry.ChatStreamSignal.Set(sessionID, closeFunc)
 	return func() {
-		e.systemEventRegistry.ChatStreamSignal.Remove(msgID)
+		e.systemEventRegistry.ChatStreamSignal.Remove(sessionID)
 	}
 }
 
-func (t *Tower) NewCloseChatStreamSignal(msgID string) error {
+func (t *Tower) NewCloseChatStreamSignal(sessionID string) error {
+	fmt.Println("new close chat stream signal", sessionID)
 	fire := t.NewFire(protocol.SourceSystem, t.pusher)
 	fire.Message.Topic = types.TOWER_EVENT_CLOSE_CHAT_STREAM
 	fire.Message.Data = PublishData{
-		Subject: msgID,
+		Subject: sessionID,
 		Version: "v1",
 		Type:    types.WS_EVENT_OTHERS,
 	}

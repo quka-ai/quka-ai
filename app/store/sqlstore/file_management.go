@@ -88,3 +88,32 @@ func (s *FileManagementStore) Delete(ctx context.Context, spaceID, file string) 
 	_, err = s.GetMaster(ctx).Exec(queryString, args...)
 	return err
 }
+
+// ListBySpace 获取指定空间下的所有文件记录
+func (s *FileManagementStore) ListBySpace(ctx context.Context, spaceID string) ([]types.FileManagement, error) {
+	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{"space_id": spaceID})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, ErrorSqlBuild(err)
+	}
+
+	var files []types.FileManagement
+	if err = s.GetReplica(ctx).Select(&files, queryString, args...); err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+// DeleteAll 删除指定空间下的所有文件记录
+func (s *FileManagementStore) DeleteAll(ctx context.Context, spaceID string) error {
+	query := sq.Delete(s.GetTable()).Where(sq.Eq{"space_id": spaceID})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return ErrorSqlBuild(err)
+	}
+
+	_, err = s.GetMaster(ctx).Exec(queryString, args...)
+	return err
+}

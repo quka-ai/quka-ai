@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidscottmills/goeditorjs"
 	"github.com/pgvector/pgvector-go"
 	"github.com/samber/lo"
 	"github.com/sashabaranov/go-openai"
@@ -25,30 +24,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/safe"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
-)
-
-const CONTEXT_SCENE_PROMPT = `
-以下是关于回答用户提问的“参考内容”，这些内容都是历史记录，其中提到的时间点无法与当前时间进行参照：
---------------------------------------
-{solt}
---------------------------------------
-你需要结合“参考内容”来回答用户的提问，
-注意，“参考内容”中可能有部分内容描述的是同一件事情，但是发生的时间不同，当你无法选择应该参考哪一天的内容时，可以结合用户提出的问题进行分析。
-如果你从上述内容中找到了用户想要的答案，可以结合内容相关的属性来给到用户更多的帮助，比如参考“事件发生时间”来告诉用户这件事发生在哪天。
-请你使用 {lang} 语言，以Markdown格式回复用户。
-`
-
-var (
-	userSetting = map[string][]ai.OptionFunc{
-		"context": {
-			func(opts *ai.QueryOptions) {
-				opts.WithPrompt(CONTEXT_SCENE_PROMPT)
-				opts.WithDocsSoltName("{solt}")
-			},
-		},
-	}
-	// resource setting
-	// model,prompt,docs_solt,cycle(int days)
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type KnowledgeLogic struct {
@@ -81,6 +57,22 @@ func (l *KnowledgeLogic) GetKnowledge(spaceID, id string) (*types.Knowledge, err
 		if data.Content, err = l.core.DecryptData(data.Content); err != nil {
 			return nil, errors.New("KnowledgeLogic.GetJournal.DecryptData", i18n.ERROR_INTERNAL, err)
 		}
+
+		// 替换静态资源URL为预签名URL
+		contentStr := string(data.Content)
+		switch data.ContentType {
+		case types.KNOWLEDGE_CONTENT_TYPE_BLOCKS:
+			contentStr = editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(
+				contentStr,
+				l.core.Plugins.FileStorage(),
+			)
+		default:
+			contentStr = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(
+				contentStr,
+				l.core.Plugins.FileStorage(),
+			)
+		}
+		data.Content = types.KnowledgeContent(contentStr)
 	}
 
 	return data, nil
@@ -100,7 +92,7 @@ func (l *KnowledgeLogic) GetTimeRangeLiteKnowledges(spaceID string, st, et time.
 			St: st.Unix(),
 			Et: et.Unix(),
 		},
-	}, types.NO_PAGING, types.NO_PAGING)
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, errors.New("KnowledgeLogic.GetTimeRangeLiteKnowledges.KnowledgeStore.ListLiteKnowledges", i18n.ERROR_INTERNAL, err)
 	}
@@ -108,12 +100,7 @@ func (l *KnowledgeLogic) GetTimeRangeLiteKnowledges(spaceID string, st, et time.
 	return data, nil
 }
 
-func (l *KnowledgeLogic) ListKnowledges(spaceID string, keywords string, resource *types.ResourceQuery, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
-	opts := types.GetKnowledgeOptions{
-		SpaceID:  spaceID,
-		Resource: resource,
-		Keywords: keywords,
-	}
+func (l *KnowledgeLogic) ListKnowledges(opts types.GetKnowledgeOptions, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
 	list, err := l.core.Store().KnowledgeStore().ListKnowledges(l.ctx, opts, page, pagesize)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, 0, errors.New("KnowledgeLogic.ListKnowledge.KnowledgeStore.ListKnowledge", i18n.ERROR_INTERNAL, err)
@@ -131,6 +118,45 @@ func (l *KnowledgeLogic) ListKnowledges(spaceID string, keywords string, resourc
 	}
 
 	return list, total, nil
+}
+
+// ListUserKnowledges 获取用户创建的知识（排除 chunk 类型）
+func (l *KnowledgeLogic) ListUserKnowledges(spaceID string, keywords string, resource *types.ResourceQuery, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
+	opts := types.GetKnowledgeOptions{
+		SpaceID:  spaceID,
+		Resource: resource,
+		Keywords: keywords,
+		// ExcludeKind: []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
+	}
+	return l.ListKnowledges(opts, page, pagesize)
+}
+
+func (l *KnowledgeLogic) ListChunkKnowledges(spaceID string, resource *types.ResourceQuery, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
+	opts := types.GetKnowledgeOptions{
+		SpaceID:  spaceID,
+		Resource: resource,
+		Kind:     []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
+	}
+	return l.ListKnowledges(opts, page, pagesize)
+}
+
+func (l *KnowledgeLogic) GetTaskKnowledges(spaceID, taskID string, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
+	// 先获取 task 信息，通过 task 的 Resource 字段来查询对应的 knowledge
+	task, err := l.core.Store().ContentTaskStore().GetTask(l.ctx, taskID)
+	if err != nil {
+		return nil, 0, errors.New("KnowledgeLogic.GetTaskKnowledges.ContentTaskStore.GetTask", i18n.ERROR_INTERNAL, err)
+	}
+
+	if task == nil || task.SpaceID != spaceID {
+		return nil, 0, errors.New("KnowledgeLogic.GetTaskKnowledges.TaskNotFound", i18n.ERROR_NOT_FOUND, nil)
+	}
+
+	opts := types.GetKnowledgeOptions{
+		SpaceID:  spaceID,
+		Resource: &types.ResourceQuery{Include: []string{task.Resource}},
+		Kind:     []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
+	}
+	return l.ListKnowledges(opts, page, pagesize)
 }
 
 func (l *KnowledgeLogic) Delete(spaceID, id string) error {
@@ -183,6 +209,19 @@ func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeAr
 
 	if oldKnowledge == nil || oldKnowledge.UserID != l.GetUserInfo().User {
 		return errors.New("KnowledgeLogic.Update.KnowledgeStore.GetKnowledge", i18n.ERROR_NOT_FOUND, err).Code(http.StatusNotFound)
+	}
+
+	if args.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
+		blocks, err := editorjs.ParseRawToBlocks(json.RawMessage(args.Content))
+		if err != nil {
+			return errors.New("KnowledgeLogic.Update.ConvertEditorJSBlocksToRaw", i18n.ERROR_INTERNAL, err)
+		}
+
+		blocks.Blocks = editorjs.RemoveFileBlockHost(blocks.Blocks, lo.If(l.core.Cfg().ObjectStorage.S3.UsePathStyle, l.core.Cfg().ObjectStorage.S3.Bucket).Else(""))
+		args.Content, err = json.Marshal(blocks)
+		if err != nil {
+			return errors.New("KnowledgeLogic.Update.ConvertEditorJSBlocksToRaw", i18n.ERROR_INTERNAL, err)
+		}
 	}
 
 	tagsChanged := false
@@ -270,58 +309,10 @@ func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeAr
 	return nil
 }
 
-func EnhanceChatQuery(ctx context.Context, core *core.Core, query string, spaceID, sessionID, messageID string) (ai.EnhanceQueryResult, error) {
-	histories, err := core.Store().ChatMessageStore().ListSessionMessageUpToGivenID(ctx, spaceID, sessionID, messageID, 1, 6)
-	if err != nil {
-		slog.Error("Failed to get session message history", slog.String("space_id", spaceID), slog.String("session_id", sessionID),
-			slog.String("message_id", messageID), slog.String("error", err.Error()))
-	}
-
-	if len(histories) <= 1 {
-		return ai.EnhanceQueryResult{
-			Original: query,
-		}, nil
-	}
-
-	histories = lo.Reverse(histories)[:len(histories)-1]
-
-	decryptMessageLists(core, histories)
-
-	return EnhanceQuery(ctx, core, query, histories)
-}
-
-func decryptMessageLists(core *core.Core, messages []*types.ChatMessage) {
-	for _, v := range messages {
-		if v.IsEncrypt == types.MESSAGE_IS_ENCRYPT {
-			value, _ := core.DecryptData([]byte(v.Message))
-			v.Message = string(value)
-		}
-	}
-}
-
-func EnhanceQuery(ctx context.Context, core *core.Core, query string, histories []*types.ChatMessage) (ai.EnhanceQueryResult, error) {
-	aiOpts := core.Srv().AI().NewEnhance(ctx)
-	resp, err := aiOpts.WithPrompt(core.Prompt().EnhanceQuery).
-		WithHistories(histories).
-		EnhanceQuery(query)
-	if err != nil {
-		slog.Error("failed to enhance user query", slog.String("query", query), slog.String("error", err.Error()))
-		// return nil, errors.New("KnowledgeLogic.GetRelevanceKnowledges.AI.EnhanceQuery", i18n.ERROR_INTERNAL, err)
-	}
-
-	resp.Original = query
-	return resp, nil
-}
-
-type UsageItem struct {
-	Subject string
-	Usage   ai.Usage
-}
-
-func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query string, resource *types.ResourceQuery) (types.RAGDocs, []UsageItem, error) {
+func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query string, resource *types.ResourceQuery) (types.RAGDocs, []ai.UsageItem, error) {
 	var (
 		result types.RAGDocs
-		usages []UsageItem
+		usages []ai.UsageItem
 	)
 
 	vector, err := l.core.Srv().AI().EmbeddingForQuery(l.ctx, []string{query})
@@ -350,8 +341,8 @@ func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query stri
 		highScoreKnowledge []types.QueryResult
 	)
 
-	if len(refs) > 10 && refs[0].Cos < 0.5 {
-		cosLimit = refs[0].Cos - 0.1
+	if len(refs) > 10 && refs[0].Cos > 0.5 {
+		cosLimit = refs[0].Cos - 0.15
 	}
 	for i, v := range refs {
 		if i > 0 && (v.Cos < cosLimit && v.OriginalLength > 200) {
@@ -393,7 +384,7 @@ func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query stri
 		}
 
 		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			content, err := utils.ConvertEditorJSBlocksToMarkdown(json.RawMessage(v.Content))
+			content, err := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
 			if err != nil {
 				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue
@@ -435,7 +426,7 @@ func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query stri
 	slog.Debug("rerank result", slog.Int("knowledge_length", len(rankList)))
 
 	if usage != nil {
-		usages = append(usages, UsageItem{
+		usages = append(usages, ai.UsageItem{
 			Usage: ai.Usage{
 				Model: usage.Model,
 				Usage: &openai.Usage{
@@ -494,39 +485,27 @@ func (l *KnowledgeLogic) Query(spaceID, agent string, resource *types.ResourceQu
 	// check agents call
 	switch containsAgent {
 	case types.AGENT_TYPE_BUTLER:
-		err = ButlerHandle(l.core, receiver, msgArgs)
+		err = ButlerHandle(l.core, receiver, msgArgs, &types.AICallOptions{
+			GenMode:        types.GEN_MODE_NORMAL,
+			EnableThinking: false,
+		})
 		if err != nil {
 			slog.Error("Failed to handle butler message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 		}
 	case types.AGENT_TYPE_JOURNAL:
-		err = JournalHandle(l.core, receiver, msgArgs)
+		err = JournalHandle(l.core, receiver, msgArgs, &types.AICallOptions{
+			GenMode:        types.GEN_MODE_NORMAL,
+			EnableThinking: false,
+		})
 		if err != nil {
 			slog.Error("Failed to handle journal message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 		}
-	case types.AGENT_TYPE_NORMAL:
-
-		enhanceResult, _ := EnhanceChatQuery(l.ctx, l.core, msgArgs.Message, msgArgs.SpaceID, msgArgs.SessionID, msgArgs.ID)
-
-		process.NewRecordChatUsageRequest(enhanceResult.Model, types.USAGE_SUB_TYPE_QUERY_ENHANCE, msgArgs.ID, enhanceResult.Usage)
-
-		docs, usages, err := NewKnowledgeLogic(l.ctx, l.core).GetQueryRelevanceKnowledges(msgArgs.SpaceID, l.GetUserInfo().User, msgArgs.Message, resource)
-		if len(usages) > 0 {
-			for _, v := range usages {
-				process.NewRecordChatUsageRequest(v.Usage.Model, v.Subject, msgArgs.ID, v.Usage.Usage)
-			}
-		}
-		if err != nil {
-			err = errors.Trace("ChatLogic.getRelevanceKnowledges", err)
-		} else {
-			result.Refs = docs.Refs
-
-			if err = RAGHandle(l.core, receiver, msgArgs, docs, types.GEN_MODE_NORMAL); err != nil {
-				slog.Error("Failed to handle rag message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
-			}
-		}
 	default:
-		// else rag handler
-		err = RAGHandle(l.core, receiver, msgArgs, types.RAGDocs{}, types.GEN_MODE_NORMAL)
+		err = ChatHandle(l.core, receiver, msgArgs, &types.AICallOptions{
+			GenMode:         types.GEN_MODE_NORMAL,
+			EnableThinking:  false,
+			EnableKnowledge: true,
+		})
 		if err != nil {
 			slog.Error("Failed to handle message", slog.String("msg_id", msgArgs.ID), slog.String("error", err.Error()))
 		}
@@ -550,14 +529,8 @@ type BlockFile struct {
 	} `json:"file"`
 }
 
-type BlockContent struct {
-	Blocks  []goeditorjs.EditorJSBlock `json:"blocks"`
-	Time    int64                      `json:"time"` // javascript time
-	Version string                     `json:"version"`
-}
-
 func filterKnowledgeFiles(content types.KnowledgeContent) ([]string, error) {
-	var parsedData BlockContent
+	var parsedData types.BlockContent
 	if err := json.Unmarshal(content, &parsedData); err != nil {
 		// TODO: support markdown
 		return nil, errors.New("updateFilesUploaded.ParseContentBlocks", i18n.ERROR_INTERNAL, err)
@@ -631,6 +604,19 @@ func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, ki
 		resource = types.DEFAULT_RESOURCE
 	}
 
+	if contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
+		block, err := editorjs.ParseRawToBlocks(json.RawMessage(content))
+		if err != nil {
+			return "", errors.New("KnowledgeLogic.insertContent.ParseRawToBlocks", i18n.ERROR_INTERNAL, err)
+		}
+
+		block.Blocks = editorjs.RemoveFileBlockHost(block.Blocks, lo.If(l.core.Cfg().ObjectStorage.S3.UsePathStyle, l.core.Cfg().ObjectStorage.S3.Bucket).Else(""))
+		content, err = json.Marshal(block)
+		if err != nil {
+			return "", errors.New("KnowledgeLogic.insertContent.RemoveFileBlockHost", i18n.ERROR_INTERNAL, err)
+		}
+	}
+
 	var (
 		err         error
 		encryptData []byte
@@ -655,6 +641,12 @@ func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, ki
 		CreatedAt:   time.Now().Unix(),
 		UpdatedAt:   time.Now().Unix(),
 	}
+
+	// 根据resource计算过期时间
+	if resource != "" && resource != types.DEFAULT_RESOURCE {
+		knowledge.ExpiredAt = l.calculateExpiredAtByResource(spaceID, resource, knowledge.CreatedAt)
+	}
+
 	err = l.core.Store().KnowledgeStore().Create(l.ctx, knowledge)
 	if err != nil {
 		return "", errors.New("KnowledgeLogic.InsertContent.Store.KnowledgeStore.Create", i18n.ERROR_INTERNAL, err)
@@ -792,4 +784,15 @@ func (l *KnowledgeLogic) processKnowledgeAsync(knowledge types.Knowledge) error 
 	}
 
 	return nil
+}
+
+// calculateExpiredAtByResource 根据resource的cycle计算过期时间
+func (l *KnowledgeLogic) calculateExpiredAtByResource(spaceID, resourceID string, createdAt int64) int64 {
+	// 获取resource信息
+	resource, err := l.core.Store().ResourceStore().GetResource(l.ctx, spaceID, resourceID)
+	if err != nil {
+		return 0 // 如果获取失败，默认不过期
+	}
+
+	return types.CalculateExpiredAt(createdAt, resource.Cycle)
 }

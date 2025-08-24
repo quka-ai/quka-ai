@@ -138,7 +138,7 @@ func (l *SpaceLogic) ListSpaceUsers(spaceID, keywords string, page, pageSize uin
 		IDs: lo.Map(spaceUsers, func(item types.UserSpace, _ int) string {
 			return item.UserID
 		}),
-	}, types.NO_PAGING, types.NO_PAGING)
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, 0, errors.New("SpaceLogic.ListSpaceUsers.UserStore.ListUsers", i18n.ERROR_INTERNAL, err)
 	}

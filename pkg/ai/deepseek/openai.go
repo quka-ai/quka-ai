@@ -73,34 +73,12 @@ func convertPassageToPrompt(docs []*types.PassageInfo) string {
 	return b.String()
 }
 
-func (s *Driver) NewQuery(ctx context.Context, query []*types.MessageContext) *ai.QueryOptions {
-	opts := ai.NewQueryOptions(ctx, s, query)
+func (s *Driver) NewQuery(ctx context.Context, model string, query []*types.MessageContext) *ai.QueryOptions {
+	opts := ai.NewQueryOptions(ctx, s, model, query)
 	return opts
 }
 
-func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionStream, error) {
-	messages := lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
-		return openai.ChatCompletionMessage{
-			Role:    item.Role.String(),
-			Content: item.Content,
-		}
-	})
-
-	req := openai.ChatCompletionRequest{
-		Model:    s.model.ChatModel,
-		Messages: messages,
-		Stream:   true,
-		StreamOptions: &openai.StreamOptions{
-			IncludeUsage: true,
-		},
-	}
-
-	for _, v := range query {
-		req.Messages = append(req.Messages, openai.ChatCompletionMessage{
-			Role:    v.Role.String(),
-			Content: v.Content,
-		})
-	}
+func (s *Driver) QueryStream(ctx context.Context, req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
 
 	resp, err := s.client.CreateChatCompletionStream(ctx, req)
 	if err != nil {
@@ -112,7 +90,7 @@ func (s *Driver) QueryStream(ctx context.Context, query []*types.MessageContext)
 	return resp, nil
 }
 
-func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.GenerateResponse, error) {
+func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (*openai.ChatCompletionResponse, error) {
 	messages := lo.Map(query, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 		return openai.ChatCompletionMessage{
 			Role:    item.Role.String(),
@@ -132,20 +110,15 @@ func (s *Driver) Query(ctx context.Context, query []*types.MessageContext) (ai.G
 		})
 	}
 
-	var result ai.GenerateResponse
 	resp, err := s.client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return result, fmt.Errorf("Completion error: %w", err)
+		return nil, fmt.Errorf("Completion error: %w", err)
 
 	}
 
 	slog.Debug("Query", slog.Any("query", req), slog.String("driver", NAME))
 
-	result.Received = append(result.Received, resp.Choices[0].Message.Content)
-	result.Usage = &resp.Usage
-	result.Model = resp.Model
-
-	return result, nil
+	return &resp, nil
 }
 
 const SummarizeFuncName = "summarize"
@@ -293,10 +266,6 @@ func (s *Driver) Chunk(ctx context.Context, doc *string) (ai.ChunkResult, error)
 	result.Model = resp.Model
 	result.Usage = &resp.Usage
 	return result, nil
-}
-
-func (s *Driver) NewEnhance(ctx context.Context) *ai.EnhanceOptions {
-	return ai.NewEnhance(ctx, s)
 }
 
 func (s *Driver) EnhanceQuery(ctx context.Context, messages []openai.ChatCompletionMessage) (ai.EnhanceQueryResult, error) {

@@ -117,3 +117,23 @@ other = "Request forbidden, Too many requests"
 ['error.logic.vector.db.notmatch.content.db']
 one = "The vector database differs from the knowledge base, so it is recommended to reinitialize"
 other = "The vector database differs from the knowledge base, so it is recommended to reinitialize"
+
+['error.provider.model.in.use']
+one = "This provider has models in use, please remove the related models from AI usage configuration first"
+other = "This provider has models in use, please remove the related models from AI usage configuration first"
+
+['error.ai.chat.model.not.found']
+one = "Chat model configuration not found"
+other = "Chat model configuration not found"
+
+['error.ai.embedding.model.not.found']
+one = "Embedding model configuration not found"
+other = "Embedding model configuration not found"
+
+['message.ai.config.reload.success']
+one = "AI configuration reloaded successfully"
+other = "AI configuration reloaded successfully"
+
+['message.ai.usage.update.success']
+one = "AI usage configuration updated successfully"
+other = "AI usage configuration updated successfully"

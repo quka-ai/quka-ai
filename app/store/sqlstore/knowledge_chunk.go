@@ -16,7 +16,6 @@ func init() {
 	})
 }
 
-// KnowledgeChunkStore 处理 bw_knowledge_chunk 表的操作
 type KnowledgeChunkStore struct {
 	CommonFields // 嵌入通用操作字段
 }
