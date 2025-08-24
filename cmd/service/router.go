@@ -69,7 +69,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	s.Engine.LoadHTMLGlob("./tpls/*")
 	s.Engine.GET("/s/k/:token", s.BuildKnowledgeSharePage)
 	s.Engine.GET("/s/s/:token", s.BuildSessionSharePage)
-	s.Engine.GET("/s/sp/:token", s.BuildSessionSharePage)
+  s.Engine.GET("/s/sp/:token", s.BuildSpaceSharePage)
 
 	// 公共资源路由（无需认证）
 	s.Engine.GET("/public/*object_path", s.ObjectHandler)

@@ -61,6 +61,15 @@ func (l *SpaceApplicationLogic) Apply(spaceToken, desc string) (types.SpaceAppli
 		return "", errors.New("SpaceApplicationLogic.Apply.UserStore.GetUser", i18n.ERROR_INTERNAL, err)
 	}
 
+	userExistInSpace, err := l.core.Store().UserSpaceStore().GetUserSpaceRole(l.ctx, l.GetUserInfo().User, invite.SpaceID)
+	if err != nil && err != sql.ErrNoRows {
+		return "", errors.New("SpaceApplicationLogic.Apply.UserSpaceStore.GetUserSpaceRole", i18n.ERROR_INTERNAL, err)
+	}
+
+	if userExistInSpace != nil {
+		return "", errors.New("SpaceApplicationLogic.Apply.UserSpaceStore.GetUserSpaceRole", i18n.ERROR_ALREADY_APPLIED, nil).Code(http.StatusBadRequest)
+	}
+
 	err = l.core.Store().SpaceApplicationStore().Create(l.ctx, &types.SpaceApplication{
 		ID:          utils.GenUniqIDStr(),
 		SpaceID:     space.SpaceID,

@@ -228,7 +228,7 @@ func (l *ShareLogic) GetKnowledgeByShareToken(token string) (*KnowledgeShareInfo
 		Kind:         knowledge.Kind,
 		Title:        knowledge.Title,
 		Tags:         knowledge.Tags,
-		Content:      knowledge.Content,
+		Content:      lo.If(knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS, knowledge.Content).Else(types.KnowledgeContent(fmt.Sprintf("\"%s\"", knowledge.Content))),
 		ContentType:  knowledge.ContentType,
 		CreatedAt:    knowledge.CreatedAt,
 		EmbeddingURL: link.EmbeddingURL,

@@ -51,7 +51,7 @@ func (l *SpaceLogic) CreateUserSpace(title, desc, basePrompt, chatPrompt string)
 		err = l.core.Store().UserSpaceStore().Create(ctx, types.UserSpace{
 			UserID:    user.User,
 			SpaceID:   spaceID,
-			Role:      srv.RoleAdmin,
+			Role:      srv.RoleChief,
 			CreatedAt: time.Now().Unix(),
 		})
 		if err != nil {
