@@ -378,8 +378,8 @@ github.com/prometheus/common v0.55.0 h1:KEi6DK7lXW/m7Ig5i47x0vRzuBsHuvJdi5ee6Y3G
 github.com/prometheus/common v0.55.0/go.mod h1:2SECS4xJG1kd8XF9IcM1gMX6510RAEL65zxzNImwdc8=
 github.com/prometheus/procfs v0.15.1 h1:YagwOFzUgYfKKHX6Dr+sHT7km/hxC76UB0learggepc=
 github.com/prometheus/procfs v0.15.1/go.mod h1:fB45yRUv8NstnjriLhBQLuOUt+WW4BsoGhij/e3PBqk=
-github.com/quka-ai/commercial v0.0.0-20250716164915-43712744e824 h1:Qa5XuDjzZT7zMTXwn8GxFEeVQwbapU79OquQ0Mn30ho=
-github.com/quka-ai/commercial v0.0.0-20250716164915-43712744e824/go.mod h1:4tpnffkfMc4C1mXikfMMhzR+jQzMjhwqXrn08eQ4WOo=
+github.com/quka-ai/commercial v0.0.0-20250823082332-405e0ae70d4f h1:pannsq93ajxi51N8oHxdVwr7Id5Some5380QgJOp5MI=
+github.com/quka-ai/commercial v0.0.0-20250823082332-405e0ae70d4f/go.mod h1:4tpnffkfMc4C1mXikfMMhzR+jQzMjhwqXrn08eQ4WOo=
 github.com/redis/go-redis/v9 v9.7.3 h1:YpPyAayJV+XErNsatSElgRZZVCwXX9QzkKYNvO7x0wM=
 github.com/redis/go-redis/v9 v9.7.3/go.mod h1:bGUrSggJ9X9GUmZpZNEOQKaANxSGgOEBRltRTZHSvrA=
 github.com/resend/resend-go/v2 v2.17.0 h1:vychSeuonMeNpHpi09VvjUkRwLEzolB1TtV0fBXGHB4=
