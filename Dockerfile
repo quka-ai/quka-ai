@@ -1,4 +1,4 @@
-FROM docker.1ms.run/library/golang:1.24-alpine AS builder
+FROM docker.1ms.run/library/golang:1.25-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH

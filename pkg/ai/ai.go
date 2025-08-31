@@ -163,9 +163,9 @@ func (s *EnhanceOptions) EnhanceQuery(query string) (EnhanceQueryResult, error) 
 	result.Model = s._driver.Config().ModelName
 	result.News = strings.Split(res.Content, " ")
 	result.Usage = &openai.Usage{
-		PromptTokens:     result.Usage.PromptTokens,
-		CompletionTokens: result.Usage.CompletionTokens,
-		TotalTokens:      result.Usage.TotalTokens,
+		PromptTokens:     res.ResponseMeta.Usage.PromptTokens,
+		CompletionTokens: res.ResponseMeta.Usage.CompletionTokens,
+		TotalTokens:      res.ResponseMeta.Usage.TotalTokens,
 	}
 	return result, nil
 }

@@ -190,7 +190,8 @@ type CreateChatMessageRequest struct {
 }
 
 type CreateChatMessageResponse struct {
-	Sequence int64 `json:"sequence"`
+	Sequence int64  `json:"sequence"`
+	AnswerID string `json:"answer_id"`
 }
 
 func (s *HttpSrv) CreateChatMessage(c *gin.Context) {
@@ -219,7 +220,7 @@ func (s *HttpSrv) CreateChatMessage(c *gin.Context) {
 	}
 
 	chatLogic := v1.NewChatLogic(c, s.Core)
-	msgSequence, err := chatLogic.NewUserMessage(session, types.CreateChatMessageArgs{
+	result, err := chatLogic.NewUserMessage(session, types.CreateChatMessageArgs{
 		ID:              req.MessageID,
 		Message:         req.Message,
 		Agent:           req.Agent,
@@ -236,7 +237,8 @@ func (s *HttpSrv) CreateChatMessage(c *gin.Context) {
 	}
 
 	response.APISuccess(c, CreateChatMessageResponse{
-		Sequence: msgSequence,
+		Sequence: result.CurrentMessageSequence,
+		AnswerID: result.AnswerMessageID,
 	})
 }
 

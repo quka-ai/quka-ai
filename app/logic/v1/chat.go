@@ -49,7 +49,12 @@ func GenUserTextMessage(spaceID, sessionID, userID, msgID, message string) *type
 	}
 }
 
-func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types.CreateChatMessageArgs, resourceQuery *types.ResourceQuery) (seqid int64, err error) {
+type CreateMessageResult struct {
+	CurrentMessageSequence int64  `json:"current_message_sequence"`
+	AnswerMessageID        string `json:"answer_message_id"`
+}
+
+func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types.CreateChatMessageArgs, resourceQuery *types.ResourceQuery) (result CreateMessageResult, err error) {
 	slog.Debug("new message", slog.String("msg_id", msgArgs.ID), slog.String("user_id", l.GetUserInfo().User), slog.String("session_id", chatSession.ID))
 
 	defer func() {
@@ -61,7 +66,7 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 	}()
 	// 如果dialog为非正式状态，则转换为正式状态
 	if chatSession == nil {
-		return 0, errors.New("ChatLogic.NewUserMessageSend.dialog", i18n.ERROR_INTERNAL, nil)
+		return result, errors.New("ChatLogic.NewUserMessageSend.dialog", i18n.ERROR_INTERNAL, nil)
 	}
 
 	if chatSession.Status != types.CHAT_SESSION_STATUS_OFFICIAL {
@@ -76,19 +81,19 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 		ctx, cancel := context.WithCancel(l.ctx)
 		defer cancel()
 		if ok, err := l.core.TryLock(ctx, protocol.GenChatSessionAIRequestKey(chatSession.ID)); err != nil {
-			return 0, errors.New("ChatLogic.NewUserMessageSend.TryLock", i18n.ERROR_INTERNAL, err)
+			return result, errors.New("ChatLogic.NewUserMessageSend.TryLock", i18n.ERROR_INTERNAL, err)
 		} else if !ok {
 			slog.Debug("duplicate ai request", slog.String("msg_id", msgArgs.ID), slog.String("session_id", chatSession.ID))
-			return 0, errors.New("ChatLogic.NewUserMessageSend.TryLock", i18n.ERROR_FORBIDDEN, nil).Code(http.StatusForbidden)
+			return result, errors.New("ChatLogic.NewUserMessageSend.TryLock", i18n.ERROR_FORBIDDEN, nil).Code(http.StatusForbidden)
 		}
 
 		exist, err := l.core.Store().ChatMessageStore().Exist(l.ctx, chatSession.SpaceID, chatSession.ID, msgArgs.ID)
 		if err != nil && err != sql.ErrNoRows {
-			return 0, errors.New("ChatLogic.NewUserMessageSend.MessageStore.Exist", i18n.ERROR_INTERNAL, err)
+			return result, errors.New("ChatLogic.NewUserMessageSend.MessageStore.Exist", i18n.ERROR_INTERNAL, err)
 		}
 
 		if exist {
-			return 0, errors.New("ChatLogic.NewUserMessageSend.MessageStore.DuplicateMessage", i18n.ERROR_EXIST, nil).Code(http.StatusForbidden)
+			return result, errors.New("ChatLogic.NewUserMessageSend.MessageStore.DuplicateMessage", i18n.ERROR_EXIST, nil).Code(http.StatusForbidden)
 		}
 	}
 
@@ -135,13 +140,13 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 	}
 
 	if msg.Sequence == 0 {
-		seqid, err = l.core.Plugins.GetChatSessionSeqID(l.ctx, chatSession.SpaceID, chatSession.ID)
+		msg.Sequence, err = l.core.Plugins.GetChatSessionSeqID(l.ctx, chatSession.SpaceID, chatSession.ID)
 		if err != nil {
 			err = errors.Trace("ChatLogic.NewUserMessageSend.GetDialogSeqID", err)
 			return
 		}
 
-		msg.Sequence = seqid
+		result.CurrentMessageSequence = msg.Sequence
 	}
 
 	// if len([]rune(queryMsg)) < 20 && latestMessage != nil {
@@ -168,7 +173,7 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return result, err
 	}
 
 	go safe.Run(func() {
@@ -187,11 +192,11 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 	if len(msg.Attach) > 0 {
 		for i := range msg.Attach {
 			if msg.Attach[i].URL == "" {
-				return 0, errors.New("ChatLogic.NewUserMessageSend.FileStorage.EmptyURL", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
+				return result, errors.New("ChatLogic.NewUserMessageSend.FileStorage.EmptyURL", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
 			}
 			url, err := l.core.FileStorage().GenGetObjectPreSignURL(msg.Attach[i].URL)
 			if err != nil {
-				return 0, errors.New("ChatLogic.NewUserMessageSend.FileStorage.GenGetObjectPreSignURL", i18n.ERROR_INTERNAL, err)
+				return result, errors.New("ChatLogic.NewUserMessageSend.FileStorage.GenGetObjectPreSignURL", i18n.ERROR_INTERNAL, err)
 			}
 			msg.Attach[i].SignURL = url
 		}
@@ -230,7 +235,9 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 			}
 		})
 	}
-	return msg.Sequence, nil
+
+	result.AnswerMessageID = receiver.MessageID()
+	return result, nil
 }
 
 // 补充 session pin docs to docs
