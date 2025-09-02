@@ -816,26 +816,27 @@ func (f *EinoAgentFactory) CreateReActAgentWithConfig(config *AgentConfig) (*rea
 	}
 
 	// 使用配置中的StreamChecker，如果没有则使用默认的
-	streamChecker := func(ctx context.Context, modelOutput *schema.StreamReader[*schema.Message]) (bool, error) {
-		defer modelOutput.Close()
-		for {
-			res, err := modelOutput.Recv()
-			if err != nil {
-				return false, nil
-			}
+	// streamChecker := func(ctx context.Context, modelOutput *schema.StreamReader[*schema.Message]) (bool, error) {
+	// 	defer modelOutput.Close()
+	// 	for {
+	// 		res, err := modelOutput.Recv()
+	// 		if err != nil {
+	// 			return false, nil
+	// 		}
 
-			if res.ResponseMeta.FinishReason == "tool_calls" {
-				return true, nil
-			}
-		}
-	}
+	// 		if res.ResponseMeta.FinishReason == "tool_calls" {
+	// 			return true, nil
+	// 		}
+	// 	}
+	// }
 
 	// 创建 ReAct Agent
 	agentConfig := &react.AgentConfig{
-		ToolCallingModel:      chatModel,
-		ToolsConfig:           toolsConfig,
-		MessageModifier:       nil, // 禁用 MessageModifier，使用工具内部通知机制
-		StreamToolCallChecker: streamChecker,
+		ToolCallingModel: chatModel,
+		ToolsConfig:      toolsConfig,
+		MessageModifier:  nil, // 禁用 MessageModifier，使用工具内部通知机制
+		//StreamToolCallChecker: streamChecker,
+		MaxStep: 2,
 	}
 
 	agent, err := react.NewAgent(config.AgentCtx, agentConfig)
