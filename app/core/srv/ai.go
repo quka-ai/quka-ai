@@ -385,11 +385,16 @@ func (s *AI) Chunk(ctx context.Context, doc *string) (*ai.ChunkResult, error) {
 		return nil, fmt.Errorf("failed to generate with tools: %w", err)
 	}
 
-	result := ai.ChunkResult{}
+	result := ai.ChunkResult{
+		Usage: &oai.Usage{},
+	}
 
 	// 处理工具调用结果
 	if len(response.ToolCalls) > 0 {
 		for _, toolCall := range response.ToolCalls {
+			result.Usage.CompletionTokens += response.ResponseMeta.Usage.CompletionTokens
+			result.Usage.PromptTokens += response.ResponseMeta.Usage.PromptTokens
+			result.Usage.TotalTokens += response.ResponseMeta.Usage.TotalTokens
 			if toolCall.Function.Name == "chunk" {
 				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &result); err != nil {
 					return nil, fmt.Errorf("failed to unmarshal tool call arguments: %w", err)

@@ -60,7 +60,8 @@ type CoreConfig struct {
 	Site          Site                `toml:"site"`
 	ObjectStorage ObjectStorageDriver `toml:"object_storage"`
 
-	AI srv.AIConfig `toml:"ai"`
+	AI         srv.AIConfig     `toml:"ai"`
+	Centrifuge CentrifugeConfig `toml:"centrifuge"`
 
 	Security Security `toml:"security"`
 
@@ -105,6 +106,20 @@ type Prompt struct {
 	ChatSummary  string `toml:"chat_summary"`
 	EnhanceQuery string `toml:"enhance_query"`
 	SessionName  string `toml:"session_name"`
+}
+
+type CentrifugeConfig struct {
+	MaxConnections    int      `toml:"max_connections"`
+	HeartbeatInterval int      `toml:"heartbeat_interval"`
+	DeploymentMode    string   `toml:"deployment_mode"`
+	RedisURL          string   `toml:"redis_url"`
+	RedisCluster      bool     `toml:"redis_cluster"`
+	EnablePresence    bool     `toml:"enable_presence"`
+	EnableHistory     bool     `toml:"enable_history"`
+	EnableRecovery    bool     `toml:"enable_recovery"`
+	AllowedOrigins    []string `toml:"allowed_origins"`
+	MaxChannelLength  int      `toml:"max_channel_length"`
+	MaxMessageSize    int      `toml:"max_message_size"`
 }
 
 type Security struct {

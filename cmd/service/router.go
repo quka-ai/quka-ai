@@ -66,10 +66,11 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	spaceLimit := GetSpaceLimitBuilder(s.Core)
 	aiLimit := GetAILimitBuilder(s.Core)
 
+	s.Engine.Use(middleware.Cors)
 	s.Engine.LoadHTMLGlob("./tpls/*")
 	s.Engine.GET("/s/k/:token", s.BuildKnowledgeSharePage)
 	s.Engine.GET("/s/s/:token", s.BuildSessionSharePage)
-  s.Engine.GET("/s/sp/:token", s.BuildSpaceSharePage)
+	s.Engine.GET("/s/sp/:token", s.BuildSpaceSharePage)
 
 	// 公共资源路由（无需认证）
 	s.Engine.GET("/public/*object_path", s.ObjectHandler)
@@ -79,14 +80,13 @@ func setupHttpRouter(s *handler.HttpSrv) {
 
 	// auth
 	s.Engine.Use(middleware.I18n(), response.NewResponse())
-	s.Engine.Use(middleware.Cors)
 	s.Engine.Use(middleware.SetAppid(s.Core))
 	apiV1 := s.Engine.Group("/api/v1")
 	{
 		apiV1.GET("/mode", func(c *gin.Context) {
 			response.APISuccess(c, s.Core.Plugins.Name())
 		})
-		apiV1.GET("/connect", middleware.AuthorizationFromQuery(s.Core), handler.Websocket(s.Core))
+		apiV1.GET("/connect", handler.Websocket(s.Core))
 		share := apiV1.Group("/share")
 		{
 			share.GET("/knowledge/:token", s.GetKnowledgeByShareToken)

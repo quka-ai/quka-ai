@@ -37,7 +37,6 @@ func ResolveHidden(text string, getValueFunc func(fakeValue string) string, trim
 }
 
 func (s *sensitiveWorker) Do(text string) string {
-	fmt.Println("do", text)
 	matches := HiddenRegexp.FindAllStringSubmatch(text, -1)
 	for _, match := range matches {
 		s.contents = append(s.contents, match[0])

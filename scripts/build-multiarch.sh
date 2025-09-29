@@ -243,7 +243,7 @@ fi
 
 # Show built images
 log_info "Available local images:"
-docker images | grep "$IMAGE_NAME" | grep "$VERSION" || log_warning "No local images found (expected for pushed images)"
+docker images | grep "$FULL_IMAGE_NAME" | grep "$VERSION" || log_warning "No local images found (expected for pushed images)"
 
 log_success "Multi-architecture build completed successfully!"
 

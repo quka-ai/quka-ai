@@ -16,7 +16,7 @@ func TestCreateModelRequest_ThinkingSupport(t *testing.T) {
 		ModelType:       types.MODEL_TYPE_CHAT,
 		ThinkingSupport: types.ThinkingSupportOptional,
 	}
-	
+
 	if req.ThinkingSupport != types.ThinkingSupportOptional {
 		t.Errorf("Expected ThinkingSupport = %d, got %d", types.ThinkingSupportOptional, req.ThinkingSupport)
 	}
@@ -28,7 +28,7 @@ func TestUpdateModelRequest_ThinkingSupport(t *testing.T) {
 	req := UpdateModelRequest{
 		ThinkingSupport: &thinkingSupport,
 	}
-	
+
 	if req.ThinkingSupport == nil || *req.ThinkingSupport != types.ThinkingSupportForced {
 		t.Errorf("Expected ThinkingSupport = %d, got %v", types.ThinkingSupportForced, req.ThinkingSupport)
 	}
@@ -87,7 +87,7 @@ func TestValidateThinkingConfig_Logic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 模拟验证逻辑（不依赖实际数据库）
 			var shouldError bool
-			
+
 			switch tt.thinkingSupport {
 			case types.ThinkingSupportNone:
 				if tt.enableThinking {
@@ -102,7 +102,7 @@ func TestValidateThinkingConfig_Logic(t *testing.T) {
 			default:
 				shouldError = true
 			}
-			
+
 			if shouldError != tt.expectError {
 				t.Errorf("Expected error = %v, got %v", tt.expectError, shouldError)
 			}

@@ -152,7 +152,6 @@ func (l *ChatSessionLogic) NamedSession(sessionID, firstQuery string) (NamedSess
 		return NamedSessionResult{}, errors.New("ChatSessionLogic.NamedSession.ChatSessionStore.UpdateSessionTitle", i18n.ERROR_INTERNAL, err)
 	}
 
-	// l.core.Srv().Tower().PublishSessionReName(protocol.GenIMTopic(sessionID), sessionID, title)
 	return NamedSessionResult{
 		SessionID: sessionID,
 		Name:      title,

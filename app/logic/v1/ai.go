@@ -44,7 +44,7 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 	if msg == nil {
 		return nopReceiveFunc
 	}
-	imTopic := protocol.GenIMTopic(msg.SessionID)
+	imTopic := protocol.GenIMTopic(msg.SpaceID, msg.SessionID)
 	return func(message types.MessageContent, progressStatus types.MessageProgress) error {
 		defer sendedCounter.Add(message.Bytes())
 		msg.Message += string(message.Bytes())
@@ -52,7 +52,7 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 		case types.MESSAGE_TYPE_TEXT:
 			assistantStatus := types.WS_EVENT_ASSISTANT_CONTINUE
 
-			if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
+			if err := core.Srv().Centrifuge().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
 				MessageID: msg.ID,
 				SessionID: msg.SessionID,
 				Message:   string(message.Bytes()),
@@ -93,7 +93,7 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 
 		case types.MESSAGE_TYPE_TOOL_TIPS:
 			assistantStatus := types.WS_EVENT_TOOL_CONTINUE
-			if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
+			if err := core.Srv().Centrifuge().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
 				MessageID: msg.ID,
 				SessionID: msg.SessionID,
 				ToolTips:  message.Bytes(),
@@ -107,7 +107,11 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 
 			switch progressStatus {
 			case types.MESSAGE_PROGRESS_COMPLETE:
-				fallthrough
+				assistantStatus = types.WS_EVENT_TOOL_DONE
+				if err := core.Store().ChatMessageStore().RewriteMessage(ctx, msg.SpaceID, msg.SessionID, msg.ID, message.Bytes(), progressStatus); err != nil {
+					slog.Error("failed to finished ai answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
+						slog.String("error", err.Error()))
+				}
 			case types.MESSAGE_PROGRESS_CANCELED:
 				assistantStatus = types.WS_EVENT_TOOL_DONE
 				if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, progressStatus); err != nil {
@@ -148,7 +152,7 @@ func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCo
 	if msg == nil {
 		return nopDoneFunc
 	}
-	imTopic := protocol.GenIMTopic(msg.SessionID)
+	imTopic := protocol.GenIMTopic(msg.SpaceID, msg.SessionID)
 	return func(err error) error {
 		// todo retry
 		assistantStatus := lo.If(msg.MsgType == types.MESSAGE_TYPE_TOOL_TIPS, types.WS_EVENT_TOOL_DONE).Else(types.WS_EVENT_ASSISTANT_DONE)
@@ -196,7 +200,7 @@ func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCo
 			}
 		}
 
-		if err := core.Srv().Tower().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
+		if err := core.Srv().Centrifuge().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
 			MessageID: msg.ID,
 			SessionID: msg.SessionID,
 			Complete:  int32(completeStatus),
@@ -212,31 +216,31 @@ func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCo
 }
 
 // protocol.GenIMTopic(msg.SessionID)
-func DefaultMessager(topic string, tower *srv.Tower) types.Messager {
-	return &FireTowerMessager{
-		topic: topic,
-		tower: tower,
+func DefaultMessager(topic string, centrifuge srv.CentrifugeManager) types.Messager {
+	return &CentrifugeMessager{
+		topic:      topic,
+		centrifuge: centrifuge,
 	}
 }
 
-type FireTowerMessager struct {
-	topic string
-	tower *srv.Tower
+type CentrifugeMessager struct {
+	topic      string
+	centrifuge srv.CentrifugeManager
 }
 
-func (s *FireTowerMessager) PublishMessage(_type types.WsEventType, data any) error {
+func (s *CentrifugeMessager) PublishMessage(_type types.WsEventType, data any) error {
 	switch _type {
 	case types.WS_EVENT_ASSISTANT_INIT:
 		fallthrough
 	case types.WS_EVENT_TOOL_INIT:
-		if err := s.tower.PublishStreamMessageWithSubject(s.topic, "on_message_init", _type, data); err != nil {
+		if err := s.centrifuge.PublishStreamMessageWithSubject(s.topic, "on_message_init", _type, data); err != nil {
 			slog.Error("failed to publish ai message builded event", slog.String("im_topic", s.topic), slog.String("error", err.Error()))
 			return err
 		}
 	case types.WS_EVENT_ASSISTANT_CONTINUE:
 		fallthrough
 	case types.WS_EVENT_TOOL_CONTINUE:
-		if err := s.tower.PublishStreamMessageWithSubject(s.topic, "on_message", _type, data); err != nil {
+		if err := s.centrifuge.PublishStreamMessageWithSubject(s.topic, "on_message", _type, data); err != nil {
 			slog.Error("failed to publish ai message stream", slog.String("im_topic", s.topic), slog.String("error", err.Error()))
 			return err
 		}
@@ -256,7 +260,7 @@ func handleAndNotifyAssistantFailed(core *core.Core, receiver types.Receiver, re
 
 	receiveFunc := receiver.GetReceiveFunc()
 	return receiveFunc(&types.TextMessage{Text: content}, completeStatus)
-	// if err := core.Srv().Tower().PublishStreamMessage(imTopic, types.WS_EVENT_ASSISTANT_FAILED, &types.StreamMessage{
+	// if err := core.Srv().Centrifuge().PublishStreamMessage(imTopic, types.WS_EVENT_ASSISTANT_FAILED, &types.StreamMessage{
 	// 	MessageID: aiMessage.ID,
 	// 	SessionID: aiMessage.SessionID,
 	// 	Complete:  int32(completeStatus),
@@ -511,7 +515,7 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 	// 从这里开始，错误处理交给具体的 handler 方法
 	// 8. 创建响应处理器
 	responseHandler := NewEinoResponseHandler(receiver, reqMsg)
-	callbackHandler := NewCallbackHandlers(s.core, modelConfig.ModelName, reqMsg)
+	callbackHandler := NewCallbackHandlers(s.core, modelConfig.ModelName, responseHandler)
 
 	// 9. 执行推理
 	if receiver.IsStream() {
@@ -525,39 +529,39 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 
 // handleStreamResponse 处理流式响应 (复用AutoAssistant的实现)
 func (s *ButlerAssistant) handleStreamResponse(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, streamHandler *EinoResponseHandler, callbacksHandler callbacks.Handler) error {
-	reqMessage := streamHandler.reqMsg
-	initFunc := func(ctx context.Context) error {
-		if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
-			SpaceID:   reqMessage.SpaceID,
-			SessionID: reqMessage.SessionID,
-			CreatedAt: time.Now().Unix(),
-			UpdatedAt: time.Now().Unix(),
-		}); err != nil {
-			slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
-			return err
-		}
+	// reqMessage := streamHandler.reqMsg
+	// initFunc := func(ctx context.Context) error {
+	// 	if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
+	// 		SpaceID:   reqMessage.SpaceID,
+	// 		SessionID: reqMessage.SessionID,
+	// 		CreatedAt: time.Now().Unix(),
+	// 		UpdatedAt: time.Now().Unix(),
+	// 	}); err != nil {
+	// 		slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
+	// 		return err
+	// 	}
 
-		slog.Debug("AI message session created",
-			slog.String("msg_id", streamHandler.Receiver().MessageID()),
-			slog.String("session_id", reqMessage.SessionID))
-		return nil
-	}
+	// 	slog.Debug("AI message session created",
+	// 		slog.String("msg_id", streamHandler.Receiver().MessageID()),
+	// 		slog.String("session_id", reqMessage.SessionID))
+	// 	return nil
+	// }
 
 	// 使用 eino agent 进行流式推理
-	result, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
+	_, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
 		compose.WithCallbacks(callbacksHandler, &LoggerCallback{}),
 	))
 	if err != nil {
-		initFunc(ctx)
-		streamHandler.GetDoneFunc(nil)(err)
+		// initFunc(ctx)
+		// streamHandler.GetDoneFunc(nil)(err)
 		slog.Error("failed to start eino stream response", slog.Any("error", err))
 		return err
 	}
 
-	if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
-		slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
-		return err
-	}
+	// if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
+	// 	slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
+	// 	return err
+	// }
 
 	return nil
 }
@@ -666,7 +670,7 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.C
 	// 从这里开始，错误处理交给具体的 handler 方法
 	// 8. 创建响应处理器
 	responseHandler := NewEinoResponseHandler(receiver, reqMsg)
-	callbackHandler := NewCallbackHandlers(s.core, modelConfig.ModelName, reqMsg)
+	callbackHandler := NewCallbackHandlers(s.core, modelConfig.ModelName, responseHandler)
 
 	// 9. 执行推理
 	if receiver.IsStream() {
@@ -680,39 +684,39 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.C
 
 // handleStreamResponse 处理流式响应 (复用ButlerAssistant的实现)
 func (s *JournalAssistant) handleStreamResponse(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, streamHandler *EinoResponseHandler, callbacksHandler callbacks.Handler) error {
-	reqMessage := streamHandler.reqMsg
-	initFunc := func(ctx context.Context) error {
-		if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
-			SpaceID:   reqMessage.SpaceID,
-			SessionID: reqMessage.SessionID,
-			CreatedAt: time.Now().Unix(),
-			UpdatedAt: time.Now().Unix(),
-		}); err != nil {
-			slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
-			return err
-		}
+	// reqMessage := streamHandler.reqMsg
+	// initFunc := func(ctx context.Context) error {
+	// 	if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
+	// 		SpaceID:   reqMessage.SpaceID,
+	// 		SessionID: reqMessage.SessionID,
+	// 		CreatedAt: time.Now().Unix(),
+	// 		UpdatedAt: time.Now().Unix(),
+	// 	}); err != nil {
+	// 		slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
+	// 		return err
+	// 	}
 
-		slog.Debug("AI message session created",
-			slog.String("msg_id", streamHandler.Receiver().MessageID()),
-			slog.String("session_id", reqMessage.SessionID))
-		return nil
-	}
+	// 	slog.Debug("AI message session created",
+	// 		slog.String("msg_id", streamHandler.Receiver().MessageID()),
+	// 		slog.String("session_id", reqMessage.SessionID))
+	// 	return nil
+	// }
 
 	// 使用 eino agent 进行流式推理
-	result, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
+	_, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
 		compose.WithCallbacks(callbacksHandler, &LoggerCallback{}),
 	))
 	if err != nil {
-		initFunc(ctx)
-		streamHandler.GetDoneFunc(nil)(err)
+		// initFunc(ctx)
+		// streamHandler.GetDoneFunc(nil)(err)
 		slog.Error("failed to start eino stream response", slog.Any("error", err))
 		return err
 	}
 
-	if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
-		slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
-		return err
-	}
+	// if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
+	// 	slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
+	// 	return err
+	// }
 
 	return nil
 }
@@ -814,6 +818,8 @@ func initAssistantMessage(ctx context.Context, core *core.Core, msgID string, se
 	}
 	answerMsg.MsgBlock = userReqMsg.MsgBlock
 	answerMsg.UserID = userReqMsg.UserID // ai answer message is also belong to user
+
+	fmt.Println("initAssistantMessage", msgID)
 
 	var err error
 	err = core.Store().Transaction(ctx, func(ctx context.Context) error {

@@ -6,9 +6,10 @@ import (
 )
 
 type Srv struct {
-	rbac  *RBACSrv
-	ai    *AI
-	tower *Tower
+	rbac       *RBACSrv
+	ai         *AI
+	tower      *Tower
+	centrifuge CentrifugeManager
 }
 
 func SetupSrvs(opts ...ApplyFunc) *Srv {
@@ -36,6 +37,10 @@ func (t *Tower) Pusher() *firetower.SelfPusher[PublishData] {
 
 func (s *Srv) Tower() *Tower {
 	return s.tower
+}
+
+func (s *Srv) Centrifuge() CentrifugeManager {
+	return s.centrifuge
 }
 
 // ReloadAI 重新加载AI配置

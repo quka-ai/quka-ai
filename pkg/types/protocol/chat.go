@@ -8,10 +8,12 @@ import (
 
 const (
 	ChatSessionIMTopicPrefix = "/chat_session/"
+	KnowledgeListTopicPrefix = "/knowledge/list/"
+	UserTopicPrefix          = "/user/"
 )
 
-func GenIMTopic(sessionID string) string {
-	return fmt.Sprintf("%s%s", ChatSessionIMTopicPrefix, sessionID)
+func GenIMTopic(spaceID, sessionID string) string {
+	return fmt.Sprintf("%s%s/%s", ChatSessionIMTopicPrefix, spaceID, sessionID)
 }
 
 func GetChatSessionID(imtopic string) (string, error) {

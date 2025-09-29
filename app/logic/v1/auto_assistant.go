@@ -150,16 +150,20 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	// 从这里开始，错误处理交给具体的 handler 方法
 	// 创建响应处理器（传入数据库写入函数）
 	responseHandler := NewEinoResponseHandler(receiver, reqMsg)
-	callbackHandler := NewCallbackHandlers(a.core, modelConfig.ModelName, reqMsg)
+	callbackHandler := NewCallbackHandlers(a.core, modelConfig.ModelName, responseHandler)
 
 	// 10. 执行推理
 	if receiver.IsStream() {
 		// 流式处理
-		return a.handleStreamResponse(agentCtx, agent, einoMessages, responseHandler, callbackHandler)
+		if err = a.handleStreamResponse(agentCtx, agent, einoMessages, callbackHandler); err != nil {
+			responseHandler.Receiver().GetDoneFunc(nil)(err)
+			return err
+		}
 	} else {
 		// 非流式处理
 		return a.handleDirectResponse(agentCtx, agent, einoMessages, responseHandler)
 	}
+	return nil
 }
 
 type ReasoningContent struct {
@@ -169,43 +173,40 @@ type ReasoningContent struct {
 }
 
 // handleStreamResponse 处理流式响应
-func (a *AutoAssistant) handleStreamResponse(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, streamHandler *EinoResponseHandler, callbacksHandler callbacks.Handler) error {
-	reqMessage := streamHandler.reqMsg
-	initFunc := func(ctx context.Context) error {
-		// streamHandler.Init()
-		if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
-			SpaceID:   reqMessage.SpaceID,
-			SessionID: reqMessage.SessionID,
-			CreatedAt: time.Now().Unix(),
-			UpdatedAt: time.Now().Unix(),
-		}); err != nil {
-			slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
-			return err
-		}
+func (a *AutoAssistant) handleStreamResponse(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, callbacksHandler callbacks.Handler) error {
+	// reqMessage := streamHandler.reqMsg
+	// initFunc := func(ctx context.Context) error {
+	// 	// streamHandler.Init()
+	// 	if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
+	// 		SpaceID:   reqMessage.SpaceID,
+	// 		SessionID: reqMessage.SessionID,
+	// 		CreatedAt: time.Now().Unix(),
+	// 		UpdatedAt: time.Now().Unix(),
+	// 	}); err != nil {
+	// 		slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
+	// 		return err
+	// 	}
 
-		slog.Debug("AI message session created",
-			slog.String("msg_id", streamHandler.Receiver().MessageID()),
-			slog.String("session_id", reqMessage.SessionID))
-		return nil
-	}
+	// 	slog.Debug("AI message session created",
+	// 		slog.String("msg_id", streamHandler.Receiver().MessageID()),
+	// 		slog.String("session_id", reqMessage.SessionID))
+	// 	return nil
+	// }
 
 	// 使用 eino agent 进行流式推理
-	result, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
-		// compose.WithCallbacks()
-		// compose.WithCallbacks(&LoggerCallback{}),
+	_, err := reactAgent.Stream(ctx, messages, agent.WithComposeOptions(
 		compose.WithCallbacks(callbacksHandler, &LoggerCallback{}),
 	))
 	if err != nil {
-		initFunc(ctx)
-		streamHandler.GetDoneFunc(nil)(err)
+		// initFunc(ctx)
 		slog.Error("failed to start eino stream response", slog.Any("error", err))
 		return err
 	}
 
-	if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
-		slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
-		return err
-	}
+	// if err := streamHandler.HandleStreamResponse(ctx, result, initFunc); err != nil {
+	// 	slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
+	// 	return err
+	// }
 
 	return nil
 }
@@ -420,7 +421,7 @@ func (nt *NotifyingTool) InvokableRun(ctx context.Context, argumentsInJSON strin
 		return err.Error(), nil
 	}
 
-	nt.receiver.VariableHandler().Do(result)
+	secretResult := nt.receiver.VariableHandler().Do(result)
 
 	slog.Debug("tool call result", slog.Float64("duration", duration.Seconds()), slog.String("tool", toolName), slog.Any("error", err))
 
@@ -431,6 +432,7 @@ func (nt *NotifyingTool) InvokableRun(ctx context.Context, argumentsInJSON strin
 	}
 	receiveFunc(resultJson, lo.If(err != nil, types.MESSAGE_PROGRESS_FAILED).Else(types.MESSAGE_PROGRESS_COMPLETE))
 	doneFunc(nil)
+	resultJson.Content = secretResult
 	return string(resultJson.Bytes()), err
 }
 
@@ -836,7 +838,7 @@ func (f *EinoAgentFactory) CreateReActAgentWithConfig(config *AgentConfig) (*rea
 		ToolsConfig:      toolsConfig,
 		MessageModifier:  nil, // 禁用 MessageModifier，使用工具内部通知机制
 		//StreamToolCallChecker: streamChecker,
-		MaxStep: 2,
+		// MaxStep: 2,
 	}
 
 	agent, err := react.NewAgent(config.AgentCtx, agentConfig)
@@ -889,7 +891,7 @@ func (h *EinoResponseHandler) GetDoneFunc(callback func(msg *types.ChatMessage))
 }
 
 // HandleStreamResponse 处理 eino Agent 的流式响应，返回 ResponseChoice 通道以兼容现有接口
-func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *schema.StreamReader[*schema.Message], needToCreateMessage func(ctx context.Context) error) error {
+func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *schema.StreamReader[*model.CallbackOutput], needToCreateMessage func(ctx context.Context) error) error {
 	ticker := time.NewTicker(time.Millisecond * 300)
 
 	defer func() {
@@ -953,7 +955,8 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		default:
 		}
 
-		msg, err := stream.Recv()
+		_msg, err := stream.Recv()
+		msg := _msg.Message
 		// raw, _ := json.Marshal(msg)
 		// fmt.Println("ttttt", string(raw), "eeee", err)
 		if err != nil && err != io.EOF {
@@ -1203,7 +1206,26 @@ func (p *ToolCallSaver) SaveToolCallComplete(ctx context.Context, toolCallMsgID,
 	return nil
 }
 
-func NewCallbackHandlers(core *core.Core, modelName string, reqMessage *types.ChatMessage) callbacks.Handler {
+func NewCallbackHandlers(core *core.Core, modelName string, streamHandler *EinoResponseHandler) callbacks.Handler {
+	reqMessage := streamHandler.reqMsg
+	initFunc := func(ctx context.Context) error {
+		defer slog.Debug("AI message session created",
+			slog.String("msg_id", streamHandler.Receiver().MessageID()),
+			slog.String("session_id", reqMessage.SessionID))
+		// streamHandler.Init()
+		if err := streamHandler.Receiver().RecvMessageInit(types.ChatMessageExt{
+			SpaceID:   reqMessage.SpaceID,
+			SessionID: reqMessage.SessionID,
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
+		}); err != nil {
+			slog.Error("failed to initialize receive message", slog.String("error", err.Error()))
+			return err
+		}
+
+		return nil
+	}
+
 	return callbackhelper.NewHandlerHelper().ChatModel(&callbackhelper.ModelCallbackHandler{
 		OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *model.CallbackInput) context.Context {
 			// if err := initFunc(ctx); err != nil {
@@ -1214,6 +1236,8 @@ func NewCallbackHandlers(core *core.Core, modelName string, reqMessage *types.Ch
 			// latestMessage := input.Messages[len(input.Messages)-1]
 			// 创建 assistant 消息记录，代表一次完整的 AI 响应会话
 			// (替代原来在 RequestAssistant 中的 InitAssistantMessage 调用)
+			raw, _ := json.Marshal(input)
+			fmt.Println("onStart", string(raw))
 			return ctx
 		},
 		OnEnd: func(ctx context.Context, runInfo *callbacks.RunInfo, output *model.CallbackOutput) context.Context {
@@ -1232,17 +1256,37 @@ func NewCallbackHandlers(core *core.Core, modelName string, reqMessage *types.Ch
 			if err != nil {
 				slog.Error("eino callback error", slog.Any("error", err), slog.String("model_name", modelName), slog.String("message_id", reqMessage.Message))
 				// 记录错误信息
-				// streamHandler.GetDoneFunc(nil)(err)
+				initFunc(ctx)
+				streamHandler.GetDoneFunc(nil)(err)
 			}
 			return ctx
 		},
 		OnEndWithStreamOutput: func(ctx context.Context, runInfo *callbacks.RunInfo, output *schema.StreamReader[*model.CallbackOutput]) context.Context {
 			// 处理流式输出
-			if output == nil {
-				return ctx
-			}
 			infoRaw, _ := json.Marshal(runInfo)
 			slog.Debug("eino callback stream output", slog.String("info", string(infoRaw)), slog.String("model_name", modelName), slog.String("message_id", reqMessage.ID))
+
+			if output == nil || runInfo.Name != react.ModelNodeName {
+				if runInfo.Name != react.ModelNodeName {
+					recvUnknown, err := output.Recv()
+					if err != nil {
+						slog.Error("failed to recv unknown stream output", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
+					} else {
+						raw, err := json.Marshal(recvUnknown)
+						if err != nil {
+							fmt.Println("uuuuu error", err)
+						} else {
+							fmt.Println("uuuuu", string(raw))
+						}
+					}
+				}
+				return ctx
+			}
+
+			if err := streamHandler.HandleStreamResponse(ctx, output, initFunc); err != nil {
+				slog.Error("failed to handle stream response", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
+				return ctx
+			}
 
 			return ctx
 		},

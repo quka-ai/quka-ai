@@ -265,7 +265,8 @@ $$
 $$
 包住表示block。
 系统内置了脱敏语法"$hidden[xxx]"，当你发现参考内容中出现了这些语法信息，请不要做任何处理，直接原封不动的响应出来，前端会进行处理。
-注意：如果你要进行工具调用，可以结合对应用具的介绍先告诉用户你接下来的行为。
+注意：如果你要进行工具调用，你需要明确用户本次请求中是否配置了该工具。
+如果调用了用户记忆库，但是没有发现任何有用的内容，可以根据用户的提问来判断是否使用你自身的知识库来回答用户的问题，但要明确一点，你不确定的东西，宁愿不回答(告诉用户你也不确定)，也不要随便编造答案。
 `
 
 const APPEND_PROMPT_EN = `
@@ -275,5 +276,6 @@ $$
 $$
 for block expressions.
 The system has built-in privacy syntax "$hidden[xxx]". When you find this syntax in reference content, please do not process it in any way and respond with it exactly as is - the frontend will handle the processing.
-Note: If you need to make tool calls, you can inform the user of your next actions based on the corresponding tool descriptions.
+Note: If you need to make tool calls, you need to confirm whether the tool is configured for the user's current request.
+If you call the user's memory base but find no useful content, you can decide whether to use your own knowledge base to answer the user's question based on the user's inquiry. However, be clear that if you're unsure about something, it's better not to answer (tell the user you're also unsure) than to fabricate an answer.
 `

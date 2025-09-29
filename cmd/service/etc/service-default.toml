@@ -38,3 +38,17 @@ chat_model = "Qwen3-32B-FP8"
 "query"="" # eg: openai 
 "summarize"=""
 "enhance_query"=""
+
+[centrifuge]
+# Centrifuge WebSocket configuration
+max_connections = 10000
+heartbeat_interval = 25
+deployment_mode = "single"  # "single" or "distributed"
+redis_url = "${REDIS_URL}"  # Only required for distributed mode
+redis_cluster = false
+enable_presence = true
+enable_history = false  # Use MySQL for message history
+enable_recovery = true
+allowed_origins = ["*"]
+max_channel_length = 255
+max_message_size = 65536

@@ -130,7 +130,6 @@ func (s *Driver) NewVisionQuery(ctx context.Context, query []*types.MessageConte
 	return ai.NewQueryOptions(ctx, s, s.model, query)
 }
 
-
 func (s *Driver) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 	tokenNum, err := ai.NumTokens(lo.Map(msgs, func(item *types.MessageContext, _ int) openai.ChatCompletionMessage {
 		return openai.ChatCompletionMessage{

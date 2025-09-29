@@ -7,7 +7,7 @@ import (
 
 // REDIS_CACHE_KEY_PREFIX redis cache key generator
 const (
-	REDIS_CACHE_KEY_PREFIX = "brew_"
+	REDIS_CACHE_KEY_PREFIX = "quka_"
 )
 
 func GenPromptCacheKey(sessionID string) string {

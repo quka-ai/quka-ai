@@ -39,12 +39,12 @@ func TestListModelConfigOptions_Apply_ThinkingSupport(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			query := sq.Select("*").From("test_table")
 			tt.opts.Apply(&query)
-			
+
 			sql, _, err := query.ToSql()
 			if err != nil {
 				t.Fatalf("Failed to build SQL: %v", err)
 			}
-			
+
 			// 检查SQL是否包含期望的条件
 			if len(tt.want) > 0 {
 				// 这里只做简单的包含检查，实际项目中可以用更严格的SQL解析
@@ -76,7 +76,7 @@ func TestModelConfig_ThinkingSupport(t *testing.T) {
 	config := ModelConfig{
 		ThinkingSupport: ThinkingSupportOptional,
 	}
-	
+
 	if config.ThinkingSupport != ThinkingSupportOptional {
 		t.Errorf("Expected ThinkingSupport = %d, got %d", ThinkingSupportOptional, config.ThinkingSupport)
 	}

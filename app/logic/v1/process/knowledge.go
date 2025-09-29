@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/holdno/firetower/protocol"
 	"github.com/pgvector/pgvector-go"
 	"github.com/sashabaranov/go-openai"
 
@@ -407,7 +406,7 @@ func (p *KnowledgeProcess) processEmbedding(req *EmbeddingRequest) {
 			return err
 		}
 
-		publishStageChangedMessage(p.core.Srv().Tower(), req.data.SpaceID, req.data.ID, types.KNOWLEDGE_STAGE_DONE)
+		publishStageChangedMessage(p.core.Srv().Centrifuge(), req.data.SpaceID, req.data.ID, types.KNOWLEDGE_STAGE_DONE)
 		return nil
 	})
 }
@@ -549,27 +548,18 @@ func (p *KnowledgeProcess) processSummary(req *SummaryRequest) {
 			return err
 		}
 
-		publishStageChangedMessage(p.core.Srv().Tower(), req.data.SpaceID, req.data.ID, types.KNOWLEDGE_STAGE_EMBEDDING)
+		publishStageChangedMessage(p.core.Srv().Centrifuge(), req.data.SpaceID, req.data.ID, types.KNOWLEDGE_STAGE_EMBEDDING)
 		return nil
 	})
 }
 
-func publishStageChangedMessage(tower *srv.Tower, spaceID, knowledgeID string, stage types.KnowledgeStage) {
-	fire := tower.NewFire(protocol.SourceSystem, tower.Pusher())
-	fire.Message = protocol.TopicMessage[srv.PublishData]{
-		Topic: "/knowledge/list/" + spaceID,
-		Type:  protocol.PublishOperation,
-		Data: srv.PublishData{
-			Version: "v1",
-			Subject: "stage_changed",
-			Data: map[string]string{
-				"knowledge_id": knowledgeID,
-				"stage":        stage.String(),
-			},
-		},
+func publishStageChangedMessage(centrifuge srv.CentrifugeManager, spaceID, knowledgeID string, stage types.KnowledgeStage) {
+	topic := "/knowledge/list/" + spaceID
+	data := map[string]interface{}{
+		"knowledge_id": knowledgeID,
+		"stage":        stage.String(),
 	}
-
-	tower.Publish(fire)
+	centrifuge.PublishStreamMessageWithSubject(topic, "stage_changed", types.WS_EVENT_OTHERS, data)
 }
 
 type RecordSessionUsageRequest struct {

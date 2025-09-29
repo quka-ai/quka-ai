@@ -48,7 +48,7 @@ func TestSetupAI_NilProvider(t *testing.T) {
 
 // MockChatModel 模拟 ChatModel 接口用于测试
 type MockChatModel struct {
-	modelName   string
+	modelName     string
 	mockToolCalls []schema.ToolCall
 	mockContent   string
 	mockError     error
@@ -87,7 +87,7 @@ func (m *MockChatModel) Config() types.ModelConfig {
 func TestAI_Summarize_Success(t *testing.T) {
 	// 准备测试数据
 	testDoc := "这是一篇关于人工智能发展的文章。文章讲述了AI技术在2024年的最新进展，包括大语言模型、计算机视觉和自然语言处理等领域的突破。文章发表于2024年3月15日，作者分析了这些技术对未来社会的影响。"
-	
+
 	// 模拟工具调用响应
 	mockToolCall := schema.ToolCall{
 		Function: schema.FunctionCall{
@@ -189,7 +189,7 @@ func TestAI_Summarize_NoEnhanceAI(t *testing.T) {
 
 func TestAI_Summarize_NoToolCalls(t *testing.T) {
 	testDoc := "test document"
-	
+
 	// 创建不返回工具调用的模拟模型
 	mockEnhanceModel := &MockChatModel{
 		modelName:     "test-model",
@@ -223,7 +223,7 @@ func TestAI_Summarize_NoToolCalls(t *testing.T) {
 func TestAI_Chunk_Success(t *testing.T) {
 	// 准备测试数据
 	testDoc := "第一段：人工智能的定义和历史。人工智能（AI）是计算机科学的一个分支，致力于创建能够执行通常需要人类智能的任务的系统。\n\n第二段：机器学习的发展。机器学习作为AI的一个子领域，通过算法让计算机从数据中学习模式。\n\n第三段：深度学习的突破。深度学习使用神经网络来模拟人脑的学习过程，在图像识别和自然语言处理方面取得了重大突破。"
-	
+
 	// 模拟工具调用响应
 	mockToolCall := schema.ToolCall{
 		Function: schema.FunctionCall{
@@ -341,7 +341,7 @@ func TestAI_Chunk_NoEnhanceAI(t *testing.T) {
 
 func TestAI_Chunk_NoToolCalls(t *testing.T) {
 	testDoc := "test document"
-	
+
 	// 创建不返回工具调用的模拟模型
 	mockEnhanceModel := &MockChatModel{
 		modelName:     "test-model",
@@ -374,7 +374,7 @@ func TestAI_Chunk_NoToolCalls(t *testing.T) {
 
 func TestAI_Summarize_InvalidToolCallArguments(t *testing.T) {
 	testDoc := "test document"
-	
+
 	// 模拟无效的工具调用响应
 	mockToolCall := schema.ToolCall{
 		Function: schema.FunctionCall{
@@ -413,7 +413,7 @@ func TestAI_Summarize_InvalidToolCallArguments(t *testing.T) {
 
 func TestAI_Chunk_InvalidToolCallArguments(t *testing.T) {
 	testDoc := "test document"
-	
+
 	// 模拟无效的工具调用响应
 	mockToolCall := schema.ToolCall{
 		Function: schema.FunctionCall{
