@@ -260,13 +260,16 @@ func ParseAuthToken(c *gin.Context, tokenValue string, core *core.Core) (bool, e
 	defer cancel()
 
 	tokenMeta, err := auth.ValidateTokenFromCache(ctx, tokenValue, core.Plugins.Cache())
+	if err != nil {
+		return false, errors.Trace("ParseAuthToken.ValidateTokenFromCache.GetUser", err)
+	}
 
 	user, err := core.Store().UserStore().GetUser(ctx, tokenMeta.Appid, tokenMeta.UserID)
 	if err != nil {
 		return false, errors.New("ParseAuthToken.UserStore.GetUser", i18n.ERROR_INTERNAL, err)
 	}
 
-	c.Set(v1.TOKEN_CONTEXT_KEY, security.NewTokenClaims(tokenMeta.Appid, "brew", tokenMeta.UserID, user.PlanID, "", tokenMeta.ExpireAt))
+	c.Set(v1.TOKEN_CONTEXT_KEY, security.NewTokenClaims(tokenMeta.Appid, types.DEFAULT_APPID, tokenMeta.UserID, user.PlanID, "", tokenMeta.ExpireAt))
 
 	core.Plugins.Cache().Expire(ctx, fmt.Sprintf("user:token:%s", utils.MD5(tokenValue)), time.Hour*24*7)
 
