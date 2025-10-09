@@ -559,7 +559,10 @@ func publishStageChangedMessage(centrifuge srv.CentrifugeManager, spaceID, knowl
 		"knowledge_id": knowledgeID,
 		"stage":        stage.String(),
 	}
-	centrifuge.PublishStreamMessageWithSubject(topic, "stage_changed", types.WS_EVENT_OTHERS, data)
+	err := centrifuge.PublishStreamMessageWithSubject(topic, "stage_changed", types.WS_EVENT_OTHERS, data)
+	if err != nil {
+		slog.Error("Failed to publish knowledge stage changed message", slog.String("topic", topic), slog.String("knowledge_id", knowledgeID), slog.String("stage", stage.String()), slog.String("error", err.Error()))
+	}
 }
 
 type RecordSessionUsageRequest struct {

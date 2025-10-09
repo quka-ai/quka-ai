@@ -1,6 +1,7 @@
 package sqlstore
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -30,6 +31,12 @@ func GetProvider() *Provider {
 type Provider struct {
 	*sqlstore.SqlProvider
 	stores *Stores
+	coreRef *CoreRef
+}
+
+// CoreRef 用于延迟获取 core 实例，避免循环依赖
+type CoreRef struct {
+	getCacheFunc func() types.Cache
 }
 
 type Stores struct {
@@ -299,4 +306,36 @@ func (p *Provider) KnowledgeMetaStore() store.KnowledgeMetaStore {
 
 func (p *Provider) KnowledgeRelMetaStore() store.KnowledgeRelMetaStore {
 	return p.stores.KnowledgeRelMetaStore
+}
+
+// Cache 实现 Author 接口的 Cache 方法
+func (p *Provider) Cache() types.Cache {
+	if p.coreRef != nil && p.coreRef.getCacheFunc != nil {
+		return p.coreRef.getCacheFunc()
+	}
+	// 返回一个空的 cache 实现作为fallback
+	return &EmptyCache{}
+}
+
+// SetCacheFunc 设置获取 cache 的函数
+func (p *Provider) SetCacheFunc(getCacheFunc func() types.Cache) {
+	if p.coreRef == nil {
+		p.coreRef = &CoreRef{}
+	}
+	p.coreRef.getCacheFunc = getCacheFunc
+}
+
+// EmptyCache 空的 cache 实现，用作 fallback
+type EmptyCache struct{}
+
+func (c *EmptyCache) Get(ctx context.Context, key string) (string, error) {
+	return "", nil
+}
+
+func (c *EmptyCache) SetEx(ctx context.Context, key, value string, expiresAt time.Duration) error {
+	return nil
+}
+
+func (c *EmptyCache) Expire(ctx context.Context, key string, expiration time.Duration) error {
+	return nil
 }

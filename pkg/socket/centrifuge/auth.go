@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"github.com/centrifugal/centrifuge"
+
 	"github.com/quka-ai/quka-ai/app/store"
+	"github.com/quka-ai/quka-ai/pkg/auth"
+	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/types/protocol"
 )
 
@@ -17,6 +20,7 @@ type Author interface {
 	UserStore() store.UserStore
 	UserSpaceStore() store.UserSpaceStore
 	ChatSessionStore() store.ChatSessionStore
+	Cache() types.Cache
 }
 
 // SimpleAuthHandler 临时简化的JWT认证处理器
@@ -32,21 +36,55 @@ func NewSimpleJWTAuthHandler(store Author) *SimpleAuthHandler {
 	}
 }
 
-// OnConnecting 处理连接认证 - 临时允许所有连接
+// OnConnecting 处理连接认证 - 支持 auth token 和 access token 验证
 func (a *SimpleAuthHandler) OnConnecting(ctx context.Context, event centrifuge.ConnectEvent) (centrifuge.ConnectReply, error) {
-	slog.Info("WebSocket connection attempt")
+	slog.Info("WebSocket connection attempt",
+		slog.String("token", event.Token),
+		slog.Any("headers", event.Headers))
 
-	token, err := a.Store.AccessTokenStore().GetAccessToken(ctx, event.Headers["x-appid"], event.Token)
+	// 首先尝试从缓存中验证 auth token
+	if event.Headers["x-auth-type"] == "authorization" {
+		tokenMeta, err := auth.ValidateTokenFromCache(ctx, event.Token, a.Store.Cache())
+		if err != nil {
+			slog.Debug("Auth token validation failed", slog.String("error", err.Error()))
+			return centrifuge.ConnectReply{}, err
+		}
+
+		// auth token 验证成功，获取用户信息
+		user, err := a.Store.UserStore().GetUser(ctx, tokenMeta.Appid, tokenMeta.UserID)
+		if err != nil {
+			slog.Error("Failed to get user from auth token", slog.String("error", err.Error()))
+			return centrifuge.ConnectReply{}, err
+		}
+
+		return centrifuge.ConnectReply{
+			Credentials: &centrifuge.Credentials{
+				UserID: user.ID,
+				Info:   []byte(`{"user_id":"` + user.ID + `"}`),
+			},
+		}, nil
+	}
+
+	// 如果 auth token 验证失败，尝试 access token
+	appid := event.Headers["x-appid"]
+	if appid == "" {
+		appid = "default" // 使用默认 appid
+	}
+
+	token, err := a.Store.AccessTokenStore().GetAccessToken(ctx, appid, event.Token)
 	if err != nil && err != sql.ErrNoRows {
+		slog.Error("Failed to get access token", slog.String("error", err.Error()))
 		return centrifuge.ConnectReply{}, err
 	}
 
 	if token == nil || token.ExpiresAt < time.Now().Unix() {
-		return centrifuge.ConnectReply{}, err
+		slog.Warn("Access token is nil or expired")
+		return centrifuge.ConnectReply{}, sql.ErrNoRows
 	}
 
 	user, err := a.Store.UserStore().GetUser(ctx, token.Appid, token.UserID)
 	if err != nil {
+		slog.Error("Failed to get user from access token", slog.String("error", err.Error()))
 		return centrifuge.ConnectReply{}, err
 	}
 

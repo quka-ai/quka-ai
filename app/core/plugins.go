@@ -27,7 +27,7 @@ type Plugins interface {
 	DeleteSpace(ctx context.Context, spaceID string) error
 	Rerank(query string, knowledges []*types.Knowledge) ([]*types.Knowledge, *ai.Usage, error)
 	AppendKnowledgeContentToDocs(docs []*types.PassageInfo, knowledges []*types.Knowledge) ([]*types.PassageInfo, error)
-	Cache() Cache
+	Cache() types.Cache
 }
 
 type LimitConfig struct {
@@ -49,11 +49,8 @@ func WithRange(r time.Duration) LimitOption {
 	}
 }
 
-type Cache interface {
-	Get(ctx context.Context, key string) (string, error)
-	SetEx(ctx context.Context, key, value string, expiresAt time.Duration) error
-	Expire(ctx context.Context, key string, expiration time.Duration) error
-}
+// Cache 类型别名，用于向后兼容
+type Cache = types.Cache
 
 type AIChatLogic interface {
 	RequestAssistant(ctx context.Context, reqMsgInfo *types.ChatMessage, receiver types.Receiver, opts *types.AICallOptions) error
@@ -87,4 +84,9 @@ func (c *Core) InstallPlugins(p Plugins) {
 		panic(err)
 	}
 	c.Plugins = p
+	
+	// 为 sqlstore.Provider 设置 cache 函数
+	c.stores().SetCacheFunc(func() types.Cache {
+		return c.Plugins.Cache()
+	})
 }

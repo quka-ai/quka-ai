@@ -3,19 +3,18 @@ package middleware
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/samber/lo"
 
 	"github.com/quka-ai/quka-ai/app/core"
 	v1 "github.com/quka-ai/quka-ai/app/logic/v1"
 	"github.com/quka-ai/quka-ai/app/response"
+	"github.com/quka-ai/quka-ai/pkg/auth"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/security"
@@ -260,19 +259,7 @@ func ParseAuthToken(c *gin.Context, tokenValue string, core *core.Core) (bool, e
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	tokenMetaStr, err := core.Plugins.Cache().Get(ctx, fmt.Sprintf("user:token:%s", utils.MD5(tokenValue)))
-	if err != nil && err != redis.Nil {
-		return false, errors.New("ParseAuthToken.GetFromCache", i18n.ERROR_INTERNAL, err)
-	}
-
-	if tokenMetaStr == "" {
-		return false, errors.New("ParseAuthToken.tokenMetaStr.check", i18n.ERROR_UNAUTHORIZED, fmt.Errorf("nil token")).Code(http.StatusUnauthorized)
-	}
-
-	var tokenMeta types.UserTokenMeta
-	if err := json.Unmarshal([]byte(tokenMetaStr), &tokenMeta); err != nil {
-		return false, errors.New("ParseAuthToken.GetFromCache.json.Unmarshal", i18n.ERROR_INTERNAL, err).Code(http.StatusUnauthorized)
-	}
+	tokenMeta, err := auth.ValidateTokenFromCache(ctx, tokenValue, core.Plugins.Cache())
 
 	user, err := core.Store().UserStore().GetUser(ctx, tokenMeta.Appid, tokenMeta.UserID)
 	if err != nil {
@@ -280,6 +267,7 @@ func ParseAuthToken(c *gin.Context, tokenValue string, core *core.Core) (bool, e
 	}
 
 	c.Set(v1.TOKEN_CONTEXT_KEY, security.NewTokenClaims(tokenMeta.Appid, "brew", tokenMeta.UserID, user.PlanID, "", tokenMeta.ExpireAt))
+
 	core.Plugins.Cache().Expire(ctx, fmt.Sprintf("user:token:%s", utils.MD5(tokenValue)), time.Hour*24*7)
 
 	return true, nil
