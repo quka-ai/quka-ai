@@ -166,8 +166,6 @@ func (s *AI) GetChatConfig(needsThinking bool) types.ModelConfig {
 
 // GetChatAI 根据思考需求获取预组装的ChatAI实例
 func (s *AI) GetChatAI(needsThinking bool) types.ChatModel {
-	raw, _ := json.Marshal(s.usage)
-	fmt.Println(111, string(raw))
 	if needsThinking {
 		impl, exist := s.chatThinkingDrivers[s.usage.ChatThinking]
 		if exist {

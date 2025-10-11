@@ -124,6 +124,16 @@ func (s *Core) loadAIConfigFromDB(ctx context.Context) ([]types.ModelConfig, []t
 		return nil, nil, srv.Usage{}, err
 	}
 
+	for i := range modelProviders {
+		result, err := s.DecryptData([]byte(modelProviders[i].ApiKey))
+		if err != nil {
+			// maybe unencrypted data
+			slog.Warn("Decrypt model provider api key failed, maybe unencrypted data", "provider", modelProviders[i].Name, "error", err)
+			continue
+		}
+		modelProviders[i].ApiKey = string(result)
+	}
+
 	// 3. 获取使用配置
 	usage, err := s.loadAIUsageFromDB(ctx)
 	if err != nil {
