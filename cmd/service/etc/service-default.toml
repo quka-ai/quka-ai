@@ -1,54 +1,32 @@
-addr = ":{your service port}"
-
 [log]
 level = "debug"
 path = ""
 
 [postgres]
-dsn = "postgresql://root:{your password}@127.0.0.1:5432/brew?sslmode=disable"
+dsn = "postgresql://quka:quka123@postgres:5432/quka?sslmode=disable"
 
-[ai]
-[ai.openai]
-token = ""
-endpoint = ""
-embedding_model = ""
-chat_model = ""
+[site]
+default_avatar = "/image/default_avatar.png"
+[site.share]
+site_title = "Quka.AI"
+site_description = "Quka.AI - 快速构建个人第二大脑"
 
-[ai.azure_openai]
-token = ""
-endpoint = ""
+[object_storage]
+static_domain = "http://{your host}:30080"
+driver = "s3"
 
-[ai.qwen]
-token = ""
-endpoint = ""
-embedding_model = ""
-chat_model = ""
+[object_storage.s3]
+bucket = "quka-bucket"
+region = ""
+endpoint = "http://minio:9000"
+access_key = "myminioadmin"
+secret_key = "minio-secret-key-change-me"
+use_path_style = true
 
-[ai.baishan]
-token = ""
-endpoint = "https://api.edgefn.net/v1"
-[ai.baishan.models]
-rerank_model = "bge-reranker-v2-m3"
-chat_model = "Qwen3-32B-FP8"
+[custom_config]
+encrypt_key="aaaaaaaaaaaaaaaa"
 
-[ai.usage]
-# which ai driver you want to ...
-"embedding.query"=""  # eg: qwen 
-"embedding.document"=""
-"query"="" # eg: openai 
-"summarize"=""
-"enhance_query"=""
-
-[centrifuge]
-# Centrifuge WebSocket configuration
-max_connections = 10000
-heartbeat_interval = 25
-deployment_mode = "single"  # "single" or "distributed"
-redis_url = "${REDIS_URL}"  # Only required for distributed mode
-redis_cluster = false
-enable_presence = true
-enable_history = false  # Use MySQL for message history
-enable_recovery = true
-allowed_origins = ["*"]
-max_channel_length = 255
-max_message_size = 65536
+[custom_config.chunk_service]
+enabled=true 
+address="chunker:35051"
+timeout=10
