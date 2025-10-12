@@ -95,11 +95,11 @@ func MustSetupCore(cfg CoreConfig) *Core {
 		return manager, nil
 	}
 
-	core.srv = srv.SetupSrvs(aiApplyFunc, // ai provider select
-		// web socket
-		srv.ApplyTower(),
-		// centrifuge websocket
-		srv.ApplyCentrifuge(centrifugeSetupFunc))
+	core.srv = srv.SetupSrvs(
+		aiApplyFunc, // ai provider select
+		// centrifuge websocket (支持分布式)
+		srv.ApplyCentrifuge(centrifugeSetupFunc),
+	)
 
 	return core
 }

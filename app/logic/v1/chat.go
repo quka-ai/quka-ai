@@ -411,7 +411,7 @@ func chatMsgToTextMsg(msg *types.ChatMessage) *types.MessageMeta {
 func (l *ChatLogic) StopStream(sessionID string) error {
 	err := l.core.Srv().Centrifuge().NewCloseChatStreamSignal(sessionID)
 	if err != nil {
-		return errors.New("ChatLogic.StopStream.Srv.Tower.NewCloseChatStreamSignal", i18n.ERROR_INTERNAL, err)
+		return errors.New("ChatLogic.StopStream.Centrifuge.NewCloseChatStreamSignal", i18n.ERROR_INTERNAL, err)
 	}
 	return nil
 }
