@@ -45,7 +45,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.41.0
 	golang.org/x/text v0.28.0
-	golang.org/x/time v0.5.0
+	golang.org/x/time v0.14.0
 	google.golang.org/api v0.186.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.8
@@ -59,7 +59,6 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/longrunning v0.5.7 // indirect
-	github.com/6tail/lunar-go v1.4.1 // indirect
 	github.com/FZambia/eagle v0.2.0 // indirect
 	github.com/PuerkitoBio/goquery v1.10.3 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
@@ -155,7 +154,6 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/redis/rueidis v1.0.64 // indirect
-	github.com/resend/resend-go/v2 v2.17.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/segmentio/encoding v0.5.3 // indirect
 	github.com/shadowspore/fossil-delta v0.0.0-20241213113458-1d797d70cbe3 // indirect
