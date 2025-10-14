@@ -35,6 +35,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/journal"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/ai/tools/duckduckgo"
+	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
@@ -956,13 +957,16 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		}
 
 		_msg, err := stream.Recv()
-		msg := _msg.Message
-		// raw, _ := json.Marshal(msg)
-		// fmt.Println("ttttt", string(raw), "eeee", err)
 		if err != nil && err != io.EOF {
-			doneFunc(err)
+			if errors.Is(err, context.Canceled) {
+				doneFunc(context.Canceled)
+			} else {
+				doneFunc(err)
+			}
 			return err
 		}
+
+		msg := _msg.Message
 
 		if isFirstChunk {
 			isFirstChunk = false
@@ -1263,9 +1267,6 @@ func NewCallbackHandlers(core *core.Core, modelName string, streamHandler *EinoR
 		},
 		OnEndWithStreamOutput: func(ctx context.Context, runInfo *callbacks.RunInfo, output *schema.StreamReader[*model.CallbackOutput]) context.Context {
 			// 处理流式输出
-			infoRaw, _ := json.Marshal(runInfo)
-			slog.Debug("eino callback stream output", slog.String("info", string(infoRaw)), slog.String("model_name", modelName), slog.String("message_id", reqMessage.ID))
-
 			if output == nil || runInfo.Name != react.ModelNodeName {
 				if runInfo.Name != react.ModelNodeName {
 					recvUnknown, err := output.Recv()
@@ -1273,11 +1274,7 @@ func NewCallbackHandlers(core *core.Core, modelName string, streamHandler *EinoR
 						slog.Error("failed to recv unknown stream output", slog.Any("error", err), slog.String("message_id", reqMessage.ID))
 					} else {
 						raw, err := json.Marshal(recvUnknown)
-						if err != nil {
-							fmt.Println("uuuuu error", err)
-						} else {
-							fmt.Println("uuuuu", string(raw))
-						}
+						slog.Warn("unknown stream output", slog.String("output", string(raw)), slog.Any("error", err), slog.String("message_id", reqMessage.ID))
 					}
 				}
 				return ctx

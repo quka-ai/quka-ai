@@ -135,6 +135,7 @@ require (
 	github.com/meguminnnnnnnnn/go-openai v0.0.0-20250723112853-3bce976e5ccc // indirect
 	github.com/mikespook/gorbac v2.3.0+incompatible // indirect
 	github.com/minio/highwayhash v1.0.3 // indirect
+	github.com/modelcontextprotocol/go-sdk v1.0.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect

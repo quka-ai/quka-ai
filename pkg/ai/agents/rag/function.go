@@ -99,7 +99,24 @@ func (r *RagTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts
 	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
 
-	enhanceResult, _ := EnhanceChatQuery(ctx, r.core, params.Query, r.spaceID, r.sessionID, r.messageSequence)
+	res, err := r.Handler(ctx, params.Query)
+	if err != nil {
+		return "", err
+	}
+
+	result := fmt.Sprintf("Tool '%s' Response:\n%s", FUNCTION_NAME_SEARCH_USER_KNOWLEDGES, res.Result)
+	return result, nil
+}
+
+type RagToolHandlerResult struct {
+	EnhanceQuery string               `json:"enhance_query"`
+	Result       string               `json:"result"`
+	Count        int                  `json:"count"`
+	Knowledges   []*types.PassageInfo `json:"knowledges,omitempty"`
+}
+
+func (r *RagTool) Handler(ctx context.Context, query string) (*RagToolHandlerResult, error) {
+	enhanceResult, _ := EnhanceChatQuery(ctx, r.core, query, r.spaceID, r.sessionID, r.messageSequence)
 
 	// 记录查询增强的使用量
 	if enhanceResult.Usage != nil {
@@ -109,7 +126,7 @@ func (r *RagTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts
 	// 获取相关知识
 	docs, usages, err := GetQueryRelevanceKnowledges(r.core, r.spaceID, r.userID, enhanceResult.ResultQuery(), nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to get query relevance knowledges: %w", err)
+		return nil, fmt.Errorf("failed to get query relevance knowledges: %w", err)
 	}
 
 	// 记录使用量
@@ -125,8 +142,10 @@ func (r *RagTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts
 	// 构建 RAG 提示词
 	ragPrompt := ai.BuildRAGPrompt(BasePrompt, ai.NewDocs(docs.Docs), r.core.Srv().AI())
 
-	// 返回结果
-	result := fmt.Sprintf("Tool '%s' Response:\n%s", FUNCTION_NAME_SEARCH_USER_KNOWLEDGES, ragPrompt)
-
-	return result, nil
+	return &RagToolHandlerResult{
+		EnhanceQuery: enhanceResult.ResultQuery(),
+		Result:       ragPrompt,
+		Count:        len(docs.Docs),
+		Knowledges:   docs.Docs,
+	}, nil
 }

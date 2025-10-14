@@ -76,6 +76,11 @@ func (l *ModelProviderLogic) CreateProvider(req CreateProviderRequest) (*types.M
 		}
 	}
 
+	secureToken, err := l.core.EncryptData([]byte(req.ApiKey))
+	if err != nil {
+		return nil, errors.New("ModelProviderLogic.CreateProvider.EncryptApiKey", i18n.ERROR_INTERNAL, err)
+	}
+
 	// 创建提供商
 	providerID := utils.GenUniqIDStr()
 	provider := types.ModelProvider{
@@ -83,7 +88,7 @@ func (l *ModelProviderLogic) CreateProvider(req CreateProviderRequest) (*types.M
 		Name:        req.Name,
 		Description: req.Description,
 		ApiUrl:      req.ApiUrl,
-		ApiKey:      req.ApiKey,
+		ApiKey:      string(secureToken),
 		Status:      types.StatusEnabled,
 		Config:      req.Config,
 		CreatedAt:   time.Now().Unix(),
@@ -163,7 +168,11 @@ func (l *ModelProviderLogic) UpdateProvider(id string, req UpdateProviderRequest
 		updated.ApiUrl = req.ApiUrl
 	}
 	if req.ApiKey != "" {
-		updated.ApiKey = req.ApiKey
+		secureToken, err := l.core.EncryptData([]byte(req.ApiKey))
+		if err != nil {
+			return nil, errors.New("ModelProviderLogic.UpdateProvider.EncryptApiKey", i18n.ERROR_INTERNAL, err)
+		}
+		updated.ApiKey = string(secureToken)
 	}
 	if req.Status != nil {
 		updated.Status = *req.Status

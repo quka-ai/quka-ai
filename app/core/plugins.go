@@ -84,7 +84,9 @@ func (c *Core) InstallPlugins(p Plugins) {
 		panic(err)
 	}
 	c.Plugins = p
-	
+
+	// after plugins installed
+	SetupSrv(c)
 	// 为 sqlstore.Provider 设置 cache 函数
 	c.stores().SetCacheFunc(func() types.Cache {
 		return c.Plugins.Cache()

@@ -1,14 +1,12 @@
 package srv
 
 import (
-	"github.com/quka-ai/quka-ai/pkg/socket/firetower"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
 type Srv struct {
 	rbac       *RBACSrv
 	ai         *AI
-	tower      *Tower
 	centrifuge CentrifugeManager
 }
 
@@ -29,14 +27,6 @@ func (s *Srv) RBAC() *RBACSrv {
 
 func (s *Srv) AI() AIDriver {
 	return s.ai
-}
-
-func (t *Tower) Pusher() *firetower.SelfPusher[PublishData] {
-	return t.pusher
-}
-
-func (s *Srv) Tower() *Tower {
-	return s.tower
 }
 
 func (s *Srv) Centrifuge() CentrifugeManager {
