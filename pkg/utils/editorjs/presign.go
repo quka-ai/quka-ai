@@ -154,7 +154,6 @@ func processImageBlockWithStruct(block goeditorjs.EditorJSBlock, fileStorage Fil
 	originalURL := image.File.URL
 	if ShouldPresignURL(originalURL) {
 		objectPath := ExtractObjectPath(originalURL)
-		fmt.Println("objectPath1", objectPath)
 		if objectPath != "" {
 			if presignedURL, err := fileStorage.GenGetObjectPreSignURL(objectPath); err == nil {
 				image.File.URL = presignedURL

@@ -113,12 +113,7 @@ type GetObjectResult struct {
 }
 
 func (s *S3) GetObject(ctx context.Context, key string) (*GetObjectResult, error) {
-	// s3M :=	manager.NewDownloader(s.cli)
-	// s3M.Download()
 	key = strings.TrimPrefix(key, "/")
-	fmt.Println("used s3", *s)
-	fmt.Println("GetObject key:", s.Bucket, key)
-
 	resp, err := s.cli.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(key),

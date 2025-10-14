@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/callbacks"
@@ -153,7 +154,8 @@ func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCo
 		return nopDoneFunc
 	}
 	imTopic := protocol.GenIMTopic(msg.SpaceID, msg.SessionID)
-	return func(err error) error {
+	once := sync.Once{}
+	handler := func(err error) error {
 		// todo retry
 		assistantStatus := lo.If(msg.MsgType == types.MESSAGE_TYPE_TOOL_TIPS, types.WS_EVENT_TOOL_DONE).Else(types.WS_EVENT_ASSISTANT_DONE)
 		completeStatus := types.MESSAGE_PROGRESS_COMPLETE
@@ -164,8 +166,9 @@ func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCo
 				completeStatus = types.MESSAGE_PROGRESS_CANCELED
 			} else {
 				completeStatus = types.MESSAGE_PROGRESS_FAILED
+				assistantStatus = lo.If(msg.MsgType == types.MESSAGE_TYPE_TOOL_TIPS, types.WS_EVENT_TOOL_FAILED).Else(types.WS_EVENT_ASSISTANT_FAILED)
 			}
-			assistantStatus = lo.If(msg.MsgType == types.MESSAGE_TYPE_TOOL_TIPS, types.WS_EVENT_TOOL_FAILED).Else(types.WS_EVENT_ASSISTANT_FAILED)
+
 			if err := core.Store().ChatMessageStore().UpdateMessageCompleteStatus(ctx, msg.SessionID, msg.ID, completeStatus); err != nil {
 				slog.Error("failed to finished assistant answer message", slog.String("session_id", msg.SessionID), slog.String("msg_id", msg.ID),
 					slog.String("error", err.Error()))
@@ -212,6 +215,14 @@ func getStreamDoneFunc(ctx context.Context, core *core.Core, strCounter SendedCo
 			return err
 		}
 		return nil
+	}
+
+	return func(err error) error {
+		var handlerResult error
+		once.Do(func() {
+			handlerResult = handler(err)
+		})
+		return handlerResult
 	}
 }
 
@@ -1065,8 +1076,6 @@ func GenChatSessionContextSummary(ctx context.Context, core *core.Core, spaceID,
 	}
 
 	cfg := core.Srv().AI().GetConfig(types.MODEL_TYPE_CHAT)
-	// raw, _ := json.Marshal(cfg)
-	// fmt.Println(222, string(raw))
 	model, err := GetToolCallingModel(&types.AgentContext{
 		Context:        ctx,
 		EnableThinking: false,
