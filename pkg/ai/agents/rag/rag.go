@@ -19,21 +19,27 @@ import (
 )
 
 func EnhanceChatQuery(ctx context.Context, core *core.Core, query string, spaceID, sessionID string, msgSequence int64) (ai.EnhanceQueryResult, error) {
-	histories, err := core.Store().ChatMessageStore().ListSessionMessageUpToGivenID(ctx, spaceID, sessionID, msgSequence, 1, 6)
-	if err != nil {
-		slog.Error("Failed to get session message history", slog.String("space_id", spaceID), slog.String("session_id", sessionID),
-			slog.Int64("message_sequence", msgSequence), slog.String("error", err.Error()))
+	var (
+		histories []*types.ChatMessage
+		err       error
+	)
+	if sessionID != "" {
+		histories, err = core.Store().ChatMessageStore().ListSessionMessageUpToGivenID(ctx, spaceID, sessionID, msgSequence, 1, 6)
+		if err != nil {
+			slog.Error("Failed to get session message history", slog.String("space_id", spaceID), slog.String("session_id", sessionID),
+				slog.Int64("message_sequence", msgSequence), slog.String("error", err.Error()))
+		}
+
+		if len(histories) <= 1 {
+			return ai.EnhanceQueryResult{
+				Original: query,
+			}, nil
+		}
+
+		histories = lo.Reverse(histories)[:len(histories)-1]
+
+		decryptMessageLists(core, histories)
 	}
-
-	if len(histories) <= 1 {
-		return ai.EnhanceQueryResult{
-			Original: query,
-		}, nil
-	}
-
-	histories = lo.Reverse(histories)[:len(histories)-1]
-
-	decryptMessageLists(core, histories)
 
 	return EnhanceQuery(ctx, core, query, histories)
 }
@@ -62,7 +68,7 @@ func EnhanceQuery(ctx context.Context, core *core.Core, query string, histories 
 
 // 补充 session pin docs to docs
 func SupplementSessionChatDocs(core *core.Core, spaceID, sessionID string, docs types.RAGDocs) {
-	if len(docs.Refs) == 0 {
+	if len(docs.Refs) == 0 || spaceID == "" || sessionID == "" {
 		return
 	}
 

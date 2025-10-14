@@ -144,11 +144,10 @@ func (s *EnhanceOptions) EnhanceQuery(query string) (EnhanceQueryResult, error) 
 		s.prompt = PROMPT_ENHANCE_QUERY_CN
 	}
 
+	s.vars[PROMPT_VAR_QUERY] = query
 	for k, v := range s.vars {
 		s.prompt = strings.ReplaceAll(s.prompt, k, v)
 	}
-
-	s.prompt = strings.ReplaceAll(s.prompt, PROMPT_VAR_QUERY, query)
 
 	res, err := s._driver.Generate(s.ctx, []*schema.Message{
 		schema.UserMessage(s.prompt),
@@ -659,10 +658,8 @@ type EnhanceQueryResult struct {
 func (e EnhanceQueryResult) ResultQuery() string {
 	b := strings.Builder{}
 	b.WriteString(e.Original)
-	for i, item := range e.News {
-		if i != 0 {
-			b.WriteString(" ")
-		}
+	for _, item := range e.News {
+		b.WriteString(" ")
 		b.WriteString(item)
 	}
 
