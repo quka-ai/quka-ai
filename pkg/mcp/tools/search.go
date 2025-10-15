@@ -64,7 +64,7 @@ func (h *SearchKnowledgeHandler) Handle(
 		return nil, SearchKnowledgeOutput{}, fmt.Errorf("query is required")
 	}
 
-	tool := rag.NewRagTool(h.core, userCtx.SpaceID, userCtx.UserID, "", "", 0)
+	tool := rag.NewRagTool(h.core, userCtx.Field("space_id"), userCtx.User, "", "", 0)
 
 	result, err := tool.Handler(ctx, args.Query)
 	if err != nil {

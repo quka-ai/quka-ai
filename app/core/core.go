@@ -82,6 +82,19 @@ func (s *Core) loadAIConfigFromDB(ctx context.Context) ([]types.ModelConfig, []t
 		return nil, nil, srv.Usage{}, err
 	}
 
+	for _, v := range models {
+		if v.Provider == nil {
+			continue
+		}
+		result, err := s.DecryptData([]byte(v.Provider.ApiKey))
+		if err != nil {
+			// maybe unencrypted data
+			slog.Warn("Decrypt model(provider) api key failed, maybe unencrypted data", "model_display_name", v.DisplayName, "error", err)
+			continue
+		}
+		v.Provider.ApiKey = string(result)
+	}
+
 	// 2. 获取启用的模型提供商配置
 	modelProviders, err := s.Store().ModelProviderStore().List(ctx, types.ListModelProviderOptions{
 		Status: &statusEnabled,

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -9,29 +10,32 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/quka-ai/quka-ai/app/core"
 	v1 "github.com/quka-ai/quka-ai/app/logic/v1"
+	"github.com/quka-ai/quka-ai/pkg/security"
 )
-
-type contextKey string
-
-const userContextKey contextKey = "mcp_user_context"
 
 // SetUserContext 将用户上下文设置到 context 中
 func SetUserContext(ctx context.Context, userCtx *UserContext) context.Context {
-	return context.WithValue(ctx, userContextKey, userCtx)
+	if userCtx.ExpiredAt == 0 {
+		userCtx.ExpiredAt = time.Now().Add(30 * 24 * time.Hour).Unix() // 默认30天过期
+	}
+	claims := security.NewTokenClaims(userCtx.Appid, userCtx.Appid, userCtx.UserID, userCtx.PlanID, "", userCtx.ExpiredAt)
+	claims.Fields["space_id"] = userCtx.SpaceID
+	claims.Fields["resource"] = userCtx.Resource
+	return context.WithValue(ctx, v1.TOKEN_CONTEXT_KEY, claims)
 }
 
-// GetUserContext 从 context 中获取用户上下文
-func GetUserContext(ctx context.Context) (*UserContext, bool) {
-	userCtx, ok := ctx.Value(userContextKey).(*UserContext)
-	return userCtx, ok
+func GetUserContext(ctx context.Context) (security.TokenClaims, bool) {
+	return v1.InjectTokenClaim(ctx)
 }
 
 // UserContext MCP 用户上下文
 type UserContext struct {
-	UserID   string
-	Appid    string
-	SpaceID  string
-	Resource string
+	UserID    string
+	Appid     string
+	SpaceID   string
+	Resource  string
+	PlanID    string
+	ExpiredAt int64
 }
 
 // ValidateRequest 验证 MCP 请求的认证信息
@@ -99,17 +103,27 @@ func ValidateRequest(c *gin.Context, core *core.Core) (*UserContext, error) {
 		return nil, fmt.Errorf("access token expired")
 	}
 
-	// TODO: 验证用户对空间的访问权限
-	// userSpaceStore := core.Store.UserSpace()
-	// hasAccess, err := userSpaceStore.CheckUserSpaceAccess(accessToken.UserID, spaceID)
-	// if err != nil || !hasAccess {
-	//     return nil, fmt.Errorf("user does not have access to this space")
-	// }
+	// get user plan
+	user, err := core.Store().UserStore().GetUser(ctx, accessToken.Appid, accessToken.UserID)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to get user detail: %w", err)
+	}
+
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	hasAccess, err := core.Store().UserSpaceStore().GetUserSpaceRole(ctx, accessToken.UserID, spaceID)
+	if err != nil || hasAccess == nil {
+		return nil, fmt.Errorf("user does not have access to this space")
+	}
 
 	return &UserContext{
-		UserID:   accessToken.UserID,
-		Appid:    accessToken.Appid,
-		SpaceID:  spaceID,
-		Resource: resource,
+		UserID:    accessToken.UserID,
+		Appid:     accessToken.Appid,
+		SpaceID:   spaceID,
+		Resource:  resource,
+		PlanID:    user.PlanID,
+		ExpiredAt: accessToken.ExpiresAt,
 	}, nil
 }

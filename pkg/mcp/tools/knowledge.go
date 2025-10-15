@@ -12,6 +12,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/mcp/auth"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
+	"github.com/samber/lo"
 )
 
 // CreateKnowledgeInput 创建知识的输入参数
@@ -65,8 +66,8 @@ func (h *CreateKnowledgeHandler) Handle(
 	// 调用 KnowledgeLogic 创建知识
 	logic := v1.NewKnowledgeLogic(ctx, h.core)
 	id, err := logic.InsertContentAsync(
-		userCtx.SpaceID,
-		userCtx.Resource,
+		userCtx.Field("space_id"),
+		lo.If(args.Resource != "", args.Resource).Else(userCtx.Field("resource")),
 		types.KindNewFromString(args.Kind),
 		content,
 		contentType,
@@ -135,7 +136,7 @@ func (h *GetKnowledgeHandler) Handle(
 
 	// 调用 KnowledgeLogic 获取知识
 	logic := v1.NewKnowledgeLogic(ctx, h.core)
-	knowledge, err := logic.GetKnowledge(userCtx.SpaceID, args.ID)
+	knowledge, err := logic.GetKnowledge(userCtx.Field("space_id"), args.ID)
 	if err != nil {
 		return nil, GetKnowledgeOutput{}, fmt.Errorf("failed to get knowledge: %w", err)
 	}

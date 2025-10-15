@@ -50,81 +50,47 @@ func (s *HttpSrv) GetModelConfig(c *gin.Context) {
 	response.APISuccess(c, model)
 }
 
+// ListModelConfigsRequest 获取模型配置列表请求
+type ListModelConfigsRequest struct {
+	ProviderID       string `form:"provider_id"`       // 提供商ID
+	ModelType        string `form:"model_type"`        // 模型类型
+	ModelName        string `form:"model_name"`        // 模型名称（用于搜索 display_name）
+	Status           *int   `form:"status"`            // 状态
+	IsMultiModal     *bool  `form:"is_multi_modal"`    // 是否多模态
+	ThinkingSupport  *int   `form:"thinking_support"`  // 思考功能支持类型
+	ThinkingRequired *bool  `form:"thinking_required"` // 是否需要思考功能
+}
+
 // ListModelConfigs 获取模型配置列表
 func (s *HttpSrv) ListModelConfigs(c *gin.Context) {
-	var status *int
-	if statusStr := c.Query("status"); statusStr != "" {
-		if statusInt, err := strconv.Atoi(statusStr); err == nil {
-			status = &statusInt
-		}
+	var req ListModelConfigsRequest
+	if err := utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
+		return
 	}
-
-	var isMultiModal *bool
-	if multiModalStr := c.Query("is_multi_modal"); multiModalStr != "" {
-		if multiModalBool, err := strconv.ParseBool(multiModalStr); err == nil {
-			isMultiModal = &multiModalBool
-		}
-	}
-
-	var thinkingSupport *int
-	if thinkingSupportStr := c.Query("thinking_support"); thinkingSupportStr != "" {
-		if thinkingSupportInt, err := strconv.Atoi(thinkingSupportStr); err == nil {
-			thinkingSupport = &thinkingSupportInt
-		}
-	}
-
-	var thinkingRequired *bool
-	if thinkingRequiredStr := c.Query("thinking_required"); thinkingRequiredStr != "" {
-		if thinkingRequiredBool, err := strconv.ParseBool(thinkingRequiredStr); err == nil {
-			thinkingRequired = &thinkingRequiredBool
-		}
-	}
-
-	providerID := c.Query("provider_id")
-	modelType := c.Query("model_type")
-	modelName := c.Query("model_name")
 
 	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
 
-	var models []*types.ModelConfig
-	var err error
-	models, err = logic.ListModelsWithProvider(providerID)
+	// 构建筛选选项
+	opts := types.ListModelConfigOptions{
+		ProviderID:       req.ProviderID,
+		ModelType:        req.ModelType,
+		DisplayName:      req.ModelName, // 注意：前端的 model_name 参数映射到 DisplayName 字段
+		Status:           req.Status,
+		IsMultiModal:     req.IsMultiModal,
+		ThinkingSupport:  req.ThinkingSupport,
+		ThinkingRequired: req.ThinkingRequired,
+	}
+
+	// 直接使用筛选条件查询，不再在内存中过滤
+	models, err := logic.ListModelsWithProviderFiltered(opts)
 	if err != nil {
 		response.APIError(c, err)
 		return
 	}
 
-	// 客户端过滤（简化版，生产环境建议在数据库层过滤）
-	filteredModels := make([]*types.ModelConfig, 0)
-	for _, model := range models {
-		if status != nil && model.Status != *status {
-			continue
-		}
-		if modelType != "" && model.ModelType != modelType {
-			continue
-		}
-		if modelName != "" && model.ModelName != modelName {
-			continue
-		}
-		if isMultiModal != nil && model.IsMultiModal != *isMultiModal {
-			continue
-		}
-		if thinkingSupport != nil && model.ThinkingSupport != *thinkingSupport {
-			continue
-		}
-		if thinkingRequired != nil {
-			if *thinkingRequired && model.ThinkingSupport == types.ThinkingSupportNone {
-				continue // 需要思考但模型不支持
-			}
-			if !*thinkingRequired && model.ThinkingSupport == types.ThinkingSupportForced {
-				continue // 不需要思考但模型强制思考
-			}
-		}
-		filteredModels = append(filteredModels, model)
-	}
-
 	response.APISuccess(c, map[string]interface{}{
-		"list": filteredModels,
+		"list": models,
 	})
 }
 
