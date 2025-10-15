@@ -88,11 +88,12 @@ func (opt ListModelProviderOptions) Apply(query *sq.SelectBuilder) {
 type ListModelConfigOptions struct {
 	ProviderID       string
 	ModelType        string
+	ModelName        string // 精确匹配 model_name 字段
+	DisplayName      string // 模糊搜索 display_name 字段
 	IsMultiModal     *bool
 	ThinkingSupport  *int  // 思考功能支持过滤：0-不支持，1-可选，2-强制
 	ThinkingRequired *bool // 是否需要思考功能（用于筛选支持思考的模型）
 	Status           *int
-	ModelName        string
 }
 
 func (opt ListModelConfigOptions) Apply(query *sq.SelectBuilder) {
@@ -122,6 +123,9 @@ func (opt ListModelConfigOptions) Apply(query *sq.SelectBuilder) {
 	}
 	if opt.ModelName != "" {
 		*query = query.Where(sq.Like{"model_name": "%" + opt.ModelName + "%"})
+	}
+	if opt.DisplayName != "" {
+		*query = query.Where(sq.Like{"display_name": "%" + opt.DisplayName + "%"})
 	}
 }
 

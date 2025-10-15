@@ -254,6 +254,79 @@ func (l *ModelConfigLogic) ListModelsWithProvider(providerID string) ([]*types.M
 	return allModels, nil
 }
 
+// ListModelsWithProviderFiltered 列出模型配置（包含提供商信息），支持完整筛选
+func (l *ModelConfigLogic) ListModelsWithProviderFiltered(opts types.ListModelConfigOptions) ([]*types.ModelConfig, error) {
+	models, err := l.core.Store().ModelConfigStore().ListWithProvider(l.ctx, opts)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("ModelConfigLogic.ListModelsWithProviderFiltered.ListWithProvider", i18n.ERROR_INTERNAL, err)
+	}
+
+	// 添加支持 Reader 功能的提供商作为虚拟模型（如果需要）
+	// 注意：Reader 模型需要根据筛选条件决定是否包含
+	if opts.ModelType == "" || opts.ModelType == types.MODEL_TYPE_READER {
+		readerModels, err := l.getReaderProviderAsModels(opts.ProviderID)
+		if err != nil {
+			return nil, err
+		}
+
+		// 对 Reader 模型应用筛选条件
+		readerModels = l.filterReaderModels(readerModels, opts)
+
+		// 合并真实模型和 Reader 虚拟模型
+		models = append(models, readerModels...)
+	}
+
+	return models, nil
+}
+
+// filterReaderModels 对 Reader 虚拟模型应用筛选条件
+func (l *ModelConfigLogic) filterReaderModels(models []*types.ModelConfig, opts types.ListModelConfigOptions) []*types.ModelConfig {
+	filtered := make([]*types.ModelConfig, 0)
+
+	for _, model := range models {
+		// DisplayName 模糊搜索（不区分大小写）
+		if opts.DisplayName != "" {
+			// 使用 strings 包进行不区分大小写的模糊匹配
+			displayNameLower := ""
+			searchLower := ""
+			for _, r := range model.DisplayName {
+				if r >= 'A' && r <= 'Z' {
+					displayNameLower += string(r + 32)
+				} else {
+					displayNameLower += string(r)
+				}
+			}
+			for _, r := range opts.DisplayName {
+				if r >= 'A' && r <= 'Z' {
+					searchLower += string(r + 32)
+				} else {
+					searchLower += string(r)
+				}
+			}
+
+			found := false
+			for i := 0; i <= len(displayNameLower)-len(searchLower); i++ {
+				if displayNameLower[i:i+len(searchLower)] == searchLower {
+					found = true
+					break
+				}
+			}
+			if !found && len(searchLower) > 0 {
+				continue
+			}
+		}
+
+		// Status 筛选
+		if opts.Status != nil && model.Status != *opts.Status {
+			continue
+		}
+
+		filtered = append(filtered, model)
+	}
+
+	return filtered
+}
+
 // getReaderProviderAsModels 获取支持Reader功能的提供商，转换为虚拟模型
 func (l *ModelConfigLogic) getReaderProviderAsModels(providerID string) ([]*types.ModelConfig, error) {
 	// 构建查询条件

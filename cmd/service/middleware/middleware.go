@@ -152,7 +152,7 @@ func ParseAccessToken(c *gin.Context, tokenValue string, core *core.Core) (bool,
 		return false, errors.New("ParseAccessToken.UserStore.GetUser", i18n.ERROR_INTERNAL, err)
 	}
 
-	c.Set(v1.TOKEN_CONTEXT_KEY, security.NewTokenClaims(user.Appid, "brew", user.ID, user.PlanID, "", token.ExpiresAt))
+	c.Set(v1.TOKEN_CONTEXT_KEY, security.NewTokenClaims(user.Appid, core.DefaultAppid(), user.ID, user.PlanID, "", token.ExpiresAt))
 	return true, nil
 }
 

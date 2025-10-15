@@ -110,7 +110,11 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	}
 
 	// 2. 准备提示词
-	prompt := ai.BuildPrompt(space.BasePrompt, ai.MODEL_BASE_LANGUAGE_CN)
+	var prompt string
+	if space.BasePrompt != "" || space.ChatPrompt != "" {
+		prompt = fmt.Sprintf("%s\n%s", space.BasePrompt, space.ChatPrompt)
+	}
+	prompt = ai.BuildPrompt(space.BasePrompt, ai.MODEL_BASE_LANGUAGE_CN)
 	prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
@@ -893,11 +897,6 @@ func (h *EinoResponseHandler) GetDoneFunc(callback func(msg *types.ChatMessage))
 
 // HandleStreamResponse 处理 eino Agent 的流式响应，返回 ResponseChoice 通道以兼容现有接口
 func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *schema.StreamReader[*model.CallbackOutput], needToCreateMessage func(ctx context.Context) error) error {
-	ticker := time.NewTicker(time.Millisecond * 300)
-
-	defer func() {
-		ticker.Stop()
-	}()
 
 	var (
 		once      = sync.Once{}
@@ -930,19 +929,10 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		}
 	}
 
-	// 定时刷新协程
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if maybeMarks {
-					continue
-				}
-				flushResponse()
-			}
-		}
+	ticker := time.NewTimer(time.Millisecond * 300)
+	defer func() {
+		ticker.Stop()
+		flushResponse()
 	}()
 
 	isFirstChunk := true
@@ -953,6 +943,9 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 		case <-ctx.Done():
 			doneFunc(ctx.Err())
 			return ctx.Err()
+		case <-ticker.C:
+			ticker.Reset(time.Millisecond * 300)
+			flushResponse()
 		default:
 		}
 
@@ -1240,8 +1233,6 @@ func NewCallbackHandlers(core *core.Core, modelName string, streamHandler *EinoR
 			// latestMessage := input.Messages[len(input.Messages)-1]
 			// 创建 assistant 消息记录，代表一次完整的 AI 响应会话
 			// (替代原来在 RequestAssistant 中的 InitAssistantMessage 调用)
-			raw, _ := json.Marshal(input)
-			fmt.Println("onStart", string(raw))
 			return ctx
 		},
 		OnEnd: func(ctx context.Context, runInfo *callbacks.RunInfo, output *model.CallbackOutput) context.Context {

@@ -52,7 +52,6 @@ func getStreamReceiveFunc(ctx context.Context, core *core.Core, sendedCounter Se
 		switch message.Type() {
 		case types.MESSAGE_TYPE_TEXT:
 			assistantStatus := types.WS_EVENT_ASSISTANT_CONTINUE
-
 			if err := core.Srv().Centrifuge().PublishStreamMessage(imTopic, assistantStatus, &types.StreamMessage{
 				MessageID: msg.ID,
 				SessionID: msg.SessionID,
