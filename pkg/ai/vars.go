@@ -12,7 +12,7 @@ const (
 	PROMPT_VAR_QUERY            = "${query}"
 )
 
-var CurrentSymbols = strings.Join([]string{"$hidden[xxxx]"}, ",")
+var CurrentSymbols = strings.Join([]string{"$hidden[...]"}, ",")
 
 var (
 	SITE_TITLE       = "Quka"

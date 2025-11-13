@@ -3,6 +3,7 @@ package centrifuge
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -79,7 +80,7 @@ func (a *SimpleAuthHandler) OnConnecting(ctx context.Context, event centrifuge.C
 
 	if token == nil || token.ExpiresAt < time.Now().Unix() {
 		slog.Warn("Access token is nil or expired")
-		return centrifuge.ConnectReply{}, sql.ErrNoRows
+		return centrifuge.ConnectReply{}, errors.New("access token is invalid or expired")
 	}
 
 	user, err := a.Store.UserStore().GetUser(ctx, token.Appid, token.UserID)

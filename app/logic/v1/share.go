@@ -18,6 +18,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type ManageShareLogic struct {
@@ -219,7 +220,7 @@ func (l *ShareLogic) GetKnowledgeByShareToken(token string) (*KnowledgeShareInfo
 		return nil, errors.New("ShareLogic.GetKnowledgeByShareToken.DecryptData", i18n.ERROR_INTERNAL, err)
 	}
 
-	return &KnowledgeShareInfo{
+	data := &KnowledgeShareInfo{
 		UserID:       user.ID,
 		UserName:     user.Name,
 		UserAvatar:   user.Avatar,
@@ -228,11 +229,15 @@ func (l *ShareLogic) GetKnowledgeByShareToken(token string) (*KnowledgeShareInfo
 		Kind:         knowledge.Kind,
 		Title:        knowledge.Title,
 		Tags:         knowledge.Tags,
-		Content:      lo.If(knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS, knowledge.Content).Else(types.KnowledgeContent(fmt.Sprintf("\"%s\"", knowledge.Content))),
-		ContentType:  knowledge.ContentType,
 		CreatedAt:    knowledge.CreatedAt,
 		EmbeddingURL: link.EmbeddingURL,
-	}, nil
+		ContentType:  knowledge.ContentType,
+		Content: lo.If(knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS,
+			types.KnowledgeContent(editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(string(knowledge.Content), l.core.Plugins.FileStorage()))).
+			Else(knowledge.Content),
+	}
+
+	return data, nil
 }
 
 type SessionShareInfo struct {

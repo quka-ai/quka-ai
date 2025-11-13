@@ -109,7 +109,6 @@ func genSpaceShareURL(domain, token string) string {
 
 func (s *HttpSrv) GetKnowledgeByShareToken(c *gin.Context) {
 	token, _ := c.Params.Get("token")
-
 	res, err := v1.NewShareLogic(c, s.Core).GetKnowledgeByShareToken(token)
 	if err != nil {
 		response.APIError(c, err)

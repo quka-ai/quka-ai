@@ -479,9 +479,9 @@ func BuildPrompt(basePrompt string, lang string) string {
 	if basePrompt == "" {
 		switch lang {
 		case MODEL_BASE_LANGUAGE_EN:
-			basePrompt = GENERATE_PROMPT_TPL_NONE_CONTENT_EN
+			basePrompt = GENERATE_PROMPT_TPL_NONE_CONTENT_CN + BASE_GENERATE_PROMPT_CN
 		default:
-			basePrompt = GENERATE_PROMPT_TPL_NONE_CONTENT_CN
+			basePrompt = GENERATE_PROMPT_TPL_NONE_CONTENT_CN + BASE_GENERATE_PROMPT_CN
 		}
 	} else {
 		sb.WriteString(basePrompt)

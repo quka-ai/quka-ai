@@ -473,14 +473,35 @@ func (s *ButlerAssistant) GenSessionContext(ctx context.Context, prompt string, 
 // reqMsgInfo 用户请求的内容
 // recvMsgInfo 用于承载ai回复的内容，会预先在数据库中为ai响应的数据创建出对应的记录
 func (s *ButlerAssistant) RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error {
-	// 1. 获取空间信息
-	space, err := s.core.Store().SpaceStore().GetSpace(ctx, reqMsg.SpaceID)
+	// // 1. 获取空间信息
+	// space, err := s.core.Store().SpaceStore().GetSpace(ctx, reqMsg.SpaceID)
+	// if err != nil {
+	// 	return HandleAssistantEarlyError(err, reqMsg, receiver, "获取空间信息失败")
+	// }
+
+	list, err := s.core.Store().BulterTableStore().ListButlerTables(ctx, reqMsg.UserID)
 	if err != nil {
-		return HandleAssistantEarlyError(err, reqMsg, receiver, "获取空间信息失败")
+		return HandleAssistantEarlyError(err, reqMsg, receiver, "获取用户表格信息失败")
 	}
 
-	// 2. 准备提示词 - 使用butler专用提示词
-	prompt := ai.BuildPrompt(space.BasePrompt, s.core.Srv().AI().Lang())
+	userExistsTable := &strings.Builder{}
+	userExistsTable.WriteString("这是目前用户已经创建的数据表，你可以结合下列数据表简介来分析用户需求，从而决定你下一步要怎么做：\n\n")
+	if len(list) == 0 {
+		userExistsTable.WriteString("用户当前没有任何数据表\n\n")
+	} else {
+		for _, v := range list {
+			userExistsTable.WriteString("表ID：")
+			userExistsTable.WriteString(v.TableID)
+			userExistsTable.WriteString("\n")
+			userExistsTable.WriteString("表名：")
+			userExistsTable.WriteString(v.TableName)
+			userExistsTable.WriteString("\n表描述：")
+			userExistsTable.WriteString(v.TableDescription)
+			userExistsTable.WriteString("------\n\n")
+		}
+	}
+
+	prompt := butler.BuildButlerPrompt("", s.core.Srv().AI(), userExistsTable.String())
 	prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
@@ -828,8 +849,6 @@ func initAssistantMessage(ctx context.Context, core *core.Core, msgID string, se
 	}
 	answerMsg.MsgBlock = userReqMsg.MsgBlock
 	answerMsg.UserID = userReqMsg.UserID // ai answer message is also belong to user
-
-	fmt.Println("initAssistantMessage", msgID)
 
 	var err error
 	err = core.Store().Transaction(ctx, func(ctx context.Context) error {

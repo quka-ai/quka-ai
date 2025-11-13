@@ -83,11 +83,10 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	s.Engine.Use(middleware.I18n(), response.NewResponse())
 	s.Engine.Use(middleware.SetAppid(s.Core))
 	apiV1 := s.Engine.Group("/api/v1")
-
-	// MCP 路由（独立认证，不使用 JWT middleware）
-	// 使用 MCP SDK 的 StreamableHTTPHandler（推荐方式）
-	apiV1.POST("/mcp", mcp.MCPStreamableHandler(s.Core))
 	{
+		// MCP 路由（独立认证，不使用 JWT middleware）
+		// 使用 MCP SDK 的 StreamableHTTPHandler（推荐方式）
+		apiV1.POST("/mcp", mcp.MCPStreamableHandler(s.Core))
 		apiV1.GET("/mode", func(c *gin.Context) {
 			response.APISuccess(c, s.Core.Plugins.Name())
 		})
