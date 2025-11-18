@@ -55,6 +55,10 @@ func decryptMessageLists(core *core.Core, messages []*types.ChatMessage) {
 
 func EnhanceQuery(ctx context.Context, core *core.Core, query string, histories []*types.ChatMessage) (ai.EnhanceQueryResult, error) {
 	aiOpts := ai.NewEnhance(ctx, core.Srv().AI().GetEnhanceAI())
+	prompt := core.Prompt().EnhanceQuery
+	if prompt == "" {
+		prompt = ai.PROMPT_ENHANCE_QUERY_CN
+	}
 	resp, err := aiOpts.WithPrompt(core.Prompt().EnhanceQuery).
 		WithHistories(histories).
 		EnhanceQuery(query)

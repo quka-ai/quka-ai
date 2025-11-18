@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS quka_chat_summary (
     created_at BIGINT NOT NULL            -- 创建时间，使用UNIX时间戳
 );
 
-CREATE INDEX IF NOT EXISTS idx_quka_chat_summary_session_id_message_id ON quka_chat_summary (session_id,message_id); -- 用户ID索引，提升用户相关的查询速度
+CREATE INDEX IF NOT EXISTS idx_quka_chat_summary_session_id_sequence ON quka_chat_summary (session_id,sequence); -- 用户ID索引，提升用户相关的查询速度
 CREATE INDEX IF NOT EXISTS idx_quka_chat_summary_space_id ON quka_chat_summary (space_id);
 
 -- 添加字段备注

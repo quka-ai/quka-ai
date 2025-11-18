@@ -19,6 +19,14 @@ https://github.com/user-attachments/assets/78751333-e02f-482d-b2da-12d0ea59a66c
 
 Join our community on Discord to connect with other users, share ideas, and get support: [Discord Community](https://discord.gg/YGrbmbCVRF).
 
+Thanks:
+
+<a href="https://github.com/quka-ai/quka-ai/graphs/contributors">
+<img src="https://contrib.rocks/image?repo=quka-ai/quka-ai" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
 ## Install
 
 ### Databases
@@ -36,5 +44,3 @@ Join our community on Discord to connect with other users, share ideas, and get 
 ### Web
 
 - [QukaAI webapp](https://github.com/quka-ai/webapp)
-
-

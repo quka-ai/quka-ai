@@ -103,7 +103,7 @@ func NewEnhance(ctx context.Context, driver types.ChatModel) *EnhanceOptions {
 		vars:    make(map[string]string),
 	}
 
-	opt.vars[PROMPT_VAR_TIME_RANGE] = PROMPT_ENHANCE_QUERY_CN
+	opt.vars[PROMPT_VAR_TIME_RANGE] = GenerateTimeListAtNowCN()
 	opt.vars[PROMPT_VAR_LANG] = MODEL_BASE_LANGUAGE_CN
 	opt.vars[PROMPT_VAR_HISTORIES] = "null"
 	opt.vars[PROMPT_VAR_SYMBOL] = CurrentSymbols
