@@ -55,6 +55,10 @@ func decryptMessageLists(core *core.Core, messages []*types.ChatMessage) {
 
 func EnhanceQuery(ctx context.Context, core *core.Core, query string, histories []*types.ChatMessage) (ai.EnhanceQueryResult, error) {
 	aiOpts := ai.NewEnhance(ctx, core.Srv().AI().GetEnhanceAI())
+	prompt := core.Prompt().EnhanceQuery
+	if prompt == "" {
+		prompt = ai.PROMPT_ENHANCE_QUERY_CN
+	}
 	resp, err := aiOpts.WithPrompt(core.Prompt().EnhanceQuery).
 		WithHistories(histories).
 		EnhanceQuery(query)
@@ -157,12 +161,12 @@ func GetQueryRelevanceKnowledges(core *core.Core, spaceID, userID, query string,
 		highScoreKnowledge []types.QueryResult
 	)
 
-	if len(refs) > 10 && refs[0].Cos < 0.5 {
+	if len(refs) > 10 && refs[0].Cos < 0.7 {
 		cosLimit = refs[0].Cos - 0.1
 	}
 	for i, v := range refs {
 		if i > 0 && (v.Cos < cosLimit && v.OriginalLength > 200) {
-			if len(result.Refs) > 15 {
+			if len(result.Refs) > 20 {
 				break
 			}
 			// TODO：more and more verify best ratio

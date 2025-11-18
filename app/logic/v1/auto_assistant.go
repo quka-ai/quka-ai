@@ -111,10 +111,13 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 
 	// 2. 准备提示词
 	var prompt string
-	if space.BasePrompt != "" || space.ChatPrompt != "" {
-		prompt = fmt.Sprintf("%s\n%s", space.BasePrompt, space.ChatPrompt)
+	if space.BasePrompt != "" {
+		prompt = space.BasePrompt + ai.BASE_GENERATE_PROMPT_CN
 	}
-	prompt = ai.BuildPrompt(space.BasePrompt, ai.MODEL_BASE_LANGUAGE_CN)
+	if space.ChatPrompt != "" {
+		prompt += space.ChatPrompt
+	}
+	prompt = ai.BuildPrompt(prompt, ai.MODEL_BASE_LANGUAGE_CN)
 	prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
@@ -386,6 +389,7 @@ func (nt *NotifyingTool) Wrap(baseTool tool.InvokableTool) *NotifyingTool {
 
 // InvokableRun 执行工具调用，并在执行前后发送通知
 func (nt *NotifyingTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
+	nt.receiver = nt.receiver.Copy()
 	// 获取工具信息
 	toolInfo, err := nt.InvokableTool.Info(ctx)
 	if err != nil {
@@ -823,26 +827,26 @@ func (f *EinoAgentFactory) CreateReActAgentWithConfig(config *AgentConfig) (*rea
 	}
 
 	// 使用配置中的StreamChecker，如果没有则使用默认的
-	// streamChecker := func(ctx context.Context, modelOutput *schema.StreamReader[*schema.Message]) (bool, error) {
-	// 	defer modelOutput.Close()
-	// 	for {
-	// 		res, err := modelOutput.Recv()
-	// 		if err != nil {
-	// 			return false, nil
-	// 		}
+	streamChecker := func(ctx context.Context, modelOutput *schema.StreamReader[*schema.Message]) (bool, error) {
+		defer modelOutput.Close()
+		for {
+			res, err := modelOutput.Recv()
+			if err != nil {
+				return false, nil
+			}
 
-	// 		if res.ResponseMeta.FinishReason == "tool_calls" {
-	// 			return true, nil
-	// 		}
-	// 	}
-	// }
+			if res.ResponseMeta.FinishReason == "tool_calls" {
+				return true, nil
+			}
+		}
+	}
 
 	// 创建 ReAct Agent
 	agentConfig := &react.AgentConfig{
-		ToolCallingModel: chatModel,
-		ToolsConfig:      toolsConfig,
-		MessageModifier:  nil, // 禁用 MessageModifier，使用工具内部通知机制
-		//StreamToolCallChecker: streamChecker,
+		ToolCallingModel:      chatModel,
+		ToolsConfig:           toolsConfig,
+		MessageModifier:       nil, // 禁用 MessageModifier，使用工具内部通知机制
+		StreamToolCallChecker: streamChecker,
 		// MaxStep: 2,
 	}
 
@@ -933,6 +937,7 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 	defer func() {
 		ticker.Stop()
 		flushResponse()
+		h.Init() // for next generation
 	}()
 
 	isFirstChunk := true
@@ -1249,7 +1254,7 @@ func NewCallbackHandlers(core *core.Core, modelName string, streamHandler *EinoR
 		},
 		OnError: func(ctx context.Context, runInfo *callbacks.RunInfo, err error) context.Context {
 			if err != nil {
-				slog.Error("eino callback error", slog.Any("error", err), slog.String("model_name", modelName), slog.String("message_id", reqMessage.Message))
+				slog.Error("eino callback error", slog.Any("error", err), slog.String("model_name", modelName), slog.String("message_id", reqMessage.ID))
 				// 记录错误信息
 				initFunc(ctx)
 				streamHandler.GetDoneFunc(nil)(err)

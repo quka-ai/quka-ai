@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func (t *ListTableTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 
 	return &schema.ToolInfo{
 		Name: FUNCTION_NAME_LIST_TABLE,
-		Desc: "列出用户所有的数据表，显示表ID、表名和表描述",
+		Desc: "该方法主要用于列出用户所有的数据表，显示表ID、表名和表描述",
 	}, nil
 }
 
@@ -133,12 +134,14 @@ func (t *CreateTableTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 }
 
 func (t *CreateTableTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
+	slog.Info("CreateTableTool InvokableRun called", slog.String("arguments", argumentsInJSON))
 	var params struct {
 		TableName string `json:"tableName"`
 		TableDesc string `json:"tableDesc"`
 		Data      string `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(argumentsInJSON), &params); err != nil {
+		slog.Error("CreateTableTool InvokableRun unmarshal error", slog.String("error", err.Error()))
 		return "", fmt.Errorf("failed to parse arguments: %w", err)
 	}
 

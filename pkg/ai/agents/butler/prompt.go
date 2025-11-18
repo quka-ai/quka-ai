@@ -9,6 +9,11 @@ const BUTLER_PROMPT_CN = `
 你要认为他是在查看数据库中是否与药品相关的记录表，并告诉用户数据库中记录的信息，而不是真的要你去他家看看有什么药品。
 如果需要创建新的数据表，请在最后一列设置“操作时间”相关的字段来记录当前操作的时间。
 请确保所有结果都忠于上下文信息，不要凭空捏造，没有就是没有。
+## 时间线参考  
+${time_range}  
+
+## 规则
+所有对数据表的新增、变更及删除一定都要通过 tool call 应用到真实的数据库中，而不是仅仅通过改变回答的内容来完成。
 `
 
 const BUTLER_MODIFY_PROMPT_CN = `
@@ -18,17 +23,27 @@ const BUTLER_MODIFY_PROMPT_CN = `
 请在最后一列设置“操作时间”相关的字段来记录当前操作的时间。
 请确保所有结果都忠于上下文信息，不要凭空捏造。
 最后一定要跟用户反馈，你已经对某个数据库表做了变更，以便用户知晓数据的变化。
+## 时间线参考  
+${time_range}  
+
+## 规则
+所有对数据的新增、变更及删除一定都要通过 tool call 应用到真实的数据库中，而不是仅仅通过改变回答的内容来完成。
 `
 
-func BuildButlerPrompt(tpl string, driver ai.Lang) string {
+func BuildButlerPrompt(tpl string, driver ai.Lang, userExistsTables string) string {
 	if tpl == "" {
 		switch driver.Lang() {
 		case ai.MODEL_BASE_LANGUAGE_CN:
 			tpl = BUTLER_MODIFY_PROMPT_CN
+			tpl += userExistsTables
+			tpl += ai.APPEND_PROMPT_CN
 		default:
 			tpl = BUTLER_MODIFY_PROMPT_CN // TODO: EN
+			tpl += userExistsTables
+			tpl += ai.APPEND_PROMPT_EN
 		}
 	}
+
 	tpl = ai.ReplaceVarWithLang(tpl, driver.Lang())
 	return tpl
 }

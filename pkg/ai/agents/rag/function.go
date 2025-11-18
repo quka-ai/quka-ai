@@ -80,7 +80,7 @@ func (r *RagTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 
 	return &schema.ToolInfo{
 		Name:        FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
-		Desc:        "查询用户知识库中的相关知识，如果已经查过了，请不要连续性的重复查询",
+		Desc:        "查询用户个人知识库(或记忆)中的相关内容。当用户询问关于自己的信息、记录、文档、经历等个人相关内容时使用此工具。例如：我的专利申请、我的项目记录、我保存的文档等。如果之前已经查询过相同问题，请不要重复查询。",
 		ParamsOneOf: paramsOneOf,
 	}, nil
 }

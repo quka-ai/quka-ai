@@ -12,7 +12,7 @@ site_title = "Quka.AI"
 site_description = "Quka.AI - 快速构建个人第二大脑"
 
 [object_storage]
-static_domain = "http://{your host}:30080"
+static_domain = "http://localhost:33000"
 driver = "s3"
 
 [object_storage.s3]

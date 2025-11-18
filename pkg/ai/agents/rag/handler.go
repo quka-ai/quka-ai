@@ -85,7 +85,7 @@ func searchKnowledge(args ToolContext, funcCall openai.FunctionCall) ([]*types.M
 	return []*types.MessageContext{
 		{
 			Role:    types.USER_ROLE_TOOL,
-			Content: fmt.Sprintf("Tool '%s' Response:\n", FUNCTION_NAME_SEARCH_USER_KNOWLEDGES) + ai.BuildRAGPrompt(ai.GENERATE_PROMPT_TPL_CN, ai.NewDocs(docs.Docs), args.Core.Srv().AI()),
+			Content: fmt.Sprintf("Tool '%s' Response:\n", FUNCTION_NAME_SEARCH_USER_KNOWLEDGES) + ai.BuildRAGPrompt(BasePrompt, ai.NewDocs(docs.Docs), args.Core.Srv().AI()),
 		},
 	}, nil
 }

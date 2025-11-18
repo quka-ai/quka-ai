@@ -207,7 +207,7 @@ func RegisterCreateKnowledgeTool(server *mcp.Server, core *core.Core) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_knowledge",
-		Description: "Create a new knowledge entry in QukaAI. The knowledge will be processed asynchronously (summarization and embedding) in the background.",
+		Description: "Create a new knowledge entry in QukaAI. The knowledge will be processed asynchronously (summarization and embedding) in the background. IMPORTANT: Content must be in standard markdown format with proper structure (headings, lists, code blocks, etc.).",
 	}, handler.Handle)
 }
 

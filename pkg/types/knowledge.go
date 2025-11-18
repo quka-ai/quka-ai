@@ -155,7 +155,19 @@ func (m KnowledgeContent) MarshalJSON() ([]byte, error) {
 	if m == nil {
 		return []byte("\"\""), nil
 	}
-	return m, nil
+
+	// 检查内容是否已经是有效的 JSON
+	// 如果是有效的 JSON（对象或数组），直接返回
+	if len(m) > 0 && (m[0] == '{' || m[0] == '[') {
+		var js json.RawMessage
+		if err := json.Unmarshal(m, &js); err == nil {
+			return m, nil
+		}
+	}
+
+	// 如果不是有效的 JSON，则将其作为字符串进行 JSON 编码
+	// 这样可以处理纯文本内容（如 markdown）
+	return json.Marshal(string(m))
 }
 
 func (m *KnowledgeContent) UnmarshalJSON(data []byte) error {
