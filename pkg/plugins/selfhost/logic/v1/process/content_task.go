@@ -130,30 +130,27 @@ func (p *ContentTaskProcess) ProcessTasks() error {
 func (p *ContentTaskProcess) loop() {
 	for range 10 {
 		go safe.Run(func() {
-			for {
-				select {
-				case req := <-p.ChunkChan:
-					var err error
-					// Use gRPC service
-					if p.grpcClient != nil {
-						err = p.chunkByGRPC(req)
-					} else {
-						err = fmt.Errorf("gRPC chunk service is not available")
-					}
+			for req := range p.ChunkChan {
+				var err error
+				// Use gRPC service
+				if p.grpcClient != nil {
+					err = p.chunkByGRPC(req)
+				} else {
+					err = fmt.Errorf("gRPC chunk service is not available")
+				}
 
-					if err != nil {
-						slog.Error("Failed to process chunk task", slog.String("error", err.Error()))
+				if err != nil {
+					slog.Error("Failed to process chunk task", slog.String("error", err.Error()))
 
-						ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-						if err = p.core.Store().ContentTaskStore().SetRetryTimes(ctx, req.TaskID, req.RetryTimes+1); err != nil {
-							slog.Error("Failed to set content task process retry times", slog.String("stage", types.KNOWLEDGE_STAGE_EMBEDDING.String()),
-								slog.String("error", err.Error()),
-								slog.String("space_id", req.SpaceID),
-								slog.String("task_id", req.TaskID),
-								slog.String("component", "ContentTaskProcess.chunkByGRPC"))
-						}
-						cancel()
+					ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+					if err = p.core.Store().ContentTaskStore().SetRetryTimes(ctx, req.TaskID, req.RetryTimes+1); err != nil {
+						slog.Error("Failed to set content task process retry times", slog.String("stage", types.KNOWLEDGE_STAGE_EMBEDDING.String()),
+							slog.String("error", err.Error()),
+							slog.String("space_id", req.SpaceID),
+							slog.String("task_id", req.TaskID),
+							slog.String("component", "ContentTaskProcess.chunkByGRPC"))
 					}
+					cancel()
 				}
 			}
 		})
@@ -290,13 +287,15 @@ func (p *ContentTaskProcess) chunkByGRPC(task *types.ContentTask) error {
 func (p *ContentTaskProcess) handlerChunks(task *types.ContentTask, knowledgeChunks []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
 	defer cancel()
-	// chunk的第一块存为knowledge meta
+
 	err := p.core.Store().Transaction(ctx, func(ctx context.Context) error {
+		// chunk的第一块存为knowledge meta
+		knowledgeMeta := fmt.Sprintf("%s\n%s", removeEmptyLine(task.MetaInfo), knowledgeChunks[0])
 		metaID := utils.GenUniqIDStr()
 		err := p.core.Store().KnowledgeMetaStore().Create(ctx, types.KnowledgeMeta{
 			ID:        metaID,
 			SpaceID:   task.SpaceID,
-			MetaInfo:  removeEmptyLine(task.MetaInfo),
+			MetaInfo:  knowledgeMeta,
 			CreatedAt: time.Now().Unix(),
 		})
 		if err != nil {
@@ -328,6 +327,7 @@ func (p *ContentTaskProcess) handlerChunks(task *types.ContentTask, knowledgeChu
 				Kind:        types.KNOWLEDGE_KIND_CHUNK,
 				Stage:       types.KNOWLEDGE_STAGE_DONE,
 				MaybeDate:   time.Now().Local().Format("2006-01-02 15:04"),
+				RelDocID:    task.TaskID,
 				CreatedAt:   time.Now().Unix(),
 				UpdatedAt:   time.Now().Unix(),
 			})
@@ -344,7 +344,7 @@ func (p *ContentTaskProcess) handlerChunks(task *types.ContentTask, knowledgeChu
 				UpdatedAt: time.Now().Unix(),
 			})
 
-			chunks = append(chunks, item)
+			chunks = append(chunks, fmt.Sprintf("## FileMeta:  \n%s  \n## Content  \n%s", knowledgeMeta, item))
 
 			if (i != 0 && i%5 == 0) || i+1 == len(knowledgeChunks) {
 				vectorResults, err := p.core.Srv().AI().EmbeddingForDocument(ctx, "", chunks)

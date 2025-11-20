@@ -140,8 +140,8 @@ func (s *VectorStore) DeleteByResource(ctx context.Context, spaceID, resource st
 	return err
 }
 
-func (s *VectorStore) BatchDelete(ctx context.Context, spaceID, knowledgeID string) error {
-	query := sq.Delete(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "knowledge_id": knowledgeID})
+func (s *VectorStore) BatchDelete(ctx context.Context, spaceID string, knowledgeIDs []string) error {
+	query := sq.Delete(s.GetTable()).Where(sq.Eq{"space_id": spaceID, "knowledge_id": knowledgeIDs})
 
 	queryString, args, err := query.ToSql()
 	if err != nil {

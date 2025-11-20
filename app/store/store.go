@@ -64,7 +64,7 @@ type VectorStore interface {
 	GetVector(ctx context.Context, spaceID, knowledgeID string) (*types.Vector, error)
 	Update(ctx context.Context, spaceID, knowledgeID, id string, vector pgvector.Vector) error
 	Delete(ctx context.Context, spaceID, knowledgeID, id string) error
-	BatchDelete(ctx context.Context, spaceID, knowledgeID string) error
+	BatchDelete(ctx context.Context, spaceID string, knowledgeIDs []string) error
 	DeleteAll(ctx context.Context, spaceID string) error
 	DeleteByResource(ctx context.Context, spaceID, resource string) error
 	ListVectors(ctx context.Context, opts types.GetVectorsOptions, page, pageSize uint64) ([]types.Vector, error)
@@ -348,6 +348,7 @@ type KnowledgeRelMetaStore interface {
 	Get(ctx context.Context, id string) (*types.KnowledgeRelMeta, error)
 	Update(ctx context.Context, id string, data types.KnowledgeRelMeta) error
 	Delete(ctx context.Context, id string) error
+	DeleteByMetaID(ctx context.Context, metaID string) error
 	DeleteAll(ctx context.Context, spaceID string) error
 	ListKnowledgesMeta(ctx context.Context, knowledgeIDs []string) ([]*types.KnowledgeRelMeta, error)
 	ListRelMetaWithKnowledgeContent(ctx context.Context, opts []types.MergeDataQuery) ([]*types.RelMetaWithKnowledge, error)

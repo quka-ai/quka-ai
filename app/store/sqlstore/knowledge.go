@@ -29,7 +29,7 @@ func NewKnowledgeStore(provider SqlProviderAchieve) *KnowledgeStore {
 	store := &KnowledgeStore{}
 	store.SetProvider(provider)
 	store.SetTable(types.TABLE_KNOWLEDGE)
-	store.SetAllColumns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at")
+	store.SetAllColumns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id")
 	return store
 }
 
@@ -43,8 +43,8 @@ func (s *KnowledgeStore) Create(ctx context.Context, data types.Knowledge) error
 	}
 
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at").
-		Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt)
+		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id").
+		Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt, data.RelDocID)
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -60,7 +60,7 @@ func (s *KnowledgeStore) Create(ctx context.Context, data types.Knowledge) error
 
 func (s *KnowledgeStore) BatchCreate(ctx context.Context, datas []*types.Knowledge) error {
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at")
+		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id")
 	for _, data := range datas {
 		if data.CreatedAt == 0 {
 			data.CreatedAt = time.Now().Unix()
@@ -69,7 +69,7 @@ func (s *KnowledgeStore) BatchCreate(ctx context.Context, datas []*types.Knowled
 			data.UpdatedAt = time.Now().Unix()
 		}
 
-		query = query.Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt)
+		query = query.Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt, data.RelDocID)
 	}
 
 	queryString, args, err := query.ToSql()

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS quka_knowledge (
     summary TEXT NOT NULL,
     maybe_date VARCHAR(20) NOT NULL,
     retry_times SMALLINT NOT NULL DEFAULT 0,
+    rel_doc_id VARCHAR(32) NOT NULL DEFAULT '',
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL,
     expired_at BIGINT NOT NULL DEFAULT 0
@@ -32,6 +33,7 @@ COMMENT ON COLUMN quka_knowledge.content_type IS '内容格式';
 COMMENT ON COLUMN quka_knowledge.summary IS 'summary顾虑条件';
 COMMENT ON COLUMN quka_knowledge.maybe_date IS 'AI分析出的事件发生时间 / 创建时间';
 COMMENT ON COLUMN quka_knowledge.retry_times IS '流水线相关动作重试次数';
+COMMENT ON COLUMN quka_knowledge.rel_doc_id IS '关联的文档任务ID，如果是用户直接录入则为空字符串';
 COMMENT ON COLUMN quka_knowledge.created_at IS '创建时间';
 COMMENT ON COLUMN quka_knowledge.updated_at IS '更新时间';
 COMMENT ON COLUMN quka_knowledge.expired_at IS '过期时间戳，0表示永不过期';
@@ -40,3 +42,4 @@ COMMENT ON COLUMN quka_knowledge.expired_at IS '过期时间戳，0表示永不�
 CREATE INDEX IF NOT EXISTS idx_quka_knowledge_main ON quka_knowledge (space_id, resource);
 CREATE INDEX IF NOT EXISTS idx_quka_knowledge_retry ON quka_knowledge (stage, retry_times);
 CREATE INDEX IF NOT EXISTS idx_quka_knowledge_expired_at ON quka_knowledge(expired_at);
+CREATE INDEX IF NOT EXISTS idx_quka_knowledge_rel_doc_id ON quka_knowledge(rel_doc_id);
