@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
   qukaai:
     user: "${UID}:${GID}"
-    image: docker.1ms.run/holdnowby/quka:v0.2.7
+    image: docker.1ms.run/holdnowby/quka:v0.2.8
     networks:
       - quka-network
     depends_on:
@@ -26,7 +26,7 @@ services:
       - ./etc/service-default.toml:/app/etc/service-default.toml
   # 权限初始化容器
   chunker: 
-    image: docker.1ms.run/holdnowby/filechunk-service:v0.2.0
+    image: docker.1ms.run/holdnowby/filechunk-service:v0.2.1
     networks:
       - quka-network
     ports:
