@@ -179,7 +179,6 @@ func (s *Core) Metrics() *Metrics {
 }
 
 func setupSqlStore(core *Core) {
-	fmt.Println(222, core.cfg.Postgres)
 	core.stores = sqlstore.MustSetup(core.cfg.Postgres)
 	// 执行数据库表初始化
 	if err := core.stores().Install(); err != nil {

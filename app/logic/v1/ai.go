@@ -963,9 +963,10 @@ ReGen:
 			v.Message = string(deData)
 		}
 
-		if isErrorMessage(v.Message) {
-			continue
-		}
+		// if isErrorMessage(v.Message) {
+		// 	fmt.Println("", "skip error message in context:", v.Message)
+		// 	continue
+		// }
 
 		if v.Complete != types.MESSAGE_PROGRESS_COMPLETE {
 			continue
@@ -1005,6 +1006,7 @@ ReGen:
 					},
 				})
 			}
+
 			reqMsg = append(reqMsg, &types.MessageContext{
 				Role:    v.Role,
 				Content: v.Message,

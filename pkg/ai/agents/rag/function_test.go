@@ -35,6 +35,7 @@ func TestRagTool_Info(t *testing.T) {
 	t.Log("✅ RagTool Info test passed")
 	t.Logf("Tool name: %s", info.Name)
 	t.Logf("Tool description: %s", info.Desc)
+	t.Logf("Params: %v", info.ParamsOneOf)
 }
 
 func TestRagTool_InvokableRun_InvalidJSON(t *testing.T) {

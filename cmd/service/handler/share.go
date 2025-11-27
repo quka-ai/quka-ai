@@ -36,6 +36,9 @@ func (s *HttpSrv) CreateKnowledgeShareToken(c *gin.Context) {
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
+	if strings.HasPrefix(req.EmbeddingURL, "wails") && s.Core.Cfg().Site.Share.Domain != "" {
+		req.EmbeddingURL = strings.ReplaceAll(req.EmbeddingURL, "wails://", "https://")
+	}
 	res, err := v1.NewManageShareLogic(c, s.Core).CreateKnowledgeShareToken(spaceID, req.KnowledgeID, req.EmbeddingURL)
 	if err != nil {
 		response.APIError(c, err)

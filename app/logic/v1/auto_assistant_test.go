@@ -2,13 +2,15 @@ package v1
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	"github.com/sashabaranov/go-openai"
+
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/pkg/types"
-	"github.com/sashabaranov/go-openai"
 )
 
 func TestAutoAssistant_Creation(t *testing.T) {
@@ -326,6 +328,245 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestHiddenSyntaxDetection 测试 $hidden[...] 语法检测逻辑
+func TestHiddenSyntaxDetection(t *testing.T) {
+	tests := []struct {
+		name            string
+		streamChunks    []string // 模拟流式接收的消息块
+		expectedMatched bool     // 是否应该匹配到 $hidden[
+		expectedFinal   string   // 最终经过 Undo 处理后的预期结果（如果匹配的话）
+		description     string
+	}{
+		{
+			name: "完整的密码隐藏场景",
+			streamChunks: []string{
+				"根据",
+				"您提供的知识",
+				"库记录",
+				"，`",
+				"tools@edgen",
+				"ext.com` 的",
+				"邮箱密码已被系统脱敏处理",
+				"，具体信息如下：\n\n-",
+				" **邮箱地址**：`",
+				"tools@edgen",
+				"ext.com`\n-",
+				" **密码**：",
+				"`$hidden[g",
+				"wG45",
+				"s3mhV",
+				"]`\n- **",
+				"登录要求**：需",
+			},
+			expectedMatched: true,
+			description:     "模拟真实场景中流式接收包含 $hidden[...] 的密码",
+		},
+		{
+			name: "多个$符号但不匹配hidden语法",
+			streamChunks: []string{
+				"价格是 $",
+				"100，折扣",
+				" $20",
+				"，总共 $",
+				"80",
+			},
+			expectedMatched: false,
+			description:     "多个 $ 符号但都不是 $hidden[ 语法",
+		},
+		{
+			name: "包含$hidden但分多次接收",
+			streamChunks: []string{
+				"密码：",
+				"$",
+				"h",
+				"i",
+				"d",
+				"d",
+				"e",
+				"n",
+				"[",
+				"test123",
+				"]",
+			},
+			expectedMatched: true,
+			description:     "$hidden[ 被拆分成多个字符逐个接收",
+		},
+		{
+			name: "混合场景：普通$和hidden语法",
+			streamChunks: []string{
+				"价格 $50，",
+				"密码 $hidden[abc",
+				"123]，结束",
+			},
+			expectedMatched: true,
+			description:     "既有普通的 $ 又有 $hidden[ 语法",
+		},
+		{
+			name: "$后面跟其他文本",
+			streamChunks: []string{
+				"这是 $test",
+				" 文本",
+			},
+			expectedMatched: false,
+			description:     "$ 后面不是 hidden[",
+		},
+		{
+			name: "不完整的hidden语法",
+			streamChunks: []string{
+				"密码：$hidd",
+				"en but no bracket",
+			},
+			expectedMatched: false,
+			description:     "有 $hidd 但不完整，不构成 $hidden[",
+		},
+		{
+			name: "单个消息块包含完整$hidden[前缀",
+			streamChunks: []string{
+				"关于",
+				"邮箱",
+				" `tools@ed",
+				"genext.com`",
+				" 的密码，根据",
+				"您的记忆库记录",
+				"，相关信息如下：\n\n- **",
+				"邮箱账号**：`tools",
+				"@edgenext",
+				".com`  \n- **密码",
+				"**：`$hidden[I",
+				"8lWBBl",
+				"f4R]",
+				"`  \n- **",
+			},
+			expectedMatched: true,
+			description:     "第二次真实场景：一个消息块中包含 **：`$hidden[I",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 模拟变量
+			var (
+				maybeMarks  bool
+				machedMarks bool
+				strs        strings.Builder
+			)
+
+			// 模拟 flush 函数
+			flushResponse := func() {
+				if strs.Len() > 0 {
+					t.Logf("      [FLUSH] 发送内容: %q (长度=%d)", strs.String(), strs.Len())
+					strs.Reset()
+				}
+			}
+
+			// 模拟流式处理每个消息块
+			for i, chunk := range tt.streamChunks {
+				t.Logf("    [%d] 收到消息块: %q", i, chunk)
+
+				// 模拟检测 $ 符号的逻辑
+				if !maybeMarks {
+					if strings.Contains(chunk, "$") {
+						maybeMarks = true
+						if strs.Len() != 0 {
+							flushResponse()
+						}
+						t.Logf("      检测到 $，设置 maybeMarks=true")
+					}
+				}
+
+				// 写入内容（模拟 line 1021: strs.WriteString(msg.Content)）
+				strs.WriteString(chunk)
+				t.Logf("      写入后 strs: %q", strs.String())
+
+				// 在写入后检查是否形成 $hidden[ 语法（模拟 line 1024-1057）
+				if maybeMarks && !machedMarks {
+					currentStr := strs.String()
+					if strings.Contains(currentStr, "$hidden[") {
+						machedMarks = true
+					} else {
+						// 检查所有 $ 位置
+						dollarIdx := 0
+						hasValidCandidate := false
+						for {
+							idx := strings.Index(currentStr[dollarIdx:], "$")
+							if idx == -1 {
+								break
+							}
+							dollarIdx += idx
+							remainingStr := currentStr[dollarIdx:]
+							remainingLen := len(remainingStr)
+
+							if remainingLen < len("$hidden[") {
+								hasValidCandidate = true
+								break
+							}
+
+							dollarIdx++
+						}
+
+						if !hasValidCandidate {
+							maybeMarks = false
+						}
+					}
+				}
+
+				// 模拟遇到 ] 时的处理（这里简化，不真正调用 Undo）
+				if machedMarks && strings.Contains(chunk, "]") {
+					// 在真实场景中会调用 h._receiver.VariableHandler().Undo(preStr)
+					// 这里我们只验证状态
+					break
+				}
+			}
+
+			// 验证结果
+			if machedMarks != tt.expectedMatched {
+				t.Errorf("%s:\n  期望 machedMarks=%v, 实际=%v\n  最终字符串: %q",
+					tt.description, tt.expectedMatched, machedMarks, strs.String())
+			} else {
+				t.Logf("✅ %s: 通过 (machedMarks=%v, 内容长度=%d)",
+					tt.description, machedMarks, strs.Len())
+			}
+
+			// 额外的调试信息
+			if machedMarks {
+				t.Logf("   检测到 $hidden[ 语法，缓冲区内容: %q", strs.String())
+			}
+		})
+	}
+}
+
+// TestHiddenSyntaxEdgeCases 测试边界情况
+func TestHiddenSyntaxEdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		shouldMatch bool
+	}{
+		{"空字符串", "", false},
+		{"只有$", "$", false},
+		{"$h", "$h", false},
+		{"$hi", "$hi", false},
+		{"$hid", "$hid", false},
+		{"$hidd", "$hidd", false},
+		{"$hidde", "$hidde", false},
+		{"$hidden", "$hidden", false},
+		{"$hidden[", "$hidden[", true},
+		{"$hidden[]", "$hidden[]", true},
+		{"$hidden[password]", "$hidden[password]", true},
+		{"text $hidden[secret] more", "text $hidden[secret] more", true},
+		{"$hidden $hidden[test]", "$hidden $hidden[test]", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := strings.Contains(tt.input, "$hidden[")
+			if result != tt.shouldMatch {
+				t.Errorf("输入 %q: 期望匹配=%v, 实际=%v", tt.input, tt.shouldMatch, result)
+			}
+		})
+	}
 }
 
 // MockInvokableTool 模拟的 InvokableTool 实现用于测试
