@@ -228,6 +228,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 		admin := authed.Group("/admin")
 		admin.Use(middleware.VerifyAdminPermission(s.Core))
 		{
+
 			// 模型提供商管理
 			providers := admin.Group("/model/providers")
 			{

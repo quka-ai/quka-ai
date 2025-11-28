@@ -112,7 +112,20 @@ func (l *UserLogic) Login(appid, email, password string) (string, error) {
 	return accessToken, nil
 }
 
-func (l *UserLogic) GetUser(appid, id string) (*types.User, error) {
+type UserBaseInfo struct {
+	ID         string `json:"id" db:"id"`                 // 用户ID，主键
+	Appid      string `json:"appid" db:"appid"`           // 租户id
+	Name       string `json:"name" db:"name"`             // 用户名
+	Avatar     string `json:"avatar" db:"avatar"`         // 用户头像URL
+	Email      string `json:"email" db:"email"`           // 用户邮箱，唯一约束
+	Source     string `json:"-" db:"source"`              // 用户注册来源
+	PlanID     string `json:"plan_id" db:"plan_id"`       // 会员方案ID
+	UpdatedAt  int64  `json:"updated_at" db:"updated_at"` // 更新时间，Unix时间戳
+	CreatedAt  int64  `json:"created_at" db:"created_at"` // 创建时间，Unix时间戳
+	SystemRole string `json:"system_role"`                // 用户全局角色
+}
+
+func (l *UserLogic) GetUser(appid, id string) (*UserBaseInfo, error) {
 	user, err := l.core.Store().UserStore().GetUser(l.ctx, appid, id)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, errors.New("AuthedUserLogin.GetUser.UserStore.GetUser", i18n.ERROR_INTERNAL, err)
@@ -127,7 +140,29 @@ func (l *UserLogic) GetUser(appid, id string) (*types.User, error) {
 		return nil, errors.New("AuthedUserLogin.GetUser.FileStorage.GenGetObjectPreSignURL", i18n.ERROR_INTERNAL, err)
 	}
 
-	return user, nil
+	role, err := l.core.Store().UserGlobalRoleStore().GetUserRole(l.ctx, appid, id)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("AuthedUserLogin.GetUser.UserGlobalRoleStore.GetUserRole", i18n.ERROR_INTERNAL, err)
+	}
+
+	userInfo := &UserBaseInfo{
+		ID:         user.ID,
+		Appid:      user.Appid,
+		Name:       user.Name,
+		Avatar:     user.Avatar,
+		Email:      user.Email,
+		Source:     user.Source,
+		PlanID:     user.PlanID,
+		UpdatedAt:  user.UpdatedAt,
+		CreatedAt:  user.CreatedAt,
+		SystemRole: types.GlobalRoleMember,
+	}
+
+	if role != nil {
+		userInfo.SystemRole = role.Role
+	}
+
+	return userInfo, nil
 }
 
 type AuthedUserLogic struct {
