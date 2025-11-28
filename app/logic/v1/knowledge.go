@@ -193,7 +193,7 @@ func (l *KnowledgeLogic) Delete(spaceID, id string) error {
 			return errors.New("KnowledgeLogic.Delete.KnowledgeChunkStore.BatchDelete", i18n.ERROR_INTERNAL, err)
 		}
 
-		if err := l.core.Store().VectorStore().BatchDelete(ctx, spaceID, id); err != nil {
+		if err := l.core.Store().VectorStore().BatchDelete(ctx, spaceID, []string{id}); err != nil {
 			return errors.New("KnowledgeLogic.Delete.VectorStore.Delete", i18n.ERROR_INTERNAL, err)
 		}
 

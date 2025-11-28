@@ -116,6 +116,19 @@ func (s *KnowledgeRelMetaImpl) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// Delete 根据 ID 删除 knowledge_rel_meta 记录
+func (s *KnowledgeRelMetaImpl) DeleteByMetaID(ctx context.Context, metaID string) error {
+	query := sq.Delete(s.GetTable()).Where(sq.Eq{"meta_id": metaID})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return ErrorSqlBuild(err)
+	}
+
+	_, err = s.GetMaster(ctx).Exec(queryString, args...)
+	return err
+}
+
 func (s *KnowledgeRelMetaImpl) DeleteAll(ctx context.Context, spaceID string) error {
 	query := sq.Delete(s.GetTable()).Where(sq.Eq{"space_id": spaceID})
 

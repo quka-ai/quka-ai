@@ -8,6 +8,23 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
+type WhoAmIResponse struct {
+	Role string `json:"role"`
+}
+
+func (s *HttpSrv) WhoAmI(c *gin.Context) {
+	logic := v1.NewAdminUserLogic(c, s.Core)
+	role, err := logic.WhoAmI()
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	response.APISuccess(c, WhoAmIResponse{
+		Role: role,
+	})
+}
+
 // AdminCreateUserRequest 管理员创建用户请求
 // @Description 管理员创建新用户的请求参数
 // @Description name: 用户昵称，必填

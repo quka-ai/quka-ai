@@ -133,6 +133,7 @@ type Knowledge struct {
 	UpdatedAt   int64                `json:"updated_at" db:"updated_at"`
 	RetryTimes  int                  `json:"retry_times" db:"retry_times"`
 	ExpiredAt   int64                `json:"expired_at" db:"expired_at"`
+	RelDocID    string               `json:"rel_doc_id,omitempty" db:"rel_doc_id"` // 关联的文档任务ID，如果是用户直接录入则为空
 }
 
 type RawMessage = KnowledgeContent
@@ -227,6 +228,7 @@ type GetKnowledgeOptions struct {
 	Stage       KnowledgeStage
 	RetryTimes  int
 	Keywords    string
+	RelDocID    string // 关联的文档任务ID
 	TimeRange   *struct {
 		St int64
 		Et int64
@@ -269,6 +271,9 @@ func (opts GetKnowledgeOptions) Apply(query *sq.SelectBuilder) {
 			or = append(or, sq.Eq{"id": opts.Keywords})
 		}
 		*query = query.Where(append(or, sq.Like{"title": fmt.Sprintf("%%%s%%", opts.Keywords)}))
+	}
+	if opts.RelDocID != "" {
+		*query = query.Where(sq.Eq{"rel_doc_id": opts.RelDocID})
 	}
 	if opts.TimeRange != nil {
 		*query = query.Where(sq.And{sq.GtOrEq{"created_at": opts.TimeRange.St}, sq.LtOrEq{"created_at": opts.TimeRange.Et}})

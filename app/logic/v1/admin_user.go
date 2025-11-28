@@ -58,6 +58,21 @@ func NewAdminUserLogic(ctx context.Context, core *core.Core) *AdminUserLogic {
 	}
 }
 
+func (l *AdminUserLogic) WhoAmI() (string, error) {
+	tokenClaims, _ := InjectTokenClaim(l.ctx)
+
+	role, err := l.core.Store().UserGlobalRoleStore().GetUserRole(l.ctx, l.core.DefaultAppid(), tokenClaims.User)
+	if err != nil && err != sql.ErrNoRows {
+		return "", errors.New("AdminUserLogic.WhoAmI", i18n.ERROR_INTERNAL, err)
+	}
+
+	if role == nil {
+		return types.GlobalRoleMember, nil
+	}
+
+	return role.Role, nil
+}
+
 // CreateUser 管理员创建新用户
 func (l *AdminUserLogic) CreateUser(req CreateUserRequest) (*CreateUserResult, error) {
 	// 验证邮箱格式

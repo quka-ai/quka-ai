@@ -60,13 +60,64 @@ func (l *AIFileDisposeLogic) DeleteTask(taskID string) error {
 	}
 
 	return l.core.Store().Transaction(l.ctx, func(ctx context.Context) error {
+		// 1. 查找所有相关的 knowledge IDs（通过 RelDocID）
+		knowledgeIDs, err := l.core.Store().KnowledgeStore().ListKnowledgeIDs(ctx, types.GetKnowledgeOptions{
+			SpaceID:  task.SpaceID,
+			RelDocID: taskID,
+		}, types.NO_PAGINATION, types.NO_PAGINATION)
+		if err != nil && err != sql.ErrNoRows {
+			return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeStore.ListKnowledgeIDs", i18n.ERROR_INTERNAL, err)
+		}
+
+		// 2. 如果存在 knowledge，则删除相关数据
+		if len(knowledgeIDs) > 0 {
+			// 2.1 删除 vectors（通过 knowledge IDs）
+			if err := l.core.Store().VectorStore().BatchDelete(ctx, task.SpaceID, knowledgeIDs); err != nil {
+				return errors.New("AIFileDisposeLogic.DeleteTask.VectorStore.BatchDelete", i18n.ERROR_INTERNAL, err)
+			}
+
+			// 2.2 删除 chunks（通过 knowledge IDs）
+			if err := l.core.Store().KnowledgeChunkStore().BatchDeleteByIDs(ctx, knowledgeIDs); err != nil {
+				return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeChunkStore.BatchDeleteByIDs", i18n.ERROR_INTERNAL, err)
+			}
+
+			// 2.3 获取关联的 meta IDs
+			relMetas, err := l.core.Store().KnowledgeRelMetaStore().ListKnowledgesMeta(ctx, knowledgeIDs[:1])
+			if err != nil && err != sql.ErrNoRows {
+				return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeRelMetaStore.ListKnowledgesMeta", i18n.ERROR_INTERNAL, err)
+			}
+
+			var metaID string
+			for _, v := range relMetas {
+				metaID = v.MetaID
+			}
+
+			// 2.4 删除 knowledge_rel_meta
+			if err := l.core.Store().KnowledgeRelMetaStore().DeleteByMetaID(ctx, metaID); err != nil {
+				return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeRelMetaStore.Delete", i18n.ERROR_INTERNAL, err)
+			}
+
+			// 2.5 删除 knowledges
+			if err := l.core.Store().KnowledgeStore().BatchDelete(ctx, knowledgeIDs); err != nil {
+				return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeStore.BatchDelete", i18n.ERROR_INTERNAL, err)
+			}
+
+			// 2.6 删除 knowledge_meta
+			if err := l.core.Store().KnowledgeMetaStore().Delete(ctx, metaID); err != nil {
+				return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeMetaStore.Delete", i18n.ERROR_INTERNAL, err)
+			}
+		}
+
+		// 3. 删除 content task
 		if err := l.core.Store().ContentTaskStore().Delete(ctx, taskID); err != nil {
 			return errors.New("AIFileDisposeLogic.DeleteTask.ContentTaskStore.Delete", i18n.ERROR_INTERNAL, err)
 		}
 
+		// 4. 更新文件状态为待删除
 		if err = l.core.Store().FileManagementStore().UpdateStatus(ctx, task.SpaceID, []string{task.FileURL}, types.FILE_UPLOAD_STATUS_NEED_TO_DELETE); err != nil {
 			return errors.New("AIFileDisposeLogic.DeleteTask.FileManagementStore.UpdateStatus", i18n.ERROR_INTERNAL, err)
 		}
+
 		return nil
 	})
 }

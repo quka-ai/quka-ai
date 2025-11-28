@@ -389,7 +389,7 @@ func (p *KnowledgeProcess) processEmbedding(req *EmbeddingRequest) {
 		// 	}
 		// }
 
-		err := p.core.Store().VectorStore().BatchDelete(ctx, req.data.SpaceID, req.data.ID)
+		err := p.core.Store().VectorStore().BatchDelete(ctx, req.data.SpaceID, []string{req.data.ID})
 		if err != nil && err != sql.ErrNoRows {
 			slog.Error("Failed to check the existence of knowledge", append(logAttrs, slog.String("error", err.Error()))...)
 			return err

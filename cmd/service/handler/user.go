@@ -18,6 +18,7 @@ type GetUserResponse struct {
 	ServiceMode string `json:"service_mode"`
 	PlanID      string `json:"plan_id"`
 	Appid       string `json:"appid"`
+	SystemRole  string `json:"system_role"`
 }
 
 func (s *HttpSrv) GetUser(c *gin.Context) {
@@ -37,6 +38,7 @@ func (s *HttpSrv) GetUser(c *gin.Context) {
 		PlanID:      user.PlanID,
 		Appid:       user.Appid,
 		ServiceMode: s.Core.Plugins.Name(),
+		SystemRole:  user.SystemRole,
 	})
 }
 

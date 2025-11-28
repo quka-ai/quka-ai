@@ -118,7 +118,7 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 		prompt += space.ChatPrompt
 	}
 	prompt = ai.BuildPrompt(prompt, ai.MODEL_BASE_LANGUAGE_CN)
-	prompt = receiver.VariableHandler().Do(prompt)
+	// prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
 	sessionContext, err := a.GenSessionContext(ctx, prompt, reqMsg)
@@ -989,19 +989,13 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 			continue
 		}
 
-		// 处理特殊语法标记
+		// 处理特殊语法标记 - 检测 $ 符号
 		if !maybeMarks {
 			if strings.Contains(msg.Content, "$") {
 				maybeMarks = true
 				if strs.Len() != 0 {
 					flushResponse()
 				}
-			}
-		} else if maybeMarks && strs.Len() >= 10 {
-			if strings.Contains(strs.String(), "$hidden[") {
-				machedMarks = true
-			} else {
-				maybeMarks = false
 			}
 		}
 
@@ -1025,6 +1019,42 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 				})
 			}
 			strs.WriteString(msg.Content)
+
+			// 在写入 msg.Content 后检查是否形成 $hidden[ 语法
+			if maybeMarks && !machedMarks {
+				currentStr := strs.String()
+				if strings.Contains(currentStr, "$hidden[") {
+					machedMarks = true
+				} else {
+					// 检查所有 $ 位置，确保没有可能形成 $hidden[ 的情况
+					dollarIdx := 0
+					hasValidCandidate := false
+					for {
+						idx := strings.Index(currentStr[dollarIdx:], "$")
+						if idx == -1 {
+							break
+						}
+						dollarIdx += idx
+						// 检查从这个 $ 开始的后续字符
+						remainingStr := currentStr[dollarIdx:]
+						remainingLen := len(remainingStr)
+
+						// 如果后续字符不足以判断是否为 $hidden[，保持 maybeMarks 状态
+						if remainingLen < len("$hidden[") {
+							hasValidCandidate = true
+							break
+						}
+
+						// 如果不是 $hidden[ 开头，继续查找下一个 $
+						dollarIdx++
+					}
+
+					// 如果没有可能的候选项，重置状态
+					if !hasValidCandidate {
+						maybeMarks = false
+					}
+				}
+			}
 
 			// 处理隐藏标记
 			if machedMarks && strings.Contains(msg.Content, "]") {

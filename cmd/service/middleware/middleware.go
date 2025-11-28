@@ -398,8 +398,6 @@ func getUserGlobalRole(core *core.Core, user *types.User) (string, error) {
 		return "", err
 	}
 
-	fmt.Println(*globalRole)
-
 	// 如果找到全局角色记录，直接返回
 	if globalRole == nil {
 		return types.GlobalRoleMember, nil

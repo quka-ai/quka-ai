@@ -12,6 +12,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/samber/lo"
 )
 
 type JournalLogic struct {
@@ -117,7 +118,14 @@ func (l *JournalLogic) ListJournals(spaceID, startDate, endDate string) ([]types
 	if err != nil && err != sql.ErrNoRows {
 		return nil, errors.New("JournalLogic.ListJournals.JournalStore.ListWithDate", i18n.ERROR_INTERNAL, err)
 	}
-	return list, nil
+	return lo.Map(list, func(journal types.Journal, _ int) types.Journal {
+		if len(journal.Content) > 0 {
+			if journal.Content, err = l.core.DecryptData(journal.Content); err != nil {
+				return journal
+			}
+		}
+		return journal
+	}), nil
 }
 
 func (l *JournalLogic) DeleteJournal(spaceID, date string) error {
