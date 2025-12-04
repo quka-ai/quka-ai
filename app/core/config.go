@@ -91,6 +91,7 @@ type Site struct {
 }
 
 type ShareConfig struct {
+	EmbeddingDomain string `toml:"embedding_domain"`
 	Domain          string `toml:"domain"`
 	SiteTitle       string `toml:"site_title"`
 	SiteDescription string `toml:"site_description"`
