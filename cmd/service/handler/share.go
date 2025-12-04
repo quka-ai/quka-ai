@@ -36,9 +36,7 @@ func (s *HttpSrv) CreateKnowledgeShareToken(c *gin.Context) {
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
-	if strings.HasPrefix(req.EmbeddingURL, "wails") && s.Core.Cfg().Site.Share.Domain != "" {
-		req.EmbeddingURL = strings.ReplaceAll(req.EmbeddingURL, "wails://", "https://")
-	}
+	req.EmbeddingURL = normalizeEmbeddingURL(req.EmbeddingURL, s.Core.Cfg().Site.Share.EmbeddingDomain)
 	res, err := v1.NewManageShareLogic(c, s.Core).CreateKnowledgeShareToken(spaceID, req.KnowledgeID, req.EmbeddingURL)
 	if err != nil {
 		response.APIError(c, err)
@@ -79,6 +77,7 @@ func (s *HttpSrv) CreateSessionShareToken(c *gin.Context) {
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
+	req.EmbeddingURL = normalizeEmbeddingURL(req.EmbeddingURL, s.Core.Cfg().Site.Share.EmbeddingDomain)
 	res, err := v1.NewManageShareLogic(c, s.Core).CreateSessionShareToken(spaceID, req.SessionID, req.EmbeddingURL)
 	if err != nil {
 		response.APIError(c, err)
@@ -108,6 +107,27 @@ func genSessionShareURL(domain, token string) string {
 
 func genSpaceShareURL(domain, token string) string {
 	return fmt.Sprintf("%s/s/sp/%s", domain, token)
+}
+
+func normalizeEmbeddingURL(embeddingURL, embeddingDomain string) string {
+	if embeddingDomain == "" {
+		return embeddingURL
+	}
+
+	parsedEmbeddingDomain, err := url.Parse(embeddingDomain)
+	if err != nil {
+		return embeddingURL
+	}
+
+	parsedOriginalURL, err := url.Parse(embeddingURL)
+	if err != nil {
+		return embeddingURL
+	}
+
+	schemeAndHost := parsedEmbeddingDomain.Scheme + "://" + parsedEmbeddingDomain.Host
+	originalSchemeAndHost := parsedOriginalURL.Scheme + "://" + parsedOriginalURL.Host
+
+	return strings.Replace(embeddingURL, originalSchemeAndHost, schemeAndHost, 1)
 }
 
 func (s *HttpSrv) GetKnowledgeByShareToken(c *gin.Context) {
@@ -248,6 +268,7 @@ func (s *HttpSrv) CreateSpaceShareToken(c *gin.Context) {
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
+	req.EmbeddingURL = normalizeEmbeddingURL(req.EmbeddingURL, s.Core.Cfg().Site.Share.EmbeddingDomain)
 	res, err := v1.NewManageShareLogic(c, s.Core).CreateSpaceShareToken(spaceID, req.EmbeddingURL)
 	if err != nil {
 		response.APIError(c, err)

@@ -246,6 +246,10 @@ func (l *SpaceApplicationLogic) LandingDetail(spaceToken string) (SpaceApplicati
 		return SpaceApplicationLandingDetail{}, errors.New("SpaceApplicationLogic.LandingDetail.UserStore.GetUser", i18n.ERROR_INTERNAL, err)
 	}
 
+	status := types.SPACE_APPLICATION_NONE
+	if application != nil {
+		status = application.Status
+	}
 	return SpaceApplicationLandingDetail{
 		ID:      space.SpaceID,
 		Title:   space.Title,
@@ -256,6 +260,8 @@ func (l *SpaceApplicationLogic) LandingDetail(spaceToken string) (SpaceApplicati
 			Name:   spaceMaintainer.Name,
 			Avatar: spaceMaintainer.Avatar,
 		},
-		ApplicationStatus: lo.If(application == nil, types.SPACE_APPLICATION_NONE).Else(application.Status),
+		ApplicationStatus: status,
 	}, nil
 }
+
+
