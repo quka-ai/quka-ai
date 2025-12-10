@@ -353,3 +353,38 @@ type KnowledgeRelMetaStore interface {
 	ListKnowledgesMeta(ctx context.Context, knowledgeIDs []string) ([]*types.KnowledgeRelMeta, error)
 	ListRelMetaWithKnowledgeContent(ctx context.Context, opts []types.MergeDataQuery) ([]*types.RelMetaWithKnowledge, error)
 }
+
+type RSSSubscriptionStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data *types.RSSSubscription) error
+	Get(ctx context.Context, id int64) (*types.RSSSubscription, error)
+	GetByUserAndURL(ctx context.Context, userID, url string) (*types.RSSSubscription, error)
+	List(ctx context.Context, userID string, spaceID string) ([]*types.RSSSubscription, error)
+	Update(ctx context.Context, id int64, updates map[string]interface{}) error
+	Delete(ctx context.Context, id int64) error
+	GetEnabledSubscriptions(ctx context.Context) ([]*types.RSSSubscription, error)
+}
+
+type RSSArticleStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data *types.RSSArticle) error
+	Get(ctx context.Context, id int64) (*types.RSSArticle, error)
+	GetByGUID(ctx context.Context, subscriptionID int64, guid string) (*types.RSSArticle, error)
+	Exists(ctx context.Context, subscriptionID int64, guid string) (bool, error)
+	ListBySubscription(ctx context.Context, subscriptionID int64, limit int) ([]*types.RSSArticle, error)
+	DeleteOld(ctx context.Context, subscriptionID int64, keepCount int) error
+}
+
+type RSSUserInterestStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data *types.RSSUserInterest) error
+	Get(ctx context.Context, id int64) (*types.RSSUserInterest, error)
+	GetByUserAndTopic(ctx context.Context, userID, topic string) (*types.RSSUserInterest, error)
+	ListByUser(ctx context.Context, userID string, minWeight float64) ([]*types.RSSUserInterest, error)
+	Upsert(ctx context.Context, data *types.RSSUserInterest) error
+	UpdateWeight(ctx context.Context, id int64, weight float64) error
+	BatchUpsert(ctx context.Context, interests []*types.RSSUserInterest) error
+	Delete(ctx context.Context, id int64) error
+	DeleteByUserAndTopic(ctx context.Context, userID, topic string) error
+	GetTopTopics(ctx context.Context, userID string, limit int) ([]*types.RSSUserInterest, error)
+}

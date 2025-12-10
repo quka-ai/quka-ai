@@ -7,7 +7,7 @@ import (
 )
 
 func setupChatSessionLogic() *v1.ChatSessionLogic {
-	return v1.NewChatSessionLogic(ctx, setupCore())
+	return v1.NewChatSessionLogic(ctx, NewCore())
 }
 
 func Test_CreateChatSession(t *testing.T) {

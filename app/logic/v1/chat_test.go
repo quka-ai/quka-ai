@@ -12,7 +12,7 @@ import (
 )
 
 func setupChatLogic() *v1.ChatLogic {
-	return v1.NewChatLogic(ctx, setupCore())
+	return v1.NewChatLogic(ctx, NewCore())
 }
 
 func Test_GetRelevanceKnowledges(t *testing.T) {

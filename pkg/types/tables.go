@@ -38,4 +38,7 @@ const (
 	TABLE_CONTENT_TASK       = TableName("content_task")
 	TABLE_KNOWLEDGE_META     = TableName("knowledge_meta")
 	TABLE_KNOWLEDGE_REL_META = TableName("knowledge_rel_meta")
+	TABLE_RSS_SUBSCRIPTIONS  = TableName("rss_subscriptions")
+	TABLE_RSS_ARTICLES       = TableName("rss_articles")
+	TABLE_RSS_USER_INTERESTS = TableName("rss_user_interests")
 )

@@ -67,6 +67,9 @@ type Stores struct {
 	store.ContentTaskStore
 	store.KnowledgeMetaStore
 	store.KnowledgeRelMetaStore
+	store.RSSSubscriptionStore
+	store.RSSArticleStore
+	store.RSSUserInterestStore
 }
 
 func (s *Provider) batchExecStoreFuncs(fname string) {
@@ -306,6 +309,18 @@ func (p *Provider) KnowledgeMetaStore() store.KnowledgeMetaStore {
 
 func (p *Provider) KnowledgeRelMetaStore() store.KnowledgeRelMetaStore {
 	return p.stores.KnowledgeRelMetaStore
+}
+
+func (p *Provider) RSSSubscriptionStore() store.RSSSubscriptionStore {
+	return p.stores.RSSSubscriptionStore
+}
+
+func (p *Provider) RSSArticleStore() store.RSSArticleStore {
+	return p.stores.RSSArticleStore
+}
+
+func (p *Provider) RSSUserInterestStore() store.RSSUserInterestStore {
+	return p.stores.RSSUserInterestStore
 }
 
 // Cache 实现 Author 接口的 Cache 方法

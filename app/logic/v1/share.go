@@ -241,10 +241,10 @@ func (l *ShareLogic) GetKnowledgeByShareToken(token string) (*KnowledgeShareInfo
 }
 
 type SessionShareInfo struct {
-	User         *types.User          `json:"user"`
-	Session      *types.ChatSession   `json:"session"`
-	Messages     []*types.ChatMessage `json:"messages"`
-	EmbeddingURL string               `json:"embedding_url"`
+	User         *types.User            `json:"user"`
+	Session      *types.ChatSession     `json:"session"`
+	Messages     []*types.MessageDetail `json:"messages"`
+	EmbeddingURL string                 `json:"embedding_url"`
 }
 
 func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, error) {
@@ -275,6 +275,21 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 		return nil, errors.New("ShareLogic.GetSessionByShareToken.ChatMessageStore.ListSessionMessage.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNoContent)
 	}
 
+	msgIDs := lo.Map(messageList, func(item *types.ChatMessage, _ int) string {
+		return item.ID
+	})
+
+	extList, err := l.core.Store().ChatMessageExtStore().ListChatMessageExts(l.ctx, msgIDs)
+	if err != nil {
+		return nil, errors.New("ShareLogic.GetSessionByShareToken.ChatMessageExtStore.ListChatMessageExts", i18n.ERROR_INTERNAL, err)
+	}
+
+	extMap := lo.SliceToMap(extList, func(item types.ChatMessageExt) (string, *types.ChatMessageExt) {
+		return item.MessageID, &item
+	})
+
+	var list []*types.MessageDetail
+
 	for _, v := range messageList {
 		if v.IsEncrypt != types.MESSAGE_IS_ENCRYPT {
 			continue
@@ -285,6 +300,8 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 		}
 
 		v.Message = string(deData)
+
+		list = append(list, chatMsgAndExtToMessageDetail(v, extMap[v.ID]))
 	}
 
 	user, err := l.core.Store().UserStore().GetUser(l.ctx, link.Appid, link.ShareUserID)
@@ -303,7 +320,7 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 	return &SessionShareInfo{
 		User:         user,
 		Session:      session,
-		Messages:     lo.Reverse(messageList),
+		Messages:     lo.Reverse(list),
 		EmbeddingURL: link.EmbeddingURL,
 	}, nil
 }

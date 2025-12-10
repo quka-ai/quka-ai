@@ -2,6 +2,7 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -309,6 +310,8 @@ func (s *KnowledgeStore) ListKnowledges(ctx context.Context, opts types.GetKnowl
 	if err != nil {
 		return nil, ErrorSqlBuild(err)
 	}
+
+	fmt.Println(queryString, args)
 
 	var res []*types.Knowledge
 	if err = s.GetReplica(ctx).Select(&res, queryString, args...); err != nil {

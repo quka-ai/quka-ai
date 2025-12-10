@@ -16,6 +16,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+
 	"github.com/sashabaranov/go-openai"
 )
 

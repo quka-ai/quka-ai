@@ -181,6 +181,19 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			}
 		}
 
+		rss := authed.Group("/:spaceid/rss")
+		{
+			rss.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView))
+			rss.GET("/subscriptions", s.ListRSSSubscriptions)
+			rss.GET("/subscriptions/:id", s.GetRSSSubscription)
+
+			rss.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionEdit))
+			rss.POST("/subscriptions", s.CreateRSSSubscription)
+			rss.PUT("/subscriptions/:id", s.UpdateRSSSubscription)
+			rss.DELETE("/subscriptions/:id", s.DeleteRSSSubscription)
+			rss.POST("/subscriptions/:id/fetch", s.TriggerRSSFetch)
+		}
+
 		authed.GET("/resource/list", s.ListUserResources)
 		resource := authed.Group("/:spaceid/resource")
 		{
