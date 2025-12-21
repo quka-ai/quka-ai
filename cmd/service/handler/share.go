@@ -109,6 +109,10 @@ func genSpaceShareURL(domain, token string) string {
 	return fmt.Sprintf("%s/s/sp/%s", domain, token)
 }
 
+func genPodcastShareURL(domain, token string) string {
+	return fmt.Sprintf("%s/s/p/%s", domain, token)
+}
+
 func normalizeEmbeddingURL(embeddingURL, embeddingDomain string) string {
 	if embeddingDomain == "" {
 		return embeddingURL
@@ -285,5 +289,81 @@ func (s *HttpSrv) CreateSpaceShareToken(c *gin.Context) {
 	response.APISuccess(c, CreateSpaceShareTokenResponse{
 		Token: res.Token,
 		URL:   shareURL,
+	})
+}
+
+type CreatePodcastShareTokenRequest struct {
+	EmbeddingURL string `json:"embedding_url" binding:"required"`
+	PodcastID    string `json:"podcast_id" binding:"required"`
+}
+
+type CreatePodcastShareTokenResponse struct {
+	Token string `json:"token"`
+	URL   string `json:"url"`
+}
+
+func (s *HttpSrv) CreatePodcastShareToken(c *gin.Context) {
+	var (
+		err error
+		req CreatePodcastShareTokenRequest
+	)
+	if err = utils.BindArgsWithGin(c, &req); err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	spaceID, _ := v1.InjectSpaceID(c)
+	req.EmbeddingURL = normalizeEmbeddingURL(req.EmbeddingURL, s.Core.Cfg().Site.Share.EmbeddingDomain)
+	res, err := v1.NewManageShareLogic(c, s.Core).CreatePodcastShareToken(spaceID, req.PodcastID, req.EmbeddingURL)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	var shareURL string
+	if s.Core.Cfg().Site.Share.Domain != "" {
+		shareURL = genPodcastShareURL(s.Core.Cfg().Site.Share.Domain, res.Token)
+	} else {
+		shareURL = strings.ReplaceAll(req.EmbeddingURL, "{token}", res.Token)
+	}
+
+	response.APISuccess(c, CreatePodcastShareTokenResponse{
+		Token: res.Token,
+		URL:   shareURL,
+	})
+}
+
+func (s *HttpSrv) GetPodcastByShareToken(c *gin.Context) {
+	token, _ := c.Params.Get("token")
+	res, err := v1.NewShareLogic(c, s.Core).GetPodcastByShareToken(token)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	response.APISuccess(c, res)
+}
+
+func (s *HttpSrv) BuildPodcastSharePage(c *gin.Context) {
+	token, _ := c.Params.Get("token")
+
+	res, err := v1.NewShareLogic(c, s.Core).GetPodcastByShareToken(token)
+	if err != nil {
+		response.APIError(c, err)
+		return
+	}
+
+	parsedURL, err := url.Parse(res.EmbeddingURL)
+	if err != nil {
+		response.APIError(c, errors.New("api.BuildPodcastSharePage.url.Parse", i18n.ERROR_INTERNAL, err))
+		return
+	}
+
+	c.HTML(http.StatusOK, "share.html", gin.H{
+		"siteTitle":       s.Core.Cfg().Site.Share.SiteTitle,
+		"siteDescription": s.Core.Cfg().Site.Share.SiteDescription,
+		"title":           res.Podcast.Title,
+		"contentURL":      res.EmbeddingURL,
+		"frontendURL":     fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host),
 	})
 }

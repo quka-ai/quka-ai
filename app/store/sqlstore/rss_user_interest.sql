@@ -1,6 +1,6 @@
 -- 用户兴趣模型表
 CREATE TABLE IF NOT EXISTS quka_rss_user_interests (
-    id BIGINT PRIMARY KEY,
+    id VARCHAR(32) PRIMARY KEY,
     user_id VARCHAR(32) NOT NULL,
     topic VARCHAR(255) NOT NULL,
     weight FLOAT DEFAULT 1.0,

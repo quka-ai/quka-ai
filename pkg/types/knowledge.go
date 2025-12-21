@@ -38,11 +38,12 @@ type KnowledgeKind string
 
 const (
 	KNOWLEDGE_KIND_TEXT    KnowledgeKind = "text"
-	KNOWLEDGE_KIND_IMAGE                 = "image"
-	KNOWLEDGE_KIND_VIDEO                 = "video"
-	KNOWLEDGE_KIND_URL                   = "url"
-	KNOWLEDGE_KIND_CHUNK                 = "chunk"
-	KNOWLEDGE_KIND_UNKNOWN               = "unknown"
+	KNOWLEDGE_KIND_IMAGE   KnowledgeKind = "image"
+	KNOWLEDGE_KIND_VIDEO   KnowledgeKind = "video"
+	KNOWLEDGE_KIND_URL     KnowledgeKind = "url"
+	KNOWLEDGE_KIND_CHUNK   KnowledgeKind = "chunk"
+	KNOWLEDGE_KIND_RSS     KnowledgeKind = "rss"
+	KNOWLEDGE_KIND_UNKNOWN KnowledgeKind = "unknown"
 )
 
 func KindNewFromString(s string) KnowledgeKind {
@@ -60,6 +61,35 @@ func KindNewFromString(s string) KnowledgeKind {
 
 func (k KnowledgeKind) String() string {
 	return string(k)
+}
+
+type KnowledgeSource string
+
+const (
+	KNOWLEDGE_SOURCE_PLATFORM KnowledgeSource = ""        // 平台内部创建
+	KNOWLEDGE_SOURCE_RSS      KnowledgeSource = "rss"     // RSS 订阅
+	KNOWLEDGE_SOURCE_PODCAST  KnowledgeSource = "podcast" // 播客
+	KNOWLEDGE_SOURCE_MCP      KnowledgeSource = "mcp"     // MCP 工具
+	KNOWLEDGE_SOURCE_CHAT     KnowledgeSource = "chat"    // 聊天会话
+)
+
+func (s KnowledgeSource) String() string {
+	return string(s)
+}
+
+// IsValid 验证 source 是否是有效值
+func (s KnowledgeSource) IsValid() bool {
+	switch s {
+	case KNOWLEDGE_SOURCE_PLATFORM, KNOWLEDGE_SOURCE_RSS, KNOWLEDGE_SOURCE_PODCAST, KNOWLEDGE_SOURCE_MCP, KNOWLEDGE_SOURCE_CHAT:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidateSource 验证 source 字符串是否有效
+func ValidateSource(source string) bool {
+	return KnowledgeSource(source).IsValid()
 }
 
 type KnowledgeStage int8
@@ -85,17 +115,15 @@ func (v KnowledgeStage) String() string {
 	return fmt.Sprintf("KnowledgeStage(%d)", v)
 }
 
-func (v KnowledgeStage) int8() int8 {
-	return int8(v)
-}
-
 type KnowledgeLite struct {
-	ID       string         `json:"id" db:"id"`
-	SpaceID  string         `json:"space_id" db:"space_id"`
-	Resource string         `json:"resource" db:"resource"`
-	Title    string         `json:"title" db:"title"`
-	Tags     pq.StringArray `json:"tags" db:"tags"`
-	UserID   string         `json:"user_id" db:"user_id"`
+	ID        string         `json:"id" db:"id"`
+	SpaceID   string         `json:"space_id" db:"space_id"`
+	Resource  string         `json:"resource" db:"resource"`
+	Title     string         `json:"title" db:"title"`
+	Tags      pq.StringArray `json:"tags" db:"tags"`
+	UserID    string         `json:"user_id" db:"user_id"`
+	Source    string         `json:"source" db:"source"`
+	SourceRef string         `json:"source_ref" db:"source_ref"`
 }
 
 type KnowledgeResponse struct {
@@ -114,6 +142,8 @@ type KnowledgeResponse struct {
 	UpdatedAt   int64                `json:"updated_at" db:"updated_at"`
 	ExpiredAt   int64                `json:"expired_at" db:"expired_at"`
 	IsExpired   bool                 `json:"is_expired,omitempty" db:"-"`
+	Source      string               `json:"source" db:"source"`
+	SourceRef   string               `json:"source_ref" db:"source_ref"`
 }
 
 type Knowledge struct {
@@ -134,6 +164,8 @@ type Knowledge struct {
 	RetryTimes  int                  `json:"retry_times" db:"retry_times"`
 	ExpiredAt   int64                `json:"expired_at" db:"expired_at"`
 	RelDocID    string               `json:"rel_doc_id,omitempty" db:"rel_doc_id"` // 关联的文档任务ID，如果是用户直接录入则为空
+	Source      string               `json:"source" db:"source"`
+	SourceRef   string               `json:"source_ref" db:"source_ref"`
 }
 
 type RawMessage = KnowledgeContent
@@ -229,6 +261,8 @@ type GetKnowledgeOptions struct {
 	RetryTimes  int
 	Keywords    string
 	RelDocID    string // 关联的文档任务ID
+	Source      string // 来源类型过滤
+	SourceRef   string // 来源引用过滤
 	TimeRange   *struct {
 		St int64
 		Et int64
@@ -275,6 +309,12 @@ func (opts GetKnowledgeOptions) Apply(query *sq.SelectBuilder) {
 	if opts.RelDocID != "" {
 		*query = query.Where(sq.Eq{"rel_doc_id": opts.RelDocID})
 	}
+	if opts.Source != "" {
+		*query = query.Where(sq.Eq{"source": opts.Source})
+	}
+	if opts.SourceRef != "" {
+		*query = query.Where(sq.Eq{"source_ref": opts.SourceRef})
+	}
 	if opts.TimeRange != nil {
 		*query = query.Where(sq.And{sq.GtOrEq{"created_at": opts.TimeRange.St}, sq.LtOrEq{"created_at": opts.TimeRange.Et}})
 	}
@@ -318,6 +358,8 @@ type UpdateKnowledgeArgs struct {
 	Tags        []string
 	Stage       KnowledgeStage
 	Summary     string
+	Source      string
+	SourceRef   string
 }
 
 // 过期相关工具函数

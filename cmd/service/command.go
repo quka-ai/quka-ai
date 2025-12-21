@@ -41,7 +41,12 @@ func NewCommand() *cobra.Command {
 func Run(opts *Options) error {
 	app := core.MustSetupCore(core.MustLoadBaseConfig(opts.ConfigPath))
 	plugins.Setup(app.InstallPlugins, opts.Init)
-	process.NewProcess(app).Start()
+	p := process.NewProcess(app)
+	p.Start()
+
+	// 在服务退出时确保清理资源
+	defer p.Stop()
+
 	serve(app)
 
 	return nil
@@ -63,12 +68,19 @@ func NewProcessCommand() *cobra.Command {
 func RunProcess(opts *Options) error {
 	app := core.MustSetupCore(core.MustLoadBaseConfig(opts.ConfigPath))
 	plugins.Setup(app.InstallPlugins, opts.Init)
-	process.NewProcess(app).Start()
+	p := process.NewProcess(app)
+	p.Start()
+
 	fmt.Println("Process starting...")
 	sigs := make(chan os.Signal, 1)
 	// 监听 os.Interrupt (Ctrl+C) 和 syscall.SIGTERM (kill)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	// 阻塞等待信号
 	<-sigs
+
+	fmt.Println("Shutting down process...")
+	p.Stop()
+	fmt.Println("Process stopped successfully")
+
 	return nil
 }

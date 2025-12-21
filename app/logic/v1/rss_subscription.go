@@ -3,12 +3,13 @@ package v1
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/app/core/srv"
+	"github.com/quka-ai/quka-ai/app/logic/v1/process"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/rss"
@@ -76,7 +77,7 @@ func (l *RSSSubscriptionLogic) CreateSubscription(spaceID, resourceID, url, titl
 	}
 
 	subscription := &types.RSSSubscription{
-		ID:              utils.GenUniqID(),
+		ID:              utils.GenUniqIDStr(),
 		UserID:          user.User,
 		SpaceID:         spaceID,
 		ResourceID:      resourceID,
@@ -94,20 +95,22 @@ func (l *RSSSubscriptionLogic) CreateSubscription(spaceID, resourceID, url, titl
 		return nil, errors.New("RSSSubscriptionLogic.CreateSubscription.RSSSubscriptionStore.Create", i18n.ERROR_INTERNAL, err)
 	}
 
-	// 立即触发一次抓取
-	go func() {
-		fetchLogic := NewRSSFetcherLogic(context.Background(), l.core)
-		if err := fetchLogic.FetchSubscription(subscription.ID); err != nil {
-			// 记录错误但不阻塞创建流程
-			fmt.Printf("Failed to fetch new subscription: %v\n", err)
-		}
-	}()
+	// 推送任务到队列（只需要入队任务，不需要 Server，并发数传 0）
+	if err := process.RSSQueue().EnqueueTask(l.ctx, subscription.ID); err != nil {
+		// 入队失败不阻塞订阅创建，记录日志即可
+		slog.Error("Failed to enqueue fetch task for new subscription",
+			slog.String("subscription_id", subscription.ID),
+			slog.String("error", err.Error()))
+	} else {
+		slog.Info("New subscription fetch task enqueued",
+			slog.String("subscription_id", subscription.ID))
+	}
 
 	return subscription, nil
 }
 
 // GetSubscription 获取订阅详情
-func (l *RSSSubscriptionLogic) GetSubscription(id int64) (*types.RSSSubscription, error) {
+func (l *RSSSubscriptionLogic) GetSubscription(id string) (*types.RSSSubscription, error) {
 	subscription, err := l.core.Store().RSSSubscriptionStore().Get(l.ctx, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -145,7 +148,7 @@ func (l *RSSSubscriptionLogic) ListSubscriptions(spaceID string) ([]*types.RSSSu
 }
 
 // UpdateSubscription 更新订阅配置
-func (l *RSSSubscriptionLogic) UpdateSubscription(id int64, title, description, category string, updateFrequency int, enabled *bool) error {
+func (l *RSSSubscriptionLogic) UpdateSubscription(id string, title, description, category string, updateFrequency int, resourceID string, enabled *bool) error {
 	user := l.GetUserInfo()
 	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionEdit) {
 		return errors.New("RSSSubscriptionLogic.UpdateSubscription.RBAC.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
@@ -182,6 +185,10 @@ func (l *RSSSubscriptionLogic) UpdateSubscription(id int64, title, description, 
 		updates["enabled"] = *enabled
 	}
 
+	if resourceID != "" {
+		updates["resource_id"] = resourceID
+	}
+
 	if len(updates) == 0 {
 		return nil
 	}
@@ -194,7 +201,7 @@ func (l *RSSSubscriptionLogic) UpdateSubscription(id int64, title, description, 
 }
 
 // DeleteSubscription 删除订阅
-func (l *RSSSubscriptionLogic) DeleteSubscription(id int64) error {
+func (l *RSSSubscriptionLogic) DeleteSubscription(id string) error {
 	user := l.GetUserInfo()
 	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionEdit) {
 		return errors.New("RSSSubscriptionLogic.DeleteSubscription.RBAC.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
@@ -214,6 +221,15 @@ func (l *RSSSubscriptionLogic) DeleteSubscription(id int64) error {
 		return errors.New("RSSSubscriptionLogic.DeleteSubscription.PermissionDenied", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
 	}
 
+	// 先删除该订阅下的所有文章（级联删除）
+	// 先不删除，考虑多人同时订阅同一个RSS时article复用的情况
+	// if err := l.core.Store().RSSArticleStore().DeleteBySubscription(l.ctx, id); err != nil {
+	// 	return errors.New("RSSSubscriptionLogic.DeleteSubscription.RSSArticleStore.DeleteBySubscription", i18n.ERROR_INTERNAL, err)
+	// }
+
+	slog.Info("Deleted articles for subscription",
+		slog.String("subscription_id", id))
+
 	// 删除订阅
 	if err := l.core.Store().RSSSubscriptionStore().Delete(l.ctx, id); err != nil {
 		return errors.New("RSSSubscriptionLogic.DeleteSubscription.RSSSubscriptionStore.Delete", i18n.ERROR_INTERNAL, err)
@@ -222,11 +238,14 @@ func (l *RSSSubscriptionLogic) DeleteSubscription(id int64) error {
 	// TODO: 考虑是否要删除相关的 Knowledge 记录
 	// 当前设计是不删除，让它们自然过期
 
+	slog.Info("Subscription deleted successfully",
+		slog.String("subscription_id", id))
+
 	return nil
 }
 
 // TriggerFetch 手动触发订阅抓取
-func (l *RSSSubscriptionLogic) TriggerFetch(id int64) error {
+func (l *RSSSubscriptionLogic) TriggerFetch(id string) error {
 	user := l.GetUserInfo()
 	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionEdit) {
 		return errors.New("RSSSubscriptionLogic.TriggerFetch.RBAC.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
@@ -246,13 +265,13 @@ func (l *RSSSubscriptionLogic) TriggerFetch(id int64) error {
 		return errors.New("RSSSubscriptionLogic.TriggerFetch.PermissionDenied", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
 	}
 
-	// 异步触发抓取
-	go func() {
-		fetchLogic := NewRSSFetcherLogic(context.Background(), l.core)
-		if err := fetchLogic.FetchSubscription(id); err != nil {
-			fmt.Printf("Failed to fetch subscription %d: %v\n", id, err)
-		}
-	}()
+	// 推送任务到队列（只需要入队任务，不需要 Server，并发数传 0）
+	if err := process.RSSQueue().EnqueueTask(l.ctx, id); err != nil {
+		return errors.New("RSSSubscriptionLogic.TriggerFetch.EnqueueTask", i18n.ERROR_INTERNAL, err)
+	}
+
+	slog.Info("Manual fetch task enqueued",
+		slog.String("subscription_id", id))
 
 	return nil
 }

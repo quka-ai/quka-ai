@@ -3,6 +3,7 @@
 ## 问题描述
 
 当前 `ListModelConfigs` 接口存在性能问题：
+
 - 先从数据库获取所有模型数据
 - 然后在内存中进行筛选过滤
 - 这种方式在数据量大时会造成不必要的查询和内存开销
@@ -31,6 +32,7 @@ for _, model := range models {
 ```
 
 **主要问题：**
+
 1. `model_name` 参数应该搜索数据库的 `display_name` 字段，而不是 `model_name` 字段
 2. 应该支持模糊搜索（LIKE），而不是精确匹配
 3. `model_type` 等其他筛选条件应该在 SQL 层面完成，而不是在内存中过滤
@@ -106,7 +108,7 @@ func (s *HttpSrv) ListModelConfigs(c *gin.Context) {
         return
     }
 
-    logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+    logic := v1.NewModelConfigLogic(c, s.Core)
 
     // 构建筛选选项
     opts := types.ListModelConfigOptions{
@@ -179,28 +181,33 @@ func (l *ModelConfigLogic) ListModelsWithProviderFiltered(opts types.ListModelCo
 ## 关键考虑点
 
 ### 1. 结构体参数绑定
+
 - 使用 Gin 的 `form` 标签进行查询参数绑定
 - 参考 Knowledge 接口的实现方式，保持代码风格一致
 - 提高代码可维护性和可读性
 
 ### 2. API 兼容性
+
 - 前端查询参数 `model_name` 映射到后端的 `display_name` 字段搜索
 - 所有其他参数保持不变
 - URL 接口不变，对前端透明
 
 ### 3. Reader 虚拟模型处理
+
 - Reader 模型是根据 Provider 动态生成的虚拟模型
 - 需要根据 `model_type` 筛选条件决定是否包含 Reader 模型
 - Reader 模型的 `DisplayName` 筛选在内存中完成（因为是虚拟数据）
 - 其他筛选条件（如 status）也需要在内存中进行
 
 ### 4. 性能提升
+
 - 数据库层面过滤：减少网络传输和内存占用
 - 真实模型的筛选在 SQL 层完成
 - 虚拟模型的筛选在内存中完成（数量少，影响小）
 - 索引优化：确保 `display_name` 和 `model_type` 字段有适当的索引
 
 ### 5. 模糊搜索
+
 - `display_name` 使用 LIKE 模糊搜索（SQL 层）
 - Reader 模型使用 `strings.Contains` 进行模糊匹配（内存层）
 - 需要注意 SQL 注入防护（squirrel 库已处理）
@@ -208,6 +215,7 @@ func (l *ModelConfigLogic) ListModelsWithProviderFiltered(opts types.ListModelCo
 ## 需要确认的问题
 
 1. **前端影响**：前端目前传递的 `model_name` 参数是用来搜索显示名称还是模型名称？
+
    - 如果是显示名称：按方案实施 ✅
    - 如果是模型名称：需要调整前端，使用不同的参数名
 
@@ -236,17 +244,22 @@ func (l *ModelConfigLogic) ListModelsWithProviderFiltered(opts types.ListModelCo
 ## 实施总结
 
 ### 代码修改
+
 ✅ 所有代码修改已完成，编译和静态检查通过
 
 ### 修改内容
+
 1. **新增结构体** [model_config.go:55-64](app/logic/v1/model_config.go#L55-L64)
+
    - `ListModelConfigsRequest` 用于参数绑定
 
 2. **扩展选项结构** [model_provider.go:88-97](pkg/types/model_provider.go#L88-L97)
+
    - `ListModelConfigOptions` 添加 `DisplayName` 字段
    - 更新 `Apply` 方法支持 `DisplayName` 模糊搜索
 
 3. **新增业务方法** [model_config.go:268-339](app/logic/v1/model_config.go#L268-L339)
+
    - `ListModelsWithProviderFiltered` 支持完整筛选
    - `filterReaderModels` 对虚拟模型进行内存过滤
 
@@ -256,11 +269,13 @@ func (l *ModelConfigLogic) ListModelsWithProviderFiltered(opts types.ListModelCo
    - 移除内存过滤逻辑
 
 ### 性能提升
+
 - ✅ 数据库层面筛选，减少网络传输
 - ✅ 减少内存占用和 CPU 消耗
 - ✅ 支持 `display_name` 模糊搜索
 
 ### 代码质量
+
 - ✅ 代码更简洁（减少 41 行代码）
 - ✅ 参数绑定更规范
 - ✅ 逻辑更清晰易维护

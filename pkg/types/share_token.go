@@ -19,4 +19,5 @@ const (
 	SHARE_TYPE_SESSION      = "session"
 	SHARE_TYPE_MESSAGE      = "message"
 	SHARE_TYPE_SPACE_INVITE = "space_invite"
+	SHARE_TYPE_PODCAST      = "podcast"
 )

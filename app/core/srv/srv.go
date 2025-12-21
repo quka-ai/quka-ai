@@ -1,6 +1,7 @@
 package srv
 
 import (
+	"github.com/quka-ai/quka-ai/pkg/ai/volcengine/voice"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
@@ -8,6 +9,8 @@ type Srv struct {
 	rbac       *RBACSrv
 	ai         *AI
 	centrifuge CentrifugeManager
+
+	volcenginePodcast *voice.PodCaster
 }
 
 func SetupSrvs(opts ...ApplyFunc) *Srv {
@@ -31,6 +34,10 @@ func (s *Srv) AI() AIDriver {
 
 func (s *Srv) Centrifuge() CentrifugeManager {
 	return s.centrifuge
+}
+
+func (s *Srv) Podcast() *voice.PodCaster {
+	return s.volcenginePodcast
 }
 
 // ReloadAI 重新加载AI配置

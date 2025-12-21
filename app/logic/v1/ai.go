@@ -621,14 +621,10 @@ func (s *ButlerAssistant) handleDirectResponse(ctx context.Context, agent *react
 }
 
 func NewJournalAssistant(core *core.Core, agentType string) *JournalAssistant {
-	cfg := openai.DefaultConfig(core.Cfg().AI.Agent.Token)
-	cfg.BaseURL = core.Cfg().AI.Agent.Endpoint
-
-	cli := openai.NewClientWithConfig(cfg)
 	return &JournalAssistant{
 		core:      core,
 		agentType: agentType,
-		agent:     journal.NewJournalAgent(core, cli, core.Cfg().AI.Agent.Model),
+		agent:     journal.NewJournalAgent(core),
 	}
 }
 

@@ -48,8 +48,8 @@ const (
 	// 已废弃：FireTower 事件常量（保留用于向后兼容，实际不再使用）
 	TOWER_EVENT_CLOSE_CHAT_STREAM = "/qukaai/event/chat/close_stream"
 
-	FIXED_S3_UPLOAD_PATH_PREFIX   = "/assets/s3/"
-	DEFAULT_APPID                 = "quka"
+	FIXED_S3_UPLOAD_PATH_PREFIX = "/assets/s3/"
+	DEFAULT_APPID               = "quka"
 )
 
 // StopChatStreamMessage 停止聊天流信号消息（用于跨实例通信）

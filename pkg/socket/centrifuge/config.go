@@ -16,8 +16,9 @@ type Config struct {
 	DeploymentMode string `toml:"deployment_mode"` // "single" | "distributed"
 
 	// 分布式配置 (可选)
-	RedisURL     string `toml:"redis_url"`
-	RedisCluster bool   `toml:"redis_cluster"`
+	RedisURL      string `toml:"redis_url"`
+	RedisPassword string `toml:"redis_password"`
+	RedisCluster  bool   `toml:"redis_cluster"`
 
 	// 功能开关
 	EnablePresence bool `toml:"enable_presence"`

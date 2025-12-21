@@ -35,6 +35,7 @@ func SetupSrv(core *Core) {
 
 	core.srv = srv.SetupSrvs(
 		aiApplyFunc, // ai provider select
+		srv.ApplyPodcast(core.cfg.AI.Podcast.Volcengine),
 		// centrifuge websocket (支持分布式)
 		srv.ApplyCentrifuge(centrifugeSetupFunc),
 	)

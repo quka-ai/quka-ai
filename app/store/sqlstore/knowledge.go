@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -30,7 +29,7 @@ func NewKnowledgeStore(provider SqlProviderAchieve) *KnowledgeStore {
 	store := &KnowledgeStore{}
 	store.SetProvider(provider)
 	store.SetTable(types.TABLE_KNOWLEDGE)
-	store.SetAllColumns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id")
+	store.SetAllColumns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id", "source", "source_ref")
 	return store
 }
 
@@ -44,8 +43,8 @@ func (s *KnowledgeStore) Create(ctx context.Context, data types.Knowledge) error
 	}
 
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id").
-		Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt, data.RelDocID)
+		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id", "source", "source_ref").
+		Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt, data.RelDocID, data.Source, data.SourceRef)
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -61,7 +60,7 @@ func (s *KnowledgeStore) Create(ctx context.Context, data types.Knowledge) error
 
 func (s *KnowledgeStore) BatchCreate(ctx context.Context, datas []*types.Knowledge) error {
 	query := sq.Insert(s.GetTable()).
-		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id")
+		Columns("id", "title", "user_id", "space_id", "tags", "content", "content_type", "resource", "kind", "summary", "maybe_date", "stage", "retry_times", "created_at", "updated_at", "expired_at", "rel_doc_id", "source", "source_ref")
 	for _, data := range datas {
 		if data.CreatedAt == 0 {
 			data.CreatedAt = time.Now().Unix()
@@ -70,7 +69,7 @@ func (s *KnowledgeStore) BatchCreate(ctx context.Context, datas []*types.Knowled
 			data.UpdatedAt = time.Now().Unix()
 		}
 
-		query = query.Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt, data.RelDocID)
+		query = query.Values(data.ID, data.Title, data.UserID, data.SpaceID, pq.Array(data.Tags), data.Content.String(), data.ContentType, data.Resource, data.Kind, data.Summary, data.MaybeDate, data.Stage, data.RetryTimes, data.CreatedAt, data.UpdatedAt, data.ExpiredAt, data.RelDocID, data.Source, data.SourceRef)
 	}
 
 	queryString, args, err := query.ToSql()
@@ -98,6 +97,54 @@ func (s *KnowledgeStore) GetKnowledge(ctx context.Context, spaceID string, id st
 		return nil, err
 	}
 	return &res, nil
+}
+
+// GetByRelDocID 根据 rel_doc_id 获取 Knowledge（用于 RSS 文章关联）
+func (s *KnowledgeStore) GetByRelDocID(ctx context.Context, userID, relDocID string) (*types.Knowledge, error) {
+	query := sq.Select(s.GetAllColumns()...).
+		From(s.GetTable()).
+		Where(sq.Eq{"user_id": userID, "rel_doc_id": relDocID})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, ErrorSqlBuild(err)
+	}
+
+	var res types.Knowledge
+	if err = s.GetReplica(ctx).Get(&res, queryString, args...); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BatchGetByRelDocIDs 批量根据 rel_doc_id 获取 Knowledge 映射（用于 RSS 文章关联）
+func (s *KnowledgeStore) BatchGetByRelDocIDs(ctx context.Context, userID string, relDocIDs []string) (map[string]*types.Knowledge, error) {
+	if len(relDocIDs) == 0 {
+		return make(map[string]*types.Knowledge), nil
+	}
+
+	query := sq.Select(s.GetAllColumns()...).
+		From(s.GetTable()).
+		Where(sq.Eq{"user_id": userID}).
+		Where(sq.Eq{"rel_doc_id": relDocIDs})
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, ErrorSqlBuild(err)
+	}
+
+	var res []types.Knowledge
+	if err = s.GetReplica(ctx).Select(&res, queryString, args...); err != nil {
+		return nil, err
+	}
+
+	// 构建映射表
+	knowledgeMap := make(map[string]*types.Knowledge, len(res))
+	for i := range res {
+		knowledgeMap[res[i].RelDocID] = &res[i]
+	}
+
+	return knowledgeMap, nil
 }
 
 // Update 更新知识记录
@@ -179,6 +226,14 @@ func (s *KnowledgeStore) Update(ctx context.Context, spaceID, id string, data ty
 
 	if data.Summary != "" {
 		query = query.Set("summary", data.Summary)
+	}
+
+	if data.Source != "" {
+		query = query.Set("source", data.Source)
+	}
+
+	if data.SourceRef != "" {
+		query = query.Set("source_ref", data.SourceRef)
 	}
 
 	queryString, args, err := query.ToSql()
@@ -280,7 +335,7 @@ func (s *KnowledgeStore) ListProcessingKnowledges(ctx context.Context, retryTime
 }
 
 func (s *KnowledgeStore) ListLiteKnowledges(ctx context.Context, opts types.GetKnowledgeOptions, page, pageSize uint64) ([]*types.KnowledgeLite, error) {
-	query := sq.Select("id", "title", "space_id", "user_id", "resource", "tags").From(s.GetTable())
+	query := sq.Select("id", "title", "space_id", "user_id", "resource", "tags", "source", "source_ref").From(s.GetTable())
 	if page != 0 || pageSize != 0 {
 		query = query.Limit(pageSize).Offset((page - 1) * pageSize)
 	}
@@ -310,8 +365,6 @@ func (s *KnowledgeStore) ListKnowledges(ctx context.Context, opts types.GetKnowl
 	if err != nil {
 		return nil, ErrorSqlBuild(err)
 	}
-
-	fmt.Println(queryString, args)
 
 	var res []*types.Knowledge
 	if err = s.GetReplica(ctx).Select(&res, queryString, args...); err != nil {

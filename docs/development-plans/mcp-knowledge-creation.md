@@ -3,19 +3,24 @@
 ## 1. 背景和目标
 
 ### 1.1 问题描述
+
 当前 QukaAI 的知识创建功能（`CreateKnowledge`）只能通过 HTTP API 调用，这限制了其在自动化场景中的使用。例如：
+
 - 用户无法在 Claude Code CLI 会话中直接将对话内容保存为知识
 - 无法通过命令行工具快速创建记忆
 - 缺少与外部工具的标准化集成方式
 
 ### 1.2 目标
+
 将 `CreateKnowledge` 功能抽象为 MCP (Model Context Protocol) 服务，使其能够：
+
 - 通过 MCP 协议被 Claude Code CLI 和其他 MCP 客户端调用
 - 支持从命令行直接创建知识条目
 - 保持与现有 HTTP API 的功能一致性
 - 提供良好的用户体验和错误处理
 
 ### 1.3 使用场景
+
 - **自动记录对话**：在 Claude Code 会话中使用命令自动保存对话内容为知识
 - **快速笔记**：通过命令行工具快速创建文本或 Markdown 笔记
 - **工作流集成**：与其他 MCP 工具链集成，实现自动化知识管理
@@ -23,6 +28,7 @@
 ## 2. CreateKnowledge 方法分析
 
 ### 2.1 核心流程
+
 基于 [knowledge.go:72-98](cmd/service/handler/knowledge.go#L72-L98) 的分析，核心流程为：
 
 ```
@@ -35,6 +41,7 @@
 ```
 
 ### 2.2 关键依赖
+
 基于 [knowledge.go:602-682](app/logic/v1/knowledge.go#L602-L682) 的分析：
 
 - **认证信息**：需要用户身份（UserID）和空间标识（SpaceID）
@@ -49,6 +56,7 @@
 - **过期管理**：根据 resource 配置计算过期时间
 
 ### 2.3 输入参数
+
 ```go
 type CreateKnowledgeRequest struct {
     Resource    string                     `json:"resource"`        // 资源分类
@@ -60,6 +68,7 @@ type CreateKnowledgeRequest struct {
 ```
 
 ### 2.4 输出结果
+
 ```go
 type CreateKnowledgeResponse struct {
     ID string `json:"id"`  // 创建的知识条目 ID
@@ -69,6 +78,7 @@ type CreateKnowledgeResponse struct {
 ## 3. MCP 服务设计
 
 ### 3.1 MCP 工具定义
+
 ```json
 {
   "name": "create_knowledge",
@@ -110,11 +120,13 @@ type CreateKnowledgeResponse struct {
 ```
 
 **注意**:
+
 - 移除了 `resource` 和 `async` 参数（从配置 Header 读取和固定行为）
 - 添加了 `title` 和 `tags` 参数以提供更好的灵活性
 - SpaceID 和 Resource 从 HTTP Header 获取
 
 ### 3.2 技术架构（HTTP 传输）
+
 ```
 ┌─────────────────────────────────┐
 │  本地 Claude Code CLI           │
@@ -154,6 +166,7 @@ type CreateKnowledgeResponse struct {
 ```
 
 ### 3.3 目录结构
+
 ```
 pkg/
 └── mcp/
@@ -197,6 +210,7 @@ docs/
 **选择**: [github.com/modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk) (官方 Go SDK)
 
 **理由**:
+
 1. ✅ **官方维护**: 由 Anthropic 和 Google 协作维护
 2. ✅ **功能完整**: 完整实现 MCP 规范
 3. ✅ **类型安全**: 完整的 Go 类型系统支持，自动 JSON schema 生成
@@ -207,12 +221,14 @@ docs/
 #### 3.4.2 HTTP 传输架构详细设计
 
 **HTTP 端点**:
+
 - **URL**: `POST /api/v1/mcp`
 - **协议**: JSON-RPC 2.0
 - **认证**: Bearer Token (HTTP Header)
 - **配置传递**: 自定义 HTTP Headers
 
 **HTTP 请求格式**:
+
 ```http
 POST /api/v1/mcp HTTP/1.1
 Host: your-quka.com
@@ -237,6 +253,7 @@ X-Resource: claude-conversations
 ```
 
 **HTTP 响应格式**:
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -256,6 +273,7 @@ Content-Type: application/json
 ```
 
 **错误响应**:
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -337,6 +355,7 @@ func (t *HTTPTransport) Close() error {
 #### 3.4.4 技术优势
 
 **优点**:
+
 - ✅ **真正的远程服务**: 标准 HTTP 协议，无需 SSH 访问
 - ✅ **易于部署**: 集成到现有 HTTP 服务，共享端口和基础设施
 - ✅ **可扩展性**: 支持负载均衡、多实例部署、水平扩展
@@ -346,6 +365,7 @@ func (t *HTTPTransport) Close() error {
 - ✅ **简化部署**: 无需配置 SSH 密钥和权限
 
 **实现要点**:
+
 - HTTP Transport 作为 Gin 路由的一个 handler
 - 每个 HTTP 请求对应一次 MCP 工具调用
 - 认证通过 Bearer Token 验证
@@ -353,6 +373,7 @@ func (t *HTTPTransport) Close() error {
 - 复用现有的 Access Token 验证逻辑
 
 **依赖安装**:
+
 ```bash
 go get github.com/modelcontextprotocol/go-sdk
 ```
@@ -362,6 +383,7 @@ go get github.com/modelcontextprotocol/go-sdk
 **好消息**: Claude Code CLI 已支持 Streamable HTTP transport！
 
 **添加 MCP 服务器命令**:
+
 ```bash
 # 使用 Claude Code CLI 添加 QukaAI MCP 服务器
 claude mcp add --transport http quka https://your-quka.com/api/v1/mcp
@@ -370,6 +392,7 @@ claude mcp add --transport http quka https://your-quka.com/api/v1/mcp
 ```
 
 **配置文件格式** (`~/.config/claude-code/mcp_settings.json`):
+
 ```json
 {
   "mcpServers": {
@@ -388,6 +411,7 @@ claude mcp add --transport http quka https://your-quka.com/api/v1/mcp
 由于 Claude Code 的 HTTP transport 配置可能不直接支持自定义 Headers，有两种方案：
 
 **方案 A: URL 参数传递** (推荐)
+
 ```bash
 claude mcp add --transport http quka \
   "https://your-quka.com/api/v1/mcp?token=your-64-char-token&space_id=550e8400-e29b-41d4-a716-446655440000"
@@ -396,6 +420,7 @@ claude mcp add --transport http quka \
 服务端从 URL 参数读取认证信息，然后设置到 context 中。
 
 **方案 B: 环境变量**
+
 ```bash
 # 在 shell 配置文件中设置
 export QUKA_ACCESS_TOKEN="your-64-char-access-token"
@@ -410,6 +435,7 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 
 **方案 C: 配置文件扩展** (如果支持自定义 Headers)
 如果 Claude Code 支持在配置文件中添加自定义 Headers：
+
 ```json
 {
   "mcpServers": {
@@ -433,9 +459,11 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 ## 4. 实施步骤
 
 ### Phase 1: 基础设施准备
+
 **目标**: 准备 HTTP Transport 和 MCP Server 基础
 
 #### 1.1 安装 MCP SDK
+
 - [ ] 安装官方 MCP Go SDK: `go get github.com/modelcontextprotocol/go-sdk`
 - [ ] 创建 `pkg/mcp` 目录及子目录
 - [ ] 导入必要的包：
@@ -447,6 +475,7 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
   ```
 
 #### 1.2 实现 HTTP Transport
+
 - [ ] 创建 `pkg/mcp/transport/http.go`
 - [ ] 实现 `HTTPTransport` 结构体
 - [ ] 实现 `jsonrpc.Receiver` 接口 (`Receive` 方法)
@@ -455,16 +484,19 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 - [ ] 添加错误处理和日志
 
 #### 1.3 确认现有 Access Token 系统
+
 - [ ] 确认现有 `quka_access_token` 表结构满足需求
 - [ ] 确认 AccessTokenStore 接口可用：
   - `GetAccessToken(appid, token)` - 验证 token
-  - Token 格式：64字符随机字符串
+  - Token 格式：64 字符随机字符串
 - [ ] 无需数据库迁移（复用现有表）
 
 ### Phase 2: MCP 认证和上下文
+
 **目标**: 实现基于 Bearer Token 的认证机制
 
 #### 2.1 MCP 认证实现
+
 - [ ] 实现 `pkg/mcp/auth/token.go` 中的验证逻辑
 - [ ] 支持多种认证方式（优先级从高到低）：
   - 方式 1: URL 参数 (`?token=xxx&space_id=xxx&resource=xxx`)
@@ -477,15 +509,19 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 - [ ] 实现错误处理和日志记录
 
 #### 2.2 用户上下文构建
+
 - [ ] 基于验证后的 token 构建请求上下文
 - [ ] 注入 userID, appid, spaceID, resource 到 context
 - [ ] 复用现有的 UserInfo 和权限验证机制
 
 ### Phase 3: MCP 服务核心实现
+
 **目标**: 实现 MCP Server 和 create_knowledge 工具
 
 #### 3.1 MCP Server 实现
+
 - [ ] 实现 `pkg/mcp/server.go` - 基于官方 SDK 的服务器
+
   ```go
   func NewMCPServer(core *core.Core) *mcp.Server {
       server := mcp.NewServer(&mcp.Implementation{
@@ -499,11 +535,14 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
       return server
   }
   ```
+
 - [ ] 实现请求处理流程（HTTP -> Transport -> MCP Server -> Tool）
 - [ ] 添加请求日志和错误处理包装
 
 #### 3.2 Gin HTTP Handler 实现
+
 - [ ] 实现 `pkg/mcp/handler.go` - Gin HTTP 处理器
+
   ```go
   func MCPHandler(core *core.Core) gin.HandlerFunc {
       server := NewMCPServer(core)
@@ -520,17 +559,19 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
           defer transport.Close()
 
           // 3. 处理 MCP 请求
-          if err := server.Handle(c.Request.Context(), transport); err != nil {
+          if err := server.Handle(c, transport); err != nil {
               // 错误已通过 transport 返回
               return
           }
       }
   }
   ```
+
 - [ ] 处理 HTTP 请求/响应流程
 - [ ] 错误处理和日志记录
 
 #### 3.3 create_knowledge 工具实现
+
 - [ ] 实现 `pkg/mcp/tools/knowledge.go`
 - [ ] 定义输入/输出结构（使用 jsonschema tags）
   ```go
@@ -543,6 +584,7 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
   }
   ```
 - [ ] 实现工具处理函数
+
   ```go
   func HandleCreateKnowledge(
       ctx context.Context,
@@ -558,10 +600,12 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
       return &mcp.CallToolResult{...}, CreateKnowledgeOutput{...}, nil
   }
   ```
+
 - [ ] 调用现有的 `KnowledgeLogic.InsertContentAsync`
 - [ ] 错误处理和国际化消息
 
 #### 3.4 工具注册系统
+
 - [ ] 实现 `pkg/mcp/tools/registry.go`
   ```go
   func RegisterTools(server *mcp.Server, core *core.Core) {
@@ -574,6 +618,7 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 - [ ] 支持动态添加新工具
 
 #### 3.5 集成到主 HTTP 服务
+
 - [ ] 在 `cmd/service/router/` 中添加 MCP 路由
   ```go
   func RegisterMCPRoutes(r *gin.Engine, core *core.Core) {
@@ -584,9 +629,11 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 - [ ] 添加配置开关（可选）
 
 ### Phase 4: 测试和文档
+
 **目标**: 确保质量和可用性
 
 #### 4.1 单元测试
+
 - [ ] HTTP Transport 测试
 - [ ] Access Token 验证测试
 - [ ] MCP Server 协议测试
@@ -594,12 +641,14 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 - [ ] 覆盖率 > 80%
 
 #### 4.2 集成测试
+
 - [ ] 端到端 HTTP 请求测试
 - [ ] 使用 curl/Postman 测试 MCP 端点
 - [ ] 错误场景测试（无效 token、过期 token、权限不足等）
 - [ ] 并发请求测试
 
 #### 4.3 用户文档编写
+
 - [ ] 用户指南：如何创建和管理 Access Token
 - [ ] API 文档：HTTP 端点和请求格式
 - [ ] 配置指南：如何配置客户端（预留）
@@ -607,17 +656,21 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 - [ ] 故障排查指南：常见问题和解决方案
 
 #### 4.4 开发者文档
+
 - [ ] MCP HTTP 协议实现说明
 - [ ] 如何添加新的 MCP 工具
 - [ ] 架构设计文档
 
 ### Phase 5: 监控和优化
+
 **目标**: 提供生产监控和性能优化
 
 #### 5.1 前端用户界面 ✅
+
 **无需额外开发**，现有 UI 已支持 Access Token 管理
 
 #### 5.2 监控和指标
+
 - [ ] Prometheus 指标：
   - `quka_mcp_requests_total` - MCP 请求总数
   - `quka_mcp_request_duration_seconds` - 请求延迟
@@ -630,6 +683,7 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 - [ ] 性能追踪和优化
 
 #### 5.3 部署和运维
+
 - [ ] 更新 Docker 镜像构建脚本
 - [ ] 更新部署文档
 - [ ] 配置示例更新
@@ -638,48 +692,60 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 ## 5. 关键考虑点
 
 ### 5.1 认证策略 ✅
+
 **问题**: MCP 客户端如何安全地认证？
 
 **确认方案**: 使用 Bearer Token 方式
+
 - 用户登录 QukaAI 平台后，在个人中心创建 Access Token
 - Token 通过 HTTP Header `Authorization: Bearer {token}` 传递
 - 支持 Token 过期、刷新和撤销功能
 
 ### 5.2 SpaceID 和 Resource 处理 ✅
+
 **问题**: 如何确定用户的目标空间和资源分类？
 
 **确认方案**: 通过 HTTP Header 传递
+
 - **SpaceID**: 通过 `X-Space-ID` Header 指定
 - **Resource**: 通过 `X-Resource` Header 指定，默认 "knowledge"
 - 用户可以在不同的 HTTP 请求中指定不同的空间
 
 ### 5.3 内容格式转换 ✅
+
 **问题**: Claude Code 输出的内容如何适配到知识系统？
 
 **确认方案**:
+
 - **默认格式**: Markdown (`content_type: "markdown"`)
 - **动态调整**: 用户可在调用时指定 `content_type: "blocks"` 切换到 EditorJS 格式
 
 ### 5.4 异步处理 ✅
+
 **问题**: MCP 调用是否等待知识处理完成？
 
 **确认方案**: 固定使用异步处理模式
+
 - 调用后立即返回知识 ID
 - 后台自动完成总结和向量化
 - 用户可通过 QukaAI Web UI 查看处理进度
 
 ### 5.5 部署方式 ✅
+
 **问题**: MCP 服务如何部署？
 
 **确认方案**: 集成到主 HTTP 服务
+
 - MCP 作为 HTTP API 的一个路由端点（`/api/v1/mcp`）
 - 与现有 HTTP API 共享端口和基础设施
 - 无需独立进程或服务
 
 ### 5.6 错误恢复
+
 **问题**: 网络中断或服务重启时如何处理？
 
 **方案**:
+
 - HTTP 协议天然支持重试
 - 客户端实现重试机制
 - 服务端幂等性保证
@@ -688,6 +754,7 @@ MCP 服务端从环境变量读取（如果客户端传递了环境变量）。
 ## 6. 配置和使用示例
 
 ### 6.1 QukaAI 服务端配置
+
 ```toml
 # config.toml (现有配置即可，MCP 通过 HTTP 端点暴露，无需专属配置)
 
@@ -704,6 +771,7 @@ host = "localhost"
 ### 6.2 创建 Access Token
 
 #### 步骤 1: 在 QukaAI Web UI 中创建 Access Token
+
 1. 登录 QukaAI
 2. 进入"个人中心"
 3. 点击"Access Token"标签
@@ -712,6 +780,7 @@ host = "localhost"
 6. 复制生成的 Token（**仅显示一次，请妥善保存**）
 
 #### 步骤 2: 获取 Space ID
+
 - 在 QukaAI Web UI 的 URL 中查看（如 `https://your-quka.com/space/550e8400-e29b-41d4-a716-446655440000`）
 - 或通过 API `GET /api/v1/user/spaces` 获取所有空间列表
 
@@ -720,6 +789,7 @@ host = "localhost"
 #### 示例 1: 使用 curl 调用 MCP 端点
 
 **Initialize 请求**:
+
 ```bash
 curl -X POST https://your-quka.com/api/v1/mcp \
   -H "Content-Type: application/json" \
@@ -741,6 +811,7 @@ curl -X POST https://your-quka.com/api/v1/mcp \
 ```
 
 **List Tools 请求**:
+
 ```bash
 curl -X POST https://your-quka.com/api/v1/mcp \
   -H "Content-Type: application/json" \
@@ -755,6 +826,7 @@ curl -X POST https://your-quka.com/api/v1/mcp \
 ```
 
 **Create Knowledge 请求**:
+
 ```bash
 curl -X POST https://your-quka.com/api/v1/mcp \
   -H "Content-Type: application/json" \
@@ -853,16 +925,17 @@ func main() {
 
 ## 7. 时间估算
 
-| 阶段 | 任务 | 预计时间 | 优先级 |
-|------|------|----------|---------|
-| Phase 1 | 基础设施准备（SDK、Transport、Auth） | 1-1.5 天 | 高 |
-| Phase 2 | MCP 认证和上下文 | 0.5-1 天 | 高 |
-| Phase 3 | MCP 服务核心实现 | 2-3 天 | 高 |
-| Phase 4 | 测试和文档 | 2-2.5 天 | 高 |
-| Phase 5 | 监控和优化 | 1 天 | 中 |
-| **总计** | | **6.5-9 天** | |
+| 阶段     | 任务                                 | 预计时间     | 优先级 |
+| -------- | ------------------------------------ | ------------ | ------ |
+| Phase 1  | 基础设施准备（SDK、Transport、Auth） | 1-1.5 天     | 高     |
+| Phase 2  | MCP 认证和上下文                     | 0.5-1 天     | 高     |
+| Phase 3  | MCP 服务核心实现                     | 2-3 天       | 高     |
+| Phase 4  | 测试和文档                           | 2-2.5 天     | 高     |
+| Phase 5  | 监控和优化                           | 1 天         | 中     |
+| **总计** |                                      | **6.5-9 天** |        |
 
 **关键里程碑**:
+
 - Day 1-2: Phase 1-2 完成，HTTP Transport 和认证可用
 - Day 3-5: Phase 3 完成，MCP 服务和工具可用
 - Day 6-8: Phase 4 完成，测试通过
@@ -873,29 +946,34 @@ func main() {
 ## 8. 风险和挑战
 
 ### 8.1 技术风险
+
 - **MCP 协议兼容性**: 需要严格遵循 MCP 规范，确保与各类客户端兼容
 - **HTTP Transport 实现**: 需要正确实现 jsonrpc 接口
 - **并发处理**: 需要处理多个并发 HTTP 请求
 
 ### 8.2 安全风险
+
 - **Token 泄露**: 需要安全存储和传输认证信息
 - **权限绕过**: 确保 MCP 路径不会绕过现有权限检查
 - **注入攻击**: 严格验证和清理用户输入
 - **CORS 配置**: 如果支持浏览器访问，需要正确配置 CORS
 
 ### 8.3 兼容性风险
+
 - **现有功能影响**: 确保不影响现有 HTTP API
 - **Claude Code 支持**: Claude Code CLI 可能尚未支持 HTTP transport，需要临时方案或等待官方支持
 
 ## 9. 后续扩展
 
 ### 9.1 其他 MCP 工具
+
 - `query_knowledge`: 检索知识
 - `update_knowledge`: 更新知识
 - `delete_knowledge`: 删除知识
 - `list_knowledge`: 列出知识
 
 ### 9.2 高级特性
+
 - 批量操作支持
 - 流式内容处理（SSE）
 - 多语言客户端 SDK
@@ -903,6 +981,7 @@ func main() {
 - OAuth 认证支持（替代 Bearer Token）
 
 ### 9.3 性能优化
+
 - HTTP/2 支持
 - 连接池和复用
 - 响应缓存
@@ -911,11 +990,13 @@ func main() {
 ## 10. 参考资料
 
 ### 10.1 内部文档
+
 - [app/logic/v1/knowledge.go](app/logic/v1/knowledge.go) - 知识逻辑层实现
 - [cmd/service/handler/knowledge.go](cmd/service/handler/knowledge.go) - HTTP 处理器
 - [pkg/types/knowledge.go](pkg/types/knowledge.go) - 数据类型定义
 
 ### 10.2 外部规范和资源
+
 - [MCP 协议规范](https://modelcontextprotocol.io/)
 - [MCP Specification - Transports](https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/transports/)
 - [MCP Go SDK (官方)](https://github.com/modelcontextprotocol/go-sdk)
@@ -926,20 +1007,21 @@ func main() {
 
 基于与用户的讨论，以下技术方案已确认：
 
-| 问题 | 确认方案 | 理由 |
-|------|---------|------|
-| **传输方式** | HTTP + JSON-RPC（唯一方案） | 真正的远程服务，无需 SSH |
-| **认证方式** | Bearer Token (复用现有 Access Token) | 简单、安全、易管理 |
-| **SpaceID 来源** | HTTP Header (`X-Space-ID`) | 灵活、明确、RESTful |
-| **Resource 来源** | HTTP Header (`X-Resource`) | 与 SpaceID 一致的管理方式 |
-| **默认内容格式** | Markdown（可动态切换 blocks） | 符合 CLI 使用习惯 |
-| **异步处理** | 固定使用异步（无需用户选择） | 简化参数、提升响应速度 |
-| **部署方式** | 集成到主 HTTP 服务 | 共享基础设施、简化部署 |
-| **MCP SDK** | 官方 Go SDK + 自定义 HTTP Transport | 官方支持 + 灵活扩展 |
+| 问题              | 确认方案                             | 理由                      |
+| ----------------- | ------------------------------------ | ------------------------- |
+| **传输方式**      | HTTP + JSON-RPC（唯一方案）          | 真正的远程服务，无需 SSH  |
+| **认证方式**      | Bearer Token (复用现有 Access Token) | 简单、安全、易管理        |
+| **SpaceID 来源**  | HTTP Header (`X-Space-ID`)           | 灵活、明确、RESTful       |
+| **Resource 来源** | HTTP Header (`X-Resource`)           | 与 SpaceID 一致的管理方式 |
+| **默认内容格式**  | Markdown（可动态切换 blocks）        | 符合 CLI 使用习惯         |
+| **异步处理**      | 固定使用异步（无需用户选择）         | 简化参数、提升响应速度    |
+| **部署方式**      | 集成到主 HTTP 服务                   | 共享基础设施、简化部署    |
+| **MCP SDK**       | 官方 Go SDK + 自定义 HTTP Transport  | 官方支持 + 灵活扩展       |
 
 ## 12. 复用现有 Access Token 系统 ✅
 
 ### 12.1 现有数据库表
+
 **无需创建新表**，直接使用现有的 `quka_access_token` 表：
 
 ```sql
@@ -959,7 +1041,9 @@ CREATE INDEX IF NOT EXISTS idx_quka_access_token_appid_token ON quka_access_toke
 ```
 
 ### 12.2 Token 生成和格式
+
 **使用现有的 token 生成逻辑**：
+
 - **生成方式**: `utils.RandomStr(64)` - 64 字符随机字符串
 - **存储方式**: 明文存储（已有的安全机制）
 - **过期时间**: 用户创建时可选择，默认 999 年（长期有效）
@@ -968,12 +1052,16 @@ CREATE INDEX IF NOT EXISTS idx_quka_access_token_appid_token ON quka_access_toke
 ## 13. 复用现有 API 接口 ✅
 
 ### 13.1 验证 Access Token（MCP 使用）
+
 MCP 服务内部调用 `AuthLogic.GetAccessTokenDetail(appid, token)` 进行验证：
+
 - **实现位置**: [auth.go:33-40](app/logic/v1/auth.go#L33-L40)
 - **返回**: `*types.AccessToken` 包含 userID, appid, 过期时间等信息
 
 ### 13.2 创建 Access Token（用户使用）
+
 用户通过现有 HTTP API 创建 token：
+
 - **端点**: `POST /api/v1/user/access-token`
 - **实现位置**: [user.go:77-147](cmd/service/handler/user.go#L77-L147)
 
@@ -1115,7 +1203,7 @@ func MCPHandler(core *core.Core) gin.HandlerFunc {
         defer httpTransport.Close()
 
         // 4. 处理 MCP 请求
-        if err := mcpServer.Handle(c.Request.Context(), httpTransport); err != nil {
+        if err := mcpServer.Handle(c, httpTransport); err != nil {
             // 错误已通过 transport 返回给客户端
             return
         }
@@ -1200,7 +1288,7 @@ func ValidateRequest(c *gin.Context, core *core.Core) (*UserContext, error) {
 
     // 验证 token
     appid := core.Cfg().Appid
-    ctx := c.Request.Context()
+    ctx := c
 
     authLogic := v1.NewAuthLogic(ctx, core)
     accessToken, err := authLogic.GetAccessTokenDetail(appid, token)
@@ -1374,22 +1462,26 @@ func (s *Server) setupRoutes() {
 ## 15. 后续步骤
 
 ### 15.1 立即行动
+
 - [ ] Review 并确认最终方案（HTTP only）
 - [ ] 安装 MCP Go SDK: `go get github.com/modelcontextprotocol/go-sdk`
 - [ ] 准备开发环境
 - [ ] 创建开发分支 `feat/mcp-knowledge-creation-http`
 
 ### 15.2 第一周目标（Day 1-5）
+
 - [ ] 完成 Phase 1-3（HTTP Transport + 核心功能）
 - [ ] 完成基础测试（curl/Postman 测试）
 - [ ] 编写 API 文档
 
 ### 15.3 第二周目标（Day 6-9）
+
 - [ ] 完成 Phase 4-5（测试和监控）
 - [ ] 代码 review
 - [ ] 准备发布
 
 ### 15.4 未来计划
+
 - [ ] ✅ Claude Code CLI 已支持 Streamable HTTP transport - 无需等待！
 - [ ] 添加更多 MCP 工具（query、update、delete 等）
 - [ ] 支持更多认证方式（OAuth、API Key 等）
@@ -1408,6 +1500,7 @@ func (s *Server) setupRoutes() {
 ## 重要变更记录
 
 ### v5.0 (2025-10-13) - HTTP Only 架构（最终确认）
+
 - ✅ **移除所有 SSH 方案**，严格使用 HTTP 传输
 - ✅ 基于 MCP Go SDK 的 jsonrpc 包自定义 HTTP Transport
 - ✅ 集成到现有 Gin HTTP 服务（`/api/v1/mcp` 端点）
@@ -1417,6 +1510,7 @@ func (s *Server) setupRoutes() {
 - ✅ 添加完整的 curl、Python、Go 调用示例
 
 ### v5.1 (2025-10-13) - Claude Code CLI 支持确认
+
 - ✅ **确认 Claude Code CLI 已支持 Streamable HTTP transport**
 - ✅ 添加 `claude mcp add --transport http` 命令示例
 - ✅ 实现多种认证方式：URL 参数、HTTP Header、环境变量
@@ -1424,33 +1518,38 @@ func (s *Server) setupRoutes() {
 - ✅ 更新认证代码以支持多种认证来源
 
 ### v4.0 (2025-10-13) - SSH 方案（已废弃）
+
 - ❌ 使用 SSH + stdio 方案（用户明确拒绝）
 
 ### v3.0 (2025-10-13) - 添加技术选型
+
 - 选择官方 MCP Go SDK
 
 ### v2.0 (2025-10-13) - 复用现有系统
+
 - 复用现有 quka_access_token 表和 API
 
 ### v1.0 (2025-10-13) - 初版
+
 - 基础架构设计
 
 ## 最终确认方案总结
 
-| 方面 | 方案 | 说明 |
-|------|------|------|
-| **MCP SDK** | 官方 Go SDK | 由 Anthropic + Google 维护 |
-| **认证** | Bearer Token (复用现有 Access Token) | 64字符随机字符串，无需新建表 |
-| **传输方式** | HTTP + JSON-RPC (唯一方案) | 真正的远程服务，无需 SSH |
-| **配置方式** | HTTP Headers | Authorization + X-Space-ID + X-Resource |
-| **Transport 实现** | 自定义 HTTPTransport | 实现 jsonrpc.Receiver/Sender 接口 |
-| **部署方式** | 集成到主 HTTP 服务 | Gin 路由端点 `/api/v1/mcp` |
-| **内容格式** | Markdown (默认) | 可选 blocks 格式 |
-| **处理模式** | 异步 (固定) | 立即返回 ID |
+| 方面               | 方案                                 | 说明                                    |
+| ------------------ | ------------------------------------ | --------------------------------------- |
+| **MCP SDK**        | 官方 Go SDK                          | 由 Anthropic + Google 维护              |
+| **认证**           | Bearer Token (复用现有 Access Token) | 64 字符随机字符串，无需新建表           |
+| **传输方式**       | HTTP + JSON-RPC (唯一方案)           | 真正的远程服务，无需 SSH                |
+| **配置方式**       | HTTP Headers                         | Authorization + X-Space-ID + X-Resource |
+| **Transport 实现** | 自定义 HTTPTransport                 | 实现 jsonrpc.Receiver/Sender 接口       |
+| **部署方式**       | 集成到主 HTTP 服务                   | Gin 路由端点 `/api/v1/mcp`              |
+| **内容格式**       | Markdown (默认)                      | 可选 blocks 格式                        |
+| **处理模式**       | 异步 (固定)                          | 立即返回 ID                             |
 
 ## 适用场景
 
 ✅ **HTTP 方案适用于**:
+
 - 所有场景（远程访问、公开 SaaS、自托管）
 - 无需 SSH 访问权限
 - 标准 HTTP 客户端即可调用
@@ -1458,4 +1557,5 @@ func (s *Server) setupRoutes() {
 - 易于监控和调试
 
 ❌ **不使用 SSH 方案**:
-- 用户明确要求："永远不要使用ssh方案，请使用http方案"
+
+- 用户明确要求："永远不要使用 ssh 方案，请使用 http 方案"

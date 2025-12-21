@@ -41,4 +41,6 @@ const (
 	TABLE_RSS_SUBSCRIPTIONS  = TableName("rss_subscriptions")
 	TABLE_RSS_ARTICLES       = TableName("rss_articles")
 	TABLE_RSS_USER_INTERESTS = TableName("rss_user_interests")
+	TABLE_RSS_DAILY_DIGESTS  = TableName("rss_daily_digests")
+	TABLE_PODCASTS           = TableName("podcasts")
 )

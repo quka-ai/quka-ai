@@ -2,8 +2,10 @@ package v1_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,6 +13,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core/srv"
 	v1 "github.com/quka-ai/quka-ai/app/logic/v1"
 	"github.com/quka-ai/quka-ai/pkg/security"
+	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
 var (
@@ -154,10 +157,10 @@ func TestCreateSubscription(t *testing.T) {
 					assert.Equal(t, 3600, subscription.UpdateFrequency)
 				}
 
-				t.Logf("创建的订阅 ID: %d, 标题: %s", subscription.ID, subscription.Title)
+				t.Logf("创建的订阅 ID: %s, 标题: %s", subscription.ID, subscription.Title)
 
 				// 清理：删除测试创建的订阅
-				if subscription.ID > 0 {
+				if subscription.ID != "" {
 					err := logic.DeleteSubscription(subscription.ID)
 					if err != nil {
 						t.Logf("警告: 清理订阅失败: %v", err)
@@ -259,7 +262,7 @@ func TestCreateSubscription_Integration(t *testing.T) {
 	require.NotNil(t, subscription)
 	defer logic.DeleteSubscription(subscription.ID)
 
-	t.Logf("创建的订阅: ID=%d, Title=%s", subscription.ID, subscription.Title)
+	t.Logf("创建的订阅: ID=%s, Title=%s", subscription.ID, subscription.Title)
 
 	// 验证可以获取刚创建的订阅
 	retrieved, err := logic.GetSubscription(subscription.ID)
@@ -284,4 +287,160 @@ func TestCreateSubscription_Integration(t *testing.T) {
 	assert.True(t, found, "新创建的订阅应该出现在列表中")
 
 	t.Log("集成测试通过")
+}
+
+func TestDeleteSubscription_CascadeDeleteArticles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("跳过集成测试")
+	}
+
+	logic := setupRSSSubscriptionLogic()
+
+	// 创建测试订阅
+	subscription, err := logic.CreateSubscription(
+		testSpaceID,
+		testResourceID,
+		"https://blog.golang.org/feed.atom",
+		"Test RSS Feed",
+		"Test RSS Feed Description",
+		"测试",
+		3600,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, subscription)
+	defer logic.DeleteSubscription(subscription.ID)
+
+	t.Logf("创建的订阅 ID: %s", subscription.ID)
+
+	// 创建测试文章
+	article1 := &types.RSSArticle{
+		ID:             "test-article-1",
+		SubscriptionID: subscription.ID,
+		UserID:         testUserID,
+		GUID:           "test-guid-1",
+		Title:          "Test Article 1",
+		Link:           "https://example.com/article1",
+		Description:    "Test Article 1 Description",
+		Content:        "Test Article 1 Content",
+		Author:         "Test Author",
+		PublishedAt:    time.Now().Unix(),
+		FetchedAt:      time.Now().Unix(),
+		CreatedAt:      time.Now().Unix(),
+	}
+
+	article2 := &types.RSSArticle{
+		ID:             "test-article-2",
+		SubscriptionID: subscription.ID,
+		UserID:         testUserID,
+		GUID:           "test-guid-2",
+		Title:          "Test Article 2",
+		Link:           "https://example.com/article2",
+		Description:    "Test Article 2 Description",
+		Content:        "Test Article 2 Content",
+		Author:         "Test Author",
+		PublishedAt:    time.Now().Unix(),
+		FetchedAt:      time.Now().Unix(),
+		CreatedAt:      time.Now().Unix(),
+	}
+
+	// 创建文章
+	err = NewCore().Store().RSSArticleStore().Create(context.Background(), article1)
+	require.NoError(t, err, "Failed to create article 1")
+
+	err = NewCore().Store().RSSArticleStore().Create(context.Background(), article2)
+	require.NoError(t, err, "Failed to create article 2")
+
+	// 验证文章存在
+	articles, err := NewCore().Store().RSSArticleStore().ListBySubscription(context.Background(), subscription.ID, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(articles), "Expected 2 articles to exist")
+
+	t.Logf("创建了 %d 篇文章", len(articles))
+
+	// 删除订阅（应该级联删除文章）
+	err = logic.DeleteSubscription(subscription.ID)
+	require.NoError(t, err, "Failed to delete subscription")
+
+	// 验证订阅已删除
+	_, err = logic.GetSubscription(subscription.ID)
+	assert.Error(t, err)
+	assert.Equal(t, sql.ErrNoRows, err, "Expected subscription to be deleted")
+
+	// 验证文章已删除
+	articles, err = NewCore().Store().RSSArticleStore().ListBySubscription(context.Background(), subscription.ID, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(articles), "Expected 0 articles to exist after subscription deletion")
+
+	t.Log("级联删除测试通过：订阅和文章都已成功删除")
+}
+
+func TestRSSArticleStore_DeleteBySubscription(t *testing.T) {
+	if testing.Short() {
+		t.Skip("跳过集成测试")
+	}
+
+	core := NewCore()
+
+	// 创建测试文章
+	article1 := &types.RSSArticle{
+		ID:             "sub1-article-1",
+		SubscriptionID: "subscription-1",
+		UserID:         testUserID,
+		GUID:           "sub1-guid-1",
+		Title:          "Subscription 1 Article 1",
+		Link:           "https://example.com/sub1/article1",
+		Description:    "Description",
+		Content:        "Content",
+		Author:         "Test Author",
+		PublishedAt:    time.Now().Unix(),
+		FetchedAt:      time.Now().Unix(),
+		CreatedAt:      time.Now().Unix(),
+	}
+
+	article2 := &types.RSSArticle{
+		ID:             "sub2-article-1",
+		SubscriptionID: "subscription-2",
+		UserID:         testUserID,
+		GUID:           "sub2-guid-1",
+		Title:          "Subscription 2 Article 1",
+		Link:           "https://example.com/sub2/article1",
+		Description:    "Description",
+		Content:        "Content",
+		Author:         "Test Author",
+		PublishedAt:    time.Now().Unix(),
+		FetchedAt:      time.Now().Unix(),
+		CreatedAt:      time.Now().Unix(),
+	}
+
+	// 创建文章
+	err := core.Store().RSSArticleStore().Create(context.Background(), article1)
+	require.NoError(t, err)
+
+	err = core.Store().RSSArticleStore().Create(context.Background(), article2)
+	require.NoError(t, err)
+
+	// 验证两个订阅都有文章
+	articles, err := core.Store().RSSArticleStore().ListBySubscription(context.Background(), "subscription-1", 10)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(articles), "Expected 1 article for subscription 1")
+
+	articles, err = core.Store().RSSArticleStore().ListBySubscription(context.Background(), "subscription-2", 10)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(articles), "Expected 1 article for subscription 2")
+
+	// 只删除订阅1的文章
+	err = core.Store().RSSArticleStore().DeleteBySubscription(context.Background(), "subscription-1")
+	require.NoError(t, err)
+
+	// 验证订阅1没有文章了
+	articles, err = core.Store().RSSArticleStore().ListBySubscription(context.Background(), "subscription-1", 10)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(articles), "Expected 0 articles for subscription 1 after deletion")
+
+	// 验证订阅2仍然有文章
+	articles, err = core.Store().RSSArticleStore().ListBySubscription(context.Background(), "subscription-2", 10)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(articles), "Expected 1 article for subscription 2 to remain")
+
+	t.Log("RSSArticleStore.DeleteBySubscription 测试通过")
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/ai/fusion"
 	"github.com/quka-ai/quka-ai/pkg/ai/jina"
+	"github.com/quka-ai/quka-ai/pkg/ai/volcengine/voice"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
@@ -55,15 +56,17 @@ type AIDriver interface {
 }
 
 type AIConfig struct {
-	Agent AgentDriver `toml:"agent"`
-	// Usage list
-	// embedding.query
-	// embedding.document
-	// query
-	// summarize
-	// enhance_query
-	// reader
-	Usage map[string]string `toml:"usage"`
+	Podcast Podcast `toml:"podcast"`
+}
+
+type Podcast struct {
+	Provider   string            `toml:"provider"`
+	Volcengine volcenginePodcast `toml:"volcengine"`
+}
+
+type volcenginePodcast struct {
+	Appid       string `toml:"appid"`
+	AccessToken string `toml:"access_token"`
 }
 
 type AgentDriver struct {
@@ -623,6 +626,14 @@ type ApplyFunc func(s *Srv)
 func ApplyAI(providers []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) ApplyFunc {
 	return func(s *Srv) {
 		s.ai, _ = SetupAI(providers, modelProviders, usage)
+	}
+}
+
+func ApplyPodcast(cfg volcenginePodcast) ApplyFunc {
+	return func(s *Srv) {
+		if cfg.Appid != "" {
+			s.volcenginePodcast = voice.NewPodCaster(cfg.Appid, cfg.AccessToken)
+		}
 	}
 }
 

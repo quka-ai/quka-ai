@@ -599,7 +599,7 @@ func UpdateFilesToDelete(ctx context.Context, core *core.Core, spaceID string, c
 	return nil
 }
 
-func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType) (string, error) {
+func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType, source types.KnowledgeSource, sourceRef string) (string, error) {
 	if resource == "" {
 		resource = types.DEFAULT_RESOURCE
 	}
@@ -636,6 +636,8 @@ func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, ki
 		Content:     encryptData,
 		ContentType: contentType,
 		Kind:        kind,
+		Source:      source.String(),
+		SourceRef:   sourceRef,
 		Stage:       types.KNOWLEDGE_STAGE_SUMMARIZE,
 		MaybeDate:   time.Now().Local().Format("2006-01-02 15:04"),
 		CreatedAt:   time.Now().Unix(),
@@ -687,11 +689,15 @@ const (
 )
 
 func (l *KnowledgeLogic) InsertContentAsync(spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType) (string, error) {
-	return l.insertContent(InserTypeAsync, spaceID, resource, kind, content, contentType)
+	return l.insertContent(InserTypeAsync, spaceID, resource, kind, content, contentType, types.KNOWLEDGE_SOURCE_PLATFORM, "")
+}
+
+func (l *KnowledgeLogic) InsertContentAsyncWithSource(spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType, source types.KnowledgeSource, sourceRef string) (string, error) {
+	return l.insertContent(InserTypeAsync, spaceID, resource, kind, content, contentType, types.KNOWLEDGE_SOURCE_PLATFORM, "")
 }
 
 func (l *KnowledgeLogic) InsertContent(spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType) (string, error) {
-	return l.insertContent(InserTypeSync, spaceID, resource, kind, content, contentType)
+	return l.insertContent(InserTypeSync, spaceID, resource, kind, content, contentType, types.KNOWLEDGE_SOURCE_PLATFORM, "")
 	// sw := mark.NewSensitiveWork()
 	// content = sw.Do(content)
 

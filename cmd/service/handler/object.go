@@ -98,7 +98,7 @@ func (s *HttpSrv) ObjectHandler(c *gin.Context) {
 		return
 	}
 
-	objectResult, err := fileStorage.DownloadFile(c.Request.Context(), decodedPath)
+	objectResult, err := fileStorage.DownloadFile(c, decodedPath)
 	if err != nil {
 		response.APIError(c, err)
 		return

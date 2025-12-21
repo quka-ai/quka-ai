@@ -35,6 +35,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/journal"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/ai/tools/duckduckgo"
+	"github.com/quka-ai/quka-ai/pkg/ai/tools/reader"
 	"github.com/quka-ai/quka-ai/pkg/errors"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
@@ -437,6 +438,7 @@ func (nt *NotifyingTool) InvokableRun(ctx context.Context, argumentsInJSON strin
 	resultJson := &types.ToolTips{
 		ID:       nt.receiver.MessageID(),
 		ToolName: toolName,
+		Args:     argumentsInJSON,
 		Content:  result,
 	}
 	receiveFunc(resultJson, lo.If(err != nil, types.MESSAGE_PROGRESS_FAILED).Else(types.MESSAGE_PROGRESS_COMPLETE))
@@ -470,6 +472,7 @@ func (f *EinoAgentFactory) CreateAutoRagReActAgent(agentCtx *types.AgentContext,
 		&WithRAG{
 			Enable: agentCtx.EnableKnowledge,
 		}, // 支持知识库搜索
+		NewWithKnowledgeTools(agentCtx.EnableKnowledge), // 支持知识库 CRUD 工具
 	}
 
 	for _, option := range options {
@@ -493,7 +496,8 @@ func (f *EinoAgentFactory) CreateButlerReActAgent(agentCtx *types.AgentContext, 
 		&WithRAG{
 			Enable: agentCtx.EnableKnowledge,
 		}, // 支持知识库搜索
-		NewWithButlerTools(butlerAgent), // 添加Butler专用工具
+		NewWithKnowledgeTools(agentCtx.EnableKnowledge), // 支持知识库 CRUD 工具
+		NewWithButlerTools(butlerAgent),                 // 添加Butler专用工具
 	}
 
 	for _, option := range options {
@@ -513,6 +517,7 @@ func (f *EinoAgentFactory) CreateJournalReActAgent(agentCtx *types.AgentContext,
 	options := []AgentOption{
 		&WithWebSearch{},                  // 支持网络搜索
 		&WithRAG{},                        // 支持知识库搜索
+		NewWithKnowledgeTools(true),       // 支持知识库 CRUD 工具
 		NewWithJournalTools(journalAgent), // 添加Journal专用工具
 	}
 
@@ -697,7 +702,13 @@ func (o *WithWebSearch) Apply(config *AgentConfig) error {
 	}
 
 	notifyingDDGTool := config.ToolWrapper.Wrap(duckduckgoTool)
-	config.Tools = append(config.Tools, notifyingDDGTool)
+
+	readerTool, err := reader.NewTool(config.AgentCtx, config.Core.Srv().AI())
+	if err != nil {
+		slog.Warn("Failed to create Reader tool", slog.String("error", err.Error()))
+		return nil
+	}
+	config.Tools = append(config.Tools, notifyingDDGTool, config.ToolWrapper.Wrap(readerTool))
 	return nil
 }
 
@@ -752,6 +763,36 @@ func (o *WithJournalTools) Apply(config *AgentConfig) error {
 	for _, journalTool := range journalTools {
 		notifyingJournalTool := config.ToolWrapper.Wrap(journalTool)
 		config.Tools = append(config.Tools, notifyingJournalTool)
+	}
+
+	return nil
+}
+
+// WithKnowledgeTools 添加Knowledge CRUD工具选项
+type WithKnowledgeTools struct {
+	Enable bool
+}
+
+func NewWithKnowledgeTools(enable bool) *WithKnowledgeTools {
+	return &WithKnowledgeTools{Enable: enable}
+}
+
+func (o *WithKnowledgeTools) Apply(config *AgentConfig) error {
+	if !o.Enable {
+		return nil
+	}
+
+	// 通过闭包方式传入 logic 层的方法,避免循环依赖
+	knowledgeTools := NewKnowledgeToolsWithLogic(
+		config.Core,
+		config.AgentCtx.SpaceID,
+		config.AgentCtx.SessionID,
+		config.AgentCtx.UserID,
+	)
+
+	for _, knowledgeTool := range knowledgeTools {
+		notifyingTool := config.ToolWrapper.Wrap(knowledgeTool)
+		config.Tools = append(config.Tools, notifyingTool)
 	}
 
 	return nil

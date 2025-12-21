@@ -1,6 +1,6 @@
 -- RSS 订阅源表
 CREATE TABLE IF NOT EXISTS quka_rss_subscriptions (
-    id BIGINT PRIMARY KEY,
+    id VARCHAR(32) PRIMARY KEY,
     user_id VARCHAR(32) NOT NULL,
     space_id VARCHAR(32) NOT NULL,
     resource_id VARCHAR(32) NOT NULL,

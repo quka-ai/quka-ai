@@ -263,5 +263,3 @@ func (l *SpaceApplicationLogic) LandingDetail(spaceToken string) (SpaceApplicati
 		ApplicationStatus: status,
 	}, nil
 }
-
-

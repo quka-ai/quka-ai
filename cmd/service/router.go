@@ -1,6 +1,12 @@
 package service
 
 import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +31,37 @@ func serve(core *core.Core) {
 	if address == "" {
 		address = ":33033"
 	}
-	core.HttpEngine().Run(address)
+
+	// 创建 HTTP 服务器
+	srv := &http.Server{
+		Addr:    address,
+		Handler: core.HttpEngine(),
+	}
+
+	// 在 goroutine 中启动服务器
+	go func() {
+		slog.Info("HTTP server starting", slog.String("address", address))
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("HTTP server failed", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 等待中断信号以优雅关闭服务器
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+
+	slog.Info("Shutting down HTTP server...")
+
+	// 设置 5 秒的超时时间来关闭服务器
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("HTTP server forced to shutdown", slog.String("error", err.Error()))
+	}
+
+	slog.Info("HTTP server exited")
 }
 
 func GetIPLimitBuilder(appCore *core.Core) middleware.LimiterFunc {
@@ -72,6 +108,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	s.Engine.GET("/s/k/:token", s.BuildKnowledgeSharePage)
 	s.Engine.GET("/s/s/:token", s.BuildSessionSharePage)
 	s.Engine.GET("/s/sp/:token", s.BuildSpaceSharePage)
+	s.Engine.GET("/s/p/:token", s.BuildPodcastSharePage)
 
 	// 公共资源路由（无需认证）
 	s.Engine.GET("/public/*object_path", s.ObjectHandler)
@@ -95,6 +132,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 		{
 			share.GET("/knowledge/:token", s.GetKnowledgeByShareToken)
 			share.GET("/session/:token", s.GetSessionByShareToken)
+			share.GET("/podcast/:token", s.GetPodcastByShareToken)
 			share.POST("/copy/knowledge", middleware.Authorization(s.Core), middleware.PaymentRequired, s.CopyKnowledge)
 		}
 
@@ -142,6 +180,7 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			// share
 			space.POST("/:spaceid/knowledge/share", middleware.PaymentRequired, s.CreateKnowledgeShareToken)
 			space.POST("/:spaceid/session/share", middleware.PaymentRequired, s.CreateSessionShareToken)
+			space.POST("/:spaceid/podcast/share", middleware.PaymentRequired, s.CreatePodcastShareToken)
 			space.POST("/:spaceid/share", middleware.PaymentRequired, s.CreateSpaceShareToken)
 
 			object := space.Group("/:spaceid/object")
@@ -187,11 +226,35 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			rss.GET("/subscriptions", s.ListRSSSubscriptions)
 			rss.GET("/subscriptions/:id", s.GetRSSSubscription)
 
+			// Daily Digest APIs
+			rss.GET("/digest/daily", s.GetDailyDigest)     // 获取每日摘要（不存在则生成）
+			rss.GET("/digest/history", s.ListDailyDigests) // 获取历史摘要列表
+			rss.GET("/digest/:id", s.GetDailyDigestByID)   // 通过ID获取摘要详情
+
 			rss.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionEdit))
 			rss.POST("/subscriptions", s.CreateRSSSubscription)
 			rss.PUT("/subscriptions/:id", s.UpdateRSSSubscription)
 			rss.DELETE("/subscriptions/:id", s.DeleteRSSSubscription)
 			rss.POST("/subscriptions/:id/fetch", s.TriggerRSSFetch)
+
+			// Daily Digest Management APIs (需要编辑权限)
+			rss.POST("/digest/generate", s.GenerateDailyDigest) // 手动触发生成摘要
+			rss.DELETE("/digest/:id", s.DeleteDailyDigest)      // 删除摘要
+		}
+
+		podcast := authed.Group("/:spaceid/podcasts")
+		{
+			podcast.Use(userLimit("tools"))
+			podcast.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView))
+			podcast.GET("", s.ListPodcasts)              // 获取播客列表
+			podcast.GET("/:id", s.GetPodcast)            // 获取单个播客
+			podcast.GET("/source", s.GetPodcastBySource) // 根据源类型和源ID获取播客
+
+			podcast.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionEdit))
+			podcast.POST("", s.CreatePodcast)                    // 创建播客
+			podcast.POST("/batch", s.BatchCreatePodcast)         // 批量创建播客
+			podcast.POST("/:id/regenerate", s.RegeneratePodcast) // 重新生成播客
+			podcast.DELETE("/:id", s.DeletePodcast)              // 删除播客
 		}
 
 		authed.GET("/resource/list", s.ListUserResources)
