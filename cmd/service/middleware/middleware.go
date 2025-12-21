@@ -259,7 +259,7 @@ func ParseAuthToken(c *gin.Context, tokenValue string, core *core.Core) (bool, e
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	tokenMeta, err := auth.ValidateTokenFromCache(ctx, tokenValue, core.Plugins.Cache())
+	tokenMeta, err := auth.ValidateTokenFromCache(ctx, tokenValue, core.Cache())
 	if err != nil {
 		return false, errors.Trace("ParseAuthToken.ValidateTokenFromCache.GetUser", err)
 	}
@@ -271,7 +271,7 @@ func ParseAuthToken(c *gin.Context, tokenValue string, core *core.Core) (bool, e
 
 	c.Set(v1.TOKEN_CONTEXT_KEY, security.NewTokenClaims(tokenMeta.Appid, types.DEFAULT_APPID, tokenMeta.UserID, user.PlanID, "", tokenMeta.ExpireAt))
 
-	core.Plugins.Cache().Expire(ctx, fmt.Sprintf("user:token:%s", utils.MD5(tokenValue)), time.Hour*24*7)
+	core.Cache().Expire(ctx, fmt.Sprintf("user:token:%s", utils.MD5(tokenValue)), time.Hour*24*7)
 
 	return true, nil
 }
@@ -293,13 +293,14 @@ func VerifySpaceIDPermission(core *core.Core, permission string) gin.HandlerFunc
 			return
 		}
 
-		claims.Fields["role"] = result.Role
+		claims.Fields[security.ROLE_KEY] = result.Role
 
 		if !core.Srv().RBAC().CheckPermission(result.Role, permission) {
 			response.APIError(ctx, errors.New("middleware.VerifySpaceIDPermission.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden))
 			return
 		}
 
+		ctx.Set(v1.TOKEN_CONTEXT_KEY, claims)
 		ctx.Set(v1.SPACEID_CONTEXT_KEY, spaceID)
 	}
 }

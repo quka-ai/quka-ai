@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -19,13 +18,11 @@ import (
 )
 
 type JournalAgent struct {
-	core   *core.Core
-	client *openai.Client
-	Model  string
+	core *core.Core
 }
 
-func NewJournalAgent(core *core.Core, client *openai.Client, model string) *JournalAgent {
-	return &JournalAgent{core: core, client: client, Model: model}
+func NewJournalAgent(core *core.Core) *JournalAgent {
+	return &JournalAgent{core: core}
 }
 
 var FunctionDefine = lo.Map([]*openai.FunctionDefinition{
@@ -140,30 +137,6 @@ func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) ([]*types.Mess
 			Content: sb.String(),
 		},
 	}, nil
-}
-
-func (b *JournalAgent) HandleUserRequest(ctx context.Context, spaceID, userID string, messages []openai.ChatCompletionMessage, receiveFunc types.ReceiveFunc) ([]openai.ChatCompletionMessage, *openai.Usage, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
-	defer cancel()
-
-	resp, err := b.client.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model:    b.Model,
-			Messages: messages,
-			Tools:    FunctionDefine,
-		},
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to request ai: %w", err)
-	}
-
-	appendMessages, err := ai.HandleToolCall(resp, messages, b.GetToolsHandler(spaceID, userID, messages), receiveFunc)
-	if err != nil {
-		return nil, &resp.Usage, err
-	}
-
-	return append(messages, appendMessages...), &resp.Usage, nil
 }
 
 func (b *JournalAgent) GetToolsHandler(spaceID, userID string, messages []openai.ChatCompletionMessage) map[string]ai.ToolHandlerFunc {

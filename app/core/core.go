@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"github.com/samber/lo"
 	"gopkg.in/natefinch/lumberjack.v2"
 
@@ -29,9 +31,11 @@ type Core struct {
 
 	prompt Prompt
 
-	stores     func() *sqlstore.Provider
-	httpClient *http.Client
-	httpEngine *gin.Engine
+	stores      func() *sqlstore.Provider
+	redisClient redis.UniversalClient
+	asynqClient *asynq.Client
+	httpClient  *http.Client
+	httpEngine  *gin.Engine
 
 	metrics *Metrics
 	Plugins
@@ -66,6 +70,9 @@ func MustSetupCore(cfg CoreConfig) *Core {
 
 	// setup store
 	setupSqlStore(core)
+
+	// setup redis
+	setupRedis(core)
 
 	return core
 }
@@ -191,8 +198,93 @@ func (s *Core) Store() *sqlstore.Provider {
 	return s.stores()
 }
 
+func (s *Core) Redis() redis.UniversalClient {
+	return s.redisClient
+}
+
+func (s *Core) Cache() types.Cache {
+	return &Cache{
+		redis: s.redisClient,
+	}
+}
+
+func (s *Core) Asynq() *asynq.Client {
+	return s.asynqClient
+}
+
 func (s *Core) Srv() *srv.Srv {
 	return s.srv
+}
+
+func setupRedis(core *Core) {
+	cfg := core.cfg.Redis
+
+	// 设置默认值
+	if cfg.PoolSize <= 0 {
+		cfg.PoolSize = 10
+	}
+	if cfg.MaxRetries <= 0 {
+		cfg.MaxRetries = 3
+	}
+	if cfg.DialTimeout <= 0 {
+		cfg.DialTimeout = 5
+	}
+	if cfg.ReadTimeout <= 0 {
+		cfg.ReadTimeout = 3
+	}
+	if cfg.WriteTimeout <= 0 {
+		cfg.WriteTimeout = 3
+	}
+
+	// 判断是否为集群模式
+	if cfg.Cluster {
+		slog.Info("Initializing Redis Cluster",
+			slog.Int("node_count", len(cfg.ClusterAddrs)))
+
+		// Redis 集群模式
+		core.redisClient = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:        cfg.ClusterAddrs,
+			Password:     cfg.ClusterPasswd,
+			PoolSize:     cfg.PoolSize,
+			MinIdleConns: cfg.MinIdleConns,
+			MaxRetries:   cfg.MaxRetries,
+			DialTimeout:  time.Duration(cfg.DialTimeout) * time.Second,
+			ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
+			WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Second,
+		})
+	} else {
+		// 单机模式
+		addr := cfg.Addr
+		slog.Info("Initializing Redis (standalone mode)",
+			slog.String("addr", addr),
+			slog.Int("db", cfg.DB))
+
+		core.redisClient = redis.NewClient(&redis.Options{
+			Addr:         addr,
+			Password:     cfg.Password,
+			DB:           cfg.DB,
+			PoolSize:     cfg.PoolSize,
+			MinIdleConns: cfg.MinIdleConns,
+			MaxRetries:   cfg.MaxRetries,
+			DialTimeout:  time.Duration(cfg.DialTimeout) * time.Second,
+			ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
+			WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Second,
+		})
+	}
+
+	// 测试连接
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := core.redisClient.Ping(ctx).Err(); err != nil {
+		slog.Error("Redis connection test failed", slog.String("error", err.Error()))
+		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
+	}
+
+	slog.Info("Redis connected successfully",
+		slog.Bool("cluster_mode", cfg.Cluster))
+
+	// 初始化 Asynq client
+	setupAsynqClient(core)
 }
 
 // ReloadAI 从数据库重新加载AI配置
@@ -285,4 +377,41 @@ func (s *Core) GetActiveModelConfig(ctx context.Context, modelType string) (*typ
 
 	model.Provider = provider
 	return model, nil
+}
+
+// setupAsynqClient 初始化 Asynq 客户端
+func setupAsynqClient(core *Core) {
+	cfg := core.cfg.Redis
+
+	// 设置默认的 key prefix
+	keyPrefix := cfg.KeyPrefix
+	if keyPrefix == "" {
+		keyPrefix = "quka" // 默认前缀
+	}
+
+	var redisOpt asynq.RedisConnOpt
+
+	if cfg.Cluster {
+		// 集群模式
+		redisOpt = asynq.RedisClusterClientOpt{
+			Addrs:    cfg.ClusterAddrs,
+			Password: cfg.ClusterPasswd,
+		}
+		slog.Info("Asynq client initialized with Redis Cluster",
+			slog.String("key_prefix", keyPrefix),
+			slog.Int("node_count", len(cfg.ClusterAddrs)))
+	} else {
+		// 单机模式
+		redisOpt = asynq.RedisClientOpt{
+			Network:  "tcp",
+			Addr:     cfg.Addr,
+			Password: cfg.Password,
+			DB:       cfg.DB,
+		}
+		slog.Info("Asynq client initialized with standalone Redis",
+			slog.String("key_prefix", keyPrefix),
+			slog.String("addr", cfg.Addr))
+	}
+
+	core.asynqClient = asynq.NewClient(redisOpt)
 }

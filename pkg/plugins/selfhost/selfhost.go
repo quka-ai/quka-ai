@@ -171,10 +171,6 @@ func (s *SelfHostPlugin) Install(c *core.Core) error {
 	return nil
 }
 
-func (s *SelfHostPlugin) Cache() core.Cache {
-	return s.cache
-}
-
 func (s *SelfHostPlugin) TryLock(ctx context.Context, key string) (bool, error) {
 	return s.singleLock.TryLock(ctx, key)
 }

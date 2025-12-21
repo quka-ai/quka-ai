@@ -20,6 +20,10 @@ type KnowledgeStore interface {
 	BatchCreate(ctx context.Context, datas []*types.Knowledge) error
 	// GetKnowledge 根据ID获取知识记录
 	GetKnowledge(ctx context.Context, spaceID, id string) (*types.Knowledge, error)
+	// GetByRelDocID 根据 rel_doc_id 获取 Knowledge（用于 RSS 文章关联）
+	GetByRelDocID(ctx context.Context, userID, relDocID string) (*types.Knowledge, error)
+	// BatchGetByRelDocIDs 批量根据 rel_doc_id 获取 Knowledge 映射（用于 RSS 文章关联）
+	BatchGetByRelDocIDs(ctx context.Context, userID string, relDocIDs []string) (map[string]*types.Knowledge, error)
 	// Update 更新知识记录
 	Update(ctx context.Context, spaceID, id string, data types.UpdateKnowledgeArgs) error
 	// Delete 删除知识记录
@@ -352,4 +356,78 @@ type KnowledgeRelMetaStore interface {
 	DeleteAll(ctx context.Context, spaceID string) error
 	ListKnowledgesMeta(ctx context.Context, knowledgeIDs []string) ([]*types.KnowledgeRelMeta, error)
 	ListRelMetaWithKnowledgeContent(ctx context.Context, opts []types.MergeDataQuery) ([]*types.RelMetaWithKnowledge, error)
+}
+
+type RSSSubscriptionStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data *types.RSSSubscription) error
+	Get(ctx context.Context, id string) (*types.RSSSubscription, error)
+	GetByUserAndURL(ctx context.Context, userID, url string) (*types.RSSSubscription, error)
+	List(ctx context.Context, userID string, spaceID string) ([]*types.RSSSubscription, error)
+	Update(ctx context.Context, id string, updates map[string]interface{}) error
+	Delete(ctx context.Context, id string) error
+	GetEnabledSubscriptions(ctx context.Context) ([]*types.RSSSubscription, error)
+	GetSubscriptionsNeedingUpdate(ctx context.Context, limit int) ([]*types.RSSSubscription, error)
+	CountSubscriptionsNeedingUpdate(ctx context.Context) (int64, error)
+	GetSubscriptionsByFrequency(ctx context.Context, frequency int, limit int) ([]*types.RSSSubscription, error)
+	GetSubscriptionsByTimeRange(ctx context.Context, startTime, endTime int64, limit int) ([]*types.RSSSubscription, error)
+}
+
+type RSSArticleStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data *types.RSSArticle) error
+	Get(ctx context.Context, id string) (*types.RSSArticle, error)
+	GetByGUID(ctx context.Context, guid string) (*types.RSSArticle, error)
+	Exists(ctx context.Context, subscriptionID string, guid string) (bool, error)
+	ListBySubscription(ctx context.Context, subscriptionID string, limit int) ([]*types.RSSArticle, error)
+	DeleteBySubscription(ctx context.Context, subscriptionID string) error
+	DeleteOld(ctx context.Context, subscriptionID string, keepCount int) error
+	UpdateSummary(ctx context.Context, articleID string, summary *types.RSSArticleSummary) error
+	IncrementSummaryRetry(ctx context.Context, articleID string, errorMsg string) error
+	ListWithoutSummary(ctx context.Context, subscriptionID string, limit int) ([]*types.RSSArticle, error)
+	ListByDateRange(ctx context.Context, subscriptionID string, startTime, endTime int64, limit int) ([]*types.RSSArticle, error)
+}
+
+type RSSUserInterestStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data *types.RSSUserInterest) error
+	Get(ctx context.Context, id string) (*types.RSSUserInterest, error)
+	GetByUserAndTopic(ctx context.Context, userID, topic string) (*types.RSSUserInterest, error)
+	ListByUser(ctx context.Context, userID string, minWeight float64) ([]*types.RSSUserInterest, error)
+	Upsert(ctx context.Context, data *types.RSSUserInterest) error
+	UpdateWeight(ctx context.Context, id string, weight float64) error
+	BatchUpsert(ctx context.Context, interests []*types.RSSUserInterest) error
+	Delete(ctx context.Context, id string) error
+	DeleteByUserAndTopic(ctx context.Context, userID, topic string) error
+	GetTopTopics(ctx context.Context, userID string, limit int) ([]*types.RSSUserInterest, error)
+}
+
+type RSSDailyDigestStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data *types.RSSDailyDigest) error
+	Get(ctx context.Context, id string) (*types.RSSDailyDigest, error)
+	GetByUserAndDate(ctx context.Context, userID, spaceID, date string) (*types.RSSDailyDigest, error)
+	ListByUser(ctx context.Context, userID, spaceID string, limit int) ([]*types.RSSDailyDigest, error)
+	ListByDateRange(ctx context.Context, userID, spaceID, startDate, endDate string, limit int) ([]*types.RSSDailyDigest, error)
+	Update(ctx context.Context, id string, updates map[string]interface{}) error
+	Delete(ctx context.Context, id string) error
+	Exists(ctx context.Context, userID, spaceID, date string) (bool, error)
+	DeleteOld(ctx context.Context, userID, spaceID string, beforeDate string) error
+}
+
+type PodcastStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data *types.Podcast) error
+	Get(ctx context.Context, id string) (*types.Podcast, error)
+	GetBySource(ctx context.Context, sourceType types.PodcastSourceType, sourceID string) (*types.Podcast, error)
+	List(ctx context.Context, spaceID string, req *types.ListPodcastsRequest) ([]*types.Podcast, int64, error)
+	Update(ctx context.Context, id string, updates map[string]interface{}) error
+	UpdateStatus(ctx context.Context, id string, status types.PodcastStatus, errorMessage string) error
+	UpdateGenerationProgress(ctx context.Context, id string) error
+	IncrementRetry(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
+	Exists(ctx context.Context, id string) (bool, error)
+	ExistsBySource(ctx context.Context, sourceType types.PodcastSourceType, sourceID string) (bool, error)
+	ListPendingTasks(ctx context.Context, limit int) ([]*types.Podcast, error)
+	ListFailedTasksForRetry(ctx context.Context, maxRetries int, limit int) ([]*types.Podcast, error)
 }

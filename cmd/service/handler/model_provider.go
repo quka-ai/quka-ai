@@ -21,7 +21,7 @@ func (s *HttpSrv) CreateModelProvider(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelProviderLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelProviderLogic(c, s.Core)
 	provider, err := logic.CreateProvider(req)
 	if err != nil {
 		response.APIError(c, err)
@@ -39,7 +39,7 @@ func (s *HttpSrv) GetModelProvider(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelProviderLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelProviderLogic(c, s.Core)
 	provider, err := logic.GetProvider(id)
 	if err != nil {
 		response.APIError(c, err)
@@ -67,7 +67,7 @@ func (s *HttpSrv) ListModelProviders(c *gin.Context) {
 
 	name := c.Query("name")
 
-	logic := v1.NewModelProviderLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelProviderLogic(c, s.Core)
 	providers, err := logic.ListProviders(name, status, isReader)
 	if err != nil {
 		response.APIError(c, err)
@@ -100,7 +100,7 @@ func (s *HttpSrv) UpdateModelProvider(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelProviderLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelProviderLogic(c, s.Core)
 	provider, err := logic.UpdateProvider(id, req)
 	if err != nil {
 		response.APIError(c, err)
@@ -118,7 +118,7 @@ func (s *HttpSrv) DeleteModelProvider(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelProviderLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelProviderLogic(c, s.Core)
 	err := logic.DeleteProvider(id)
 	if err != nil {
 		response.APIError(c, err)

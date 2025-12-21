@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/quka-ai/quka-ai/app/core"
 	v1 "github.com/quka-ai/quka-ai/app/logic/v1"
 	"github.com/quka-ai/quka-ai/pkg/mark"
-	"github.com/quka-ai/quka-ai/pkg/plugins"
 	"github.com/quka-ai/quka-ai/pkg/security"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
@@ -24,12 +22,6 @@ func init() {
 		Appid:   "test",
 		AppName: "brew",
 	})
-}
-
-func setupCore() *core.Core {
-	core := core.MustSetupCore(core.LoadBaseConfigFromENV())
-	plugins.Setup(core.InstallPlugins, "selfhost")
-	return core
 }
 
 func setupKnowledgeLogic() *v1.KnowledgeLogic {

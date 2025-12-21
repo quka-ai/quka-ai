@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS quka_knowledge (
     maybe_date VARCHAR(20) NOT NULL,
     retry_times SMALLINT NOT NULL DEFAULT 0,
     rel_doc_id VARCHAR(32) NOT NULL DEFAULT '',
+    source VARCHAR(50) NOT NULL DEFAULT '',
+    source_ref VARCHAR(100) NOT NULL DEFAULT '',
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL,
     expired_at BIGINT NOT NULL DEFAULT 0
@@ -34,6 +36,8 @@ COMMENT ON COLUMN quka_knowledge.summary IS 'summary顾虑条件';
 COMMENT ON COLUMN quka_knowledge.maybe_date IS 'AI分析出的事件发生时间 / 创建时间';
 COMMENT ON COLUMN quka_knowledge.retry_times IS '流水线相关动作重试次数';
 COMMENT ON COLUMN quka_knowledge.rel_doc_id IS '关联的文档任务ID，如果是用户直接录入则为空字符串';
+COMMENT ON COLUMN quka_knowledge.source IS 'knowledge来源类型，空字符串表示平台内部创建，可选值: rss, podcast, mcp, chat';
+COMMENT ON COLUMN quka_knowledge.source_ref IS 'knowledge来源引用ID，如chat_session_id、subscription_id等，空字符串表示无引用';
 COMMENT ON COLUMN quka_knowledge.created_at IS '创建时间';
 COMMENT ON COLUMN quka_knowledge.updated_at IS '更新时间';
 COMMENT ON COLUMN quka_knowledge.expired_at IS '过期时间戳，0表示永不过期';

@@ -241,10 +241,10 @@ func (l *ShareLogic) GetKnowledgeByShareToken(token string) (*KnowledgeShareInfo
 }
 
 type SessionShareInfo struct {
-	User         *types.User          `json:"user"`
-	Session      *types.ChatSession   `json:"session"`
-	Messages     []*types.ChatMessage `json:"messages"`
-	EmbeddingURL string               `json:"embedding_url"`
+	User         *types.User            `json:"user"`
+	Session      *types.ChatSession     `json:"session"`
+	Messages     []*types.MessageDetail `json:"messages"`
+	EmbeddingURL string                 `json:"embedding_url"`
 }
 
 func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, error) {
@@ -275,6 +275,21 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 		return nil, errors.New("ShareLogic.GetSessionByShareToken.ChatMessageStore.ListSessionMessage.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNoContent)
 	}
 
+	msgIDs := lo.Map(messageList, func(item *types.ChatMessage, _ int) string {
+		return item.ID
+	})
+
+	extList, err := l.core.Store().ChatMessageExtStore().ListChatMessageExts(l.ctx, msgIDs)
+	if err != nil {
+		return nil, errors.New("ShareLogic.GetSessionByShareToken.ChatMessageExtStore.ListChatMessageExts", i18n.ERROR_INTERNAL, err)
+	}
+
+	extMap := lo.SliceToMap(extList, func(item types.ChatMessageExt) (string, *types.ChatMessageExt) {
+		return item.MessageID, &item
+	})
+
+	var list []*types.MessageDetail
+
 	for _, v := range messageList {
 		if v.IsEncrypt != types.MESSAGE_IS_ENCRYPT {
 			continue
@@ -285,6 +300,8 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 		}
 
 		v.Message = string(deData)
+
+		list = append(list, chatMsgAndExtToMessageDetail(v, extMap[v.ID]))
 	}
 
 	user, err := l.core.Store().UserStore().GetUser(l.ctx, link.Appid, link.ShareUserID)
@@ -303,7 +320,7 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 	return &SessionShareInfo{
 		User:         user,
 		Session:      session,
-		Messages:     lo.Reverse(messageList),
+		Messages:     lo.Reverse(list),
 		EmbeddingURL: link.EmbeddingURL,
 	}, nil
 }
@@ -466,6 +483,119 @@ func (l *ShareLogic) GetSpaceByShareToken(token string) (*SpaceShareInfo, error)
 
 	return &SpaceShareInfo{
 		Space:        space,
+		EmbeddingURL: link.EmbeddingURL,
+	}, nil
+}
+
+type CreatePodcastShareTokenResult struct {
+	Token string `json:"token"`
+	URL   string `json:"url"`
+}
+
+func (l *ManageShareLogic) CreatePodcastShareToken(spaceID, podcastID, embeddingURL string) (CreatePodcastShareTokenResult, error) {
+	res := CreatePodcastShareTokenResult{}
+
+	user := l.GetUserInfo()
+	if !l.core.Srv().RBAC().CheckPermission(user.GetRole(), srv.PermissionView) {
+		return res, errors.New("ManageShareLogic.CreatePodcastShareToken.RBAC.CheckPermission", i18n.ERROR_PERMISSION_DENIED, nil).Code(http.StatusForbidden)
+	}
+
+	link, err := l.core.Store().ShareTokenStore().Get(l.ctx, types.SHARE_TYPE_PODCAST, spaceID, podcastID)
+	if err != nil && err != sql.ErrNoRows {
+		return res, errors.New("ManageShareLogic.CreatePodcastShareToken.ShareTokenStore.Get", i18n.ERROR_INTERNAL, err)
+	}
+
+	if link != nil {
+		if link.ExpireAt < time.Now().AddDate(0, 0, -1).Unix() {
+			// update link expire time
+			if err = l.core.Store().ShareTokenStore().UpdateExpireTime(l.ctx, link.ID, time.Now().AddDate(0, 0, 7).Unix()); err != nil {
+				slog.Error("Failed to update share link expire time", slog.String("error", err.Error()), slog.String("space_id", spaceID),
+					slog.String("podcast_id", podcastID))
+			}
+		}
+
+		res.Token = link.Token
+		res.URL = link.EmbeddingURL
+		return res, nil
+	}
+
+	res.Token = utils.MD5(fmt.Sprintf("%s_%s_%d", spaceID, podcastID, utils.GenUniqID()))
+	res.URL = strings.ReplaceAll(embeddingURL, "{token}", res.Token)
+
+	err = l.core.Store().ShareTokenStore().Create(l.ctx, &types.ShareToken{
+		Appid:        l.GetUserInfo().Appid,
+		Type:         types.SHARE_TYPE_PODCAST,
+		SpaceID:      spaceID,
+		ObjectID:     podcastID,
+		Token:        res.Token,
+		ShareUserID:  l.GetUserInfo().User,
+		EmbeddingURL: res.URL,
+		ExpireAt:     time.Now().AddDate(0, 0, 7).Unix(),
+		CreatedAt:    time.Now().Unix(),
+	})
+	if err != nil {
+		return res, errors.New("ManageShareLogic.CreatePodcastShareToken.ShareTokenStore.Create", i18n.ERROR_INTERNAL, err)
+	}
+
+	return res, nil
+}
+
+type PodcastShareInfo struct {
+	UserID       string         `json:"user_id"`
+	UserName     string         `json:"user_name"`
+	UserAvatar   string         `json:"user_avatar"`
+	Podcast      *types.Podcast `json:"podcast"`
+	EmbeddingURL string         `json:"embedding_url"`
+}
+
+func (l *ShareLogic) GetPodcastByShareToken(token string) (*PodcastShareInfo, error) {
+	link, err := l.core.Store().ShareTokenStore().GetByToken(l.ctx, token)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("ShareLogic.GetPodcastByShareToken.ShareTokenStore.GetByToken", i18n.ERROR_INTERNAL, err)
+	}
+
+	if link == nil {
+		return nil, errors.New("ShareLogic.GetPodcastByShareToken.ShareTokenStore.GetByToken.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNoContent)
+	}
+
+	podcast, err := l.core.Store().PodcastStore().Get(l.ctx, link.ObjectID)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("ShareLogic.GetPodcastByShareToken.PodcastStore.Get", i18n.ERROR_INTERNAL, err)
+	}
+
+	if podcast == nil {
+		return nil, errors.New("ShareLogic.GetPodcastByShareToken.PodcastStore.Get.nil", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNoContent)
+	}
+
+	user, err := l.core.Store().UserStore().GetUser(l.ctx, link.Appid, podcast.UserID)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("ShareLogic.GetPodcastByShareToken.UserStore.GetUser", i18n.ERROR_INTERNAL, err)
+	}
+
+	// 为音频URL生成S3预签名URL
+	if podcast.AudioURL != "" {
+		if presignedURL, err := l.core.Plugins.FileStorage().GenGetObjectPreSignURL(podcast.AudioURL); err == nil {
+			podcast.AudioURL = presignedURL
+		} else {
+			slog.Warn("Failed to generate presigned URL for podcast audio",
+				slog.String("audio_url", podcast.AudioURL),
+				slog.String("error", err.Error()))
+			// 预签名失败时保持原URL
+		}
+	}
+
+	if user == nil {
+		user = &types.User{
+			Name: "Null",
+			ID:   "",
+		}
+	}
+
+	return &PodcastShareInfo{
+		UserID:       user.ID,
+		UserName:     user.Name,
+		UserAvatar:   user.Avatar,
+		Podcast:      podcast,
 		EmbeddingURL: link.EmbeddingURL,
 	}, nil
 }

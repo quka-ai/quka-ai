@@ -3,6 +3,7 @@ package core
 import (
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -57,6 +58,7 @@ type CoreConfig struct {
 	Addr          string              `toml:"addr"`
 	Log           Log                 `toml:"log"`
 	Postgres      PGConfig            `toml:"postgres"`
+	Redis         RedisConfig         `toml:"redis"`
 	Site          Site                `toml:"site"`
 	ObjectStorage ObjectStorageDriver `toml:"object_storage"`
 
@@ -131,6 +133,7 @@ func (c *CoreConfig) FromENV() {
 	c.Addr = os.Getenv("QUKA_API_SERVICE_ADDRESS")
 	c.Log.FromENV()
 	c.Postgres.FromENV()
+	c.Redis.FromENV()
 }
 
 type PGConfig struct {
@@ -143,6 +146,39 @@ func (m *PGConfig) FromENV() {
 
 func (c PGConfig) FormatDSN() string {
 	return c.DSN
+}
+
+type RedisConfig struct {
+	// 单机模式配置
+	Addr     string `toml:"addr"`     // Redis地址，格式: host:port
+	Password string `toml:"password"` // Redis密码
+	DB       int    `toml:"db"`       // Redis数据库索引 (0-15)
+
+	// 集群模式配置
+	Cluster       bool     `toml:"cluster"`        // 是否启用集群模式
+	ClusterAddrs  []string `toml:"cluster_addrs"`  // 集群节点地址列表
+	ClusterPasswd string   `toml:"cluster_passwd"` // 集群密码
+
+	// 连接池配置
+	PoolSize     int `toml:"pool_size"`      // 连接池大小，默认10
+	MinIdleConns int `toml:"min_idle_conns"` // 最小空闲连接数，默认0
+	MaxRetries   int `toml:"max_retries"`    // 最大重试次数，默认3
+	DialTimeout  int `toml:"dial_timeout"`   // 连接超时(秒)，默认5
+	ReadTimeout  int `toml:"read_timeout"`   // 读超时(秒)，默认3
+	WriteTimeout int `toml:"write_timeout"`  // 写超时(秒)，默认3
+
+	// 队列配置
+	KeyPrefix string `toml:"key_prefix"` // Redis键前缀，用于隔离不同环境/应用
+}
+
+func (r *RedisConfig) FromENV() {
+	r.Addr = os.Getenv("QUKA_REDIS_ADDR")
+	r.Password = os.Getenv("QUKA_REDIS_PASSWORD")
+	if dbStr := os.Getenv("QUKA_REDIS_DB"); dbStr != "" {
+		if db, err := strconv.Atoi(dbStr); err == nil {
+			r.DB = db
+		}
+	}
 }
 
 type Log struct {

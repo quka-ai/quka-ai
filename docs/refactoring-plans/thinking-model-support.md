@@ -2,15 +2,16 @@
 
 ## 问题背景
 
-当前系统的模型管理设计已经支持基本的模型配置，但缺乏对AI模型思考（thinking）功能的精细化管理。根据用户需求，不同的AI模型对思考功能有不同的支持方式：
+当前系统的模型管理设计已经支持基本的模型配置，但缺乏对 AI 模型思考（thinking）功能的精细化管理。根据用户需求，不同的 AI 模型对思考功能有不同的支持方式：
 
-1. **强制思考模型**：某些模型（如Claude-4）必须开启思考功能，无法关闭
+1. **强制思考模型**：某些模型（如 Claude-4）必须开启思考功能，无法关闭
 2. **可选思考模型**：某些模型支持思考功能，但可以选择是否开启
 3. **不支持思考模型**：某些模型完全不支持思考功能
 
 ## 当前架构分析
 
 ### 现有数据结构
+
 ```go
 // ModelConfig 当前结构
 type ModelConfig struct {
@@ -29,6 +30,7 @@ type ModelConfig struct {
 ```
 
 ### 现有数据库表结构
+
 ```sql
 CREATE TABLE IF NOT EXISTS quka_model_config (
     id VARCHAR(64) PRIMARY KEY,
@@ -46,9 +48,9 @@ CREATE TABLE IF NOT EXISTS quka_model_config (
 
 ## 改造目标
 
-1. **增加思考功能支持字段**：为chat类型的模型添加思考功能支持类型
+1. **增加思考功能支持字段**：为 chat 类型的模型添加思考功能支持类型
 2. **增强查询过滤功能**：支持按思考功能需求筛选模型
-3. **完善API接口**：在模型配置和使用配置中支持思考功能
+3. **完善 API 接口**：在模型配置和使用配置中支持思考功能
 4. **保持向后兼容**：确保现有功能不受影响
 
 ## 详细实施方案
@@ -56,36 +58,39 @@ CREATE TABLE IF NOT EXISTS quka_model_config (
 ### 1. 数据库结构修改
 
 #### 1.1 添加思考支持字段
+
 在 `quka_model_config` 表中添加新字段：
 
 ```sql
 -- 思考功能支持类型：0-不支持，1-可选，2-强制
-ALTER TABLE quka_model_config 
+ALTER TABLE quka_model_config
 ADD COLUMN thinking_support INTEGER NOT NULL DEFAULT 0;
 
 -- 创建索引
-CREATE INDEX IF NOT EXISTS idx_quka_model_config_thinking_support 
+CREATE INDEX IF NOT EXISTS idx_quka_model_config_thinking_support
 ON quka_model_config (thinking_support);
 
 -- 创建复合索引用于优化按模型类型和思考支持查询
-CREATE INDEX IF NOT EXISTS idx_quka_model_config_type_thinking 
-ON quka_model_config (model_type, thinking_support) 
+CREATE INDEX IF NOT EXISTS idx_quka_model_config_type_thinking
+ON quka_model_config (model_type, thinking_support)
 WHERE model_type = 'chat';
 ```
 
 #### 1.2 思考支持类型常量定义
+
 ```go
 // 思考功能支持类型常量
 const (
     ThinkingSupportNone     = 0 // 不支持思考
-    ThinkingSupportOptional = 1 // 可选思考  
+    ThinkingSupportOptional = 1 // 可选思考
     ThinkingSupportForced   = 2 // 强制思考
 )
 ```
 
-### 2. Go结构体修改
+### 2. Go 结构体修改
 
-#### 2.1 ModelConfig结构体增强
+#### 2.1 ModelConfig 结构体增强
+
 ```go
 type ModelConfig struct {
     ID             string          `json:"id" db:"id"`
@@ -104,6 +109,7 @@ type ModelConfig struct {
 ```
 
 #### 2.2 查询选项增强
+
 ```go
 type ListModelConfigOptions struct {
     ProviderID      string
@@ -148,8 +154,9 @@ func (opt ListModelConfigOptions) Apply(query *sq.SelectBuilder) {
 
 ### 3. 数据库操作层修改
 
-#### 3.1 ModelConfigStore修改
-更新SQL操作中的字段列表：
+#### 3.1 ModelConfigStore 修改
+
+更新 SQL 操作中的字段列表：
 
 ```go
 func NewModelConfigStore(provider SqlProviderAchieve) *ModelConfigStore {
@@ -157,19 +164,21 @@ func NewModelConfigStore(provider SqlProviderAchieve) *ModelConfigStore {
     repo.SetProvider(provider)
     repo.SetTable(types.TABLE_MODEL_CONFIG)
     // 添加thinking_support字段
-    repo.SetAllColumns("id", "provider_id", "model_name", "display_name", 
-                       "model_type", "is_multi_modal", "thinking_support", 
+    repo.SetAllColumns("id", "provider_id", "model_name", "display_name",
+                       "model_type", "is_multi_modal", "thinking_support",
                        "status", "config", "created_at", "updated_at")
     return repo
 }
 ```
 
-#### 3.2 CRUD操作更新
-在Create、Update等方法中添加thinking_support字段的处理。
+#### 3.2 CRUD 操作更新
+
+在 Create、Update 等方法中添加 thinking_support 字段的处理。
 
 ### 4. 业务逻辑层修改
 
-#### 4.1 ModelConfigLogic增强
+#### 4.1 ModelConfigLogic 增强
+
 ```go
 // 新增：根据思考需求获取可用模型
 func (l *ModelConfigLogic) GetAvailableThinkingModels(needsThinking bool) ([]*types.ModelConfig, error) {
@@ -187,7 +196,7 @@ func (l *ModelConfigLogic) ValidateThinkingConfig(modelID string, enableThinking
     if err != nil {
         return err
     }
-    
+
     // 验证思考配置是否合法
     switch model.ThinkingSupport {
     case types.ThinkingSupportNone:
@@ -201,14 +210,15 @@ func (l *ModelConfigLogic) ValidateThinkingConfig(modelID string, enableThinking
     case types.ThinkingSupportOptional:
         // 可选，无需验证
     }
-    
+
     return nil
 }
 ```
 
-### 5. API接口修改
+### 5. API 接口修改
 
-#### 5.1 模型配置API增强
+#### 5.1 模型配置 API 增强
+
 ```go
 // CreateModelRequest 创建模型请求增强
 type CreateModelRequest struct {
@@ -227,31 +237,32 @@ func (s *HttpSrv) GetAvailableModels(c *gin.Context) {
     modelType := c.Query("model_type")
     isMultiModalStr := c.Query("is_multi_modal")
     thinkingRequiredStr := c.Query("thinking_required") // 新增
-    
+
     var isMultiModal *bool
     if isMultiModalStr != "" {
         val := isMultiModalStr == "true"
         isMultiModal = &val
     }
-    
+
     var thinkingRequired *bool // 新增
     if thinkingRequiredStr != "" {
         val := thinkingRequiredStr == "true"
         thinkingRequired = &val
     }
-    
-    logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+
+    logic := v1.NewModelConfigLogic(c, s.Core)
     models, err := logic.GetAvailableModels(modelType, isMultiModal, thinkingRequired)
     if err != nil {
         response.APIError(c, err)
         return
     }
-    
+
     response.APISuccess(c, models)
 }
 ```
 
-#### 5.2 AI使用配置API增强
+#### 5.2 AI 使用配置 API 增强
+
 ```go
 // AIUsageRequest 增加思考模型配置
 type AIUsageRequest struct {
@@ -267,7 +278,8 @@ type AIUsageRequest struct {
 
 ### 6. 配置常量增强
 
-#### 6.1 AI使用配置常量
+#### 6.1 AI 使用配置常量
+
 ```go
 const (
     // 现有常量
@@ -277,10 +289,10 @@ const (
     AI_USAGE_RERANK    = "ai_usage_rerank"
     AI_USAGE_READER    = "ai_usage_reader"
     AI_USAGE_ENHANCE   = "ai_usage_enhance"
-    
+
     // 新增：思考模型配置
     AI_USAGE_CHAT_THINKING = "ai_usage_chat_thinking"
-    
+
     // 描述常量
     AI_USAGE_CHAT_THINKING_DESC = "思考聊天模型配置"
 )
@@ -289,10 +301,11 @@ const (
 ### 7. 国际化支持
 
 #### 7.1 错误信息常量
+
 ```go
 const (
     // 现有错误码...
-    
+
     // 新增：思考功能相关错误
     ERROR_MODEL_THINKING_NOT_SUPPORTED = "error.model.thinking.not_supported"
     ERROR_MODEL_THINKING_REQUIRED      = "error.model.thinking.required"
@@ -302,26 +315,31 @@ const (
 
 ## 实施时间线
 
-### 阶段1：数据库和结构体修改（2小时）
-1. 修改数据库表结构，添加thinking_support字段
-2. 更新ModelConfig结构体和相关常量定义
-3. 修改ListModelConfigOptions查询选项
+### 阶段 1：数据库和结构体修改（2 小时）
 
-### 阶段2：数据库操作层修改（1小时）
-1. 更新ModelConfigStore的字段列表
-2. 修改Create、Update等CRUD操作
+1. 修改数据库表结构，添加 thinking_support 字段
+2. 更新 ModelConfig 结构体和相关常量定义
+3. 修改 ListModelConfigOptions 查询选项
 
-### 阶段3：业务逻辑层修改（2小时）
-1. 增强ModelConfigLogic，添加思考功能相关方法
+### 阶段 2：数据库操作层修改（1 小时）
+
+1. 更新 ModelConfigStore 的字段列表
+2. 修改 Create、Update 等 CRUD 操作
+
+### 阶段 3：业务逻辑层修改（2 小时）
+
+1. 增强 ModelConfigLogic，添加思考功能相关方法
 2. 添加思考配置验证逻辑
 3. 更新现有查询方法支持思考功能过滤
 
-### 阶段4：API接口修改（2小时）
-1. 修改模型配置相关API接口
-2. 增强AI使用配置API
+### 阶段 4：API 接口修改（2 小时）
+
+1. 修改模型配置相关 API 接口
+2. 增强 AI 使用配置 API
 3. 添加思考模型配置支持
 
-### 阶段5：测试和验证（1小时）
+### 阶段 5：测试和验证（1 小时）
+
 1. 单元测试覆盖新增功能
 2. 集成测试验证端到端功能
 3. 向后兼容性测试
@@ -329,19 +347,23 @@ const (
 ## 关键考虑点
 
 ### 1. 向后兼容性
+
 - 新字段添加默认值，确保现有数据不受影响
-- API接口保持现有参数的兼容性
+- API 接口保持现有参数的兼容性
 - 渐进式迁移，避免破坏性改动
 
 ### 2. 数据迁移
-- 为现有的chat模型设置合适的thinking_support默认值
-- 根据模型名称或provider判断思考支持类型
+
+- 为现有的 chat 模型设置合适的 thinking_support 默认值
+- 根据模型名称或 provider 判断思考支持类型
 
 ### 3. 性能考虑
+
 - 添加合适的数据库索引优化查询
 - 考虑缓存策略减少数据库查询
 
 ### 4. 错误处理
+
 - 完善的错误消息和国际化支持
 - 详细的参数验证和错误反馈
 
@@ -350,32 +372,35 @@ const (
 1. **思考功能支持类型的判断标准**：如何确定现有模型应该设置为哪种思考支持类型？
 2. **默认行为**：当用户没有明确指定思考需求时，系统应该如何选择模型？
 3. **配置优先级**：如果用户同时配置了普通聊天模型和思考聊天模型，系统应该如何选择？
-4. **API版本控制**：是否需要新增API版本来支持新功能，还是直接扩展现有接口？
+4. **API 版本控制**：是否需要新增 API 版本来支持新功能，还是直接扩展现有接口？
 
 ## 相关文件列表
 
 ### 需要修改的文件
+
 1. `/app/store/sqlstore/model_config.sql` - 数据库表结构
 2. `/pkg/types/model_provider.go` - 数据结构定义
 3. `/app/store/sqlstore/model_config.go` - 数据库操作层
 4. `/app/logic/v1/model_config.go` - 业务逻辑层
-5. `/cmd/service/handler/model_config.go` - API处理器
-6. `/cmd/service/handler/ai_system.go` - AI系统配置API
+5. `/cmd/service/handler/model_config.go` - API 处理器
+6. `/cmd/service/handler/ai_system.go` - AI 系统配置 API
 7. `/pkg/types/constant.go` - 常量定义
 8. `/pkg/i18n/constant.go` - 国际化常量
 
 ### 可能需要修改的文件
-1. `/app/core/srv/ai.go` - AI服务核心逻辑
+
+1. `/app/core/srv/ai.go` - AI 服务核心逻辑
 2. `/app/logic/v1/auto_assistant.go` - 自动助手逻辑
 3. 相关的测试文件
 
 ---
 
 ## 状态追踪
+
 - [ ] 数据库结构修改
-- [ ] Go结构体和常量定义
+- [ ] Go 结构体和常量定义
 - [ ] 数据库操作层实现
-- [ ] 业务逻辑层实现  
-- [ ] API接口实现
+- [ ] 业务逻辑层实现
+- [ ] API 接口实现
 - [ ] 测试用例编写
 - [ ] 文档更新

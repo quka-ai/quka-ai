@@ -28,7 +28,7 @@ type AIUsageRequest struct {
 
 // ReloadAIConfig 重新加载AI配置
 func (s *HttpSrv) ReloadAIConfig(c *gin.Context) {
-	if err := s.Core.ReloadAI(c.Request.Context()); err != nil {
+	if err := s.Core.ReloadAI(c); err != nil {
 		response.APIError(c, errors.New("reload failed", i18n.ERROR_INTERNAL, err))
 		return
 	}
@@ -56,7 +56,7 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 	}
 
 	// 验证模型配置是否存在
-	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelConfigLogic(c, s.Core)
 
 	// 验证必需的模型配置
 	if req.Chat != "" {
@@ -87,7 +87,7 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 	}
 
 	// 保存AI使用配置到数据库
-	customLogic := v1.NewCustomConfigLogic(c.Request.Context(), s.Core)
+	customLogic := v1.NewCustomConfigLogic(c, s.Core)
 
 	// 构建配置项
 	configs := []types.CustomConfig{
@@ -180,7 +180,7 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 	}
 
 	// 重新加载AI配置以应用更改
-	if err := s.Core.ReloadAI(c.Request.Context()); err != nil {
+	if err := s.Core.ReloadAI(c); err != nil {
 		response.APIError(c, errors.New("UpdateAIUsage.ReloadAI", i18n.ERROR_INTERNAL, err))
 		return
 	}
@@ -193,7 +193,7 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 
 // GetAIUsage 获取AI使用配置
 func (s *HttpSrv) GetAIUsage(c *gin.Context) {
-	customLogic := v1.NewCustomConfigLogic(c.Request.Context(), s.Core)
+	customLogic := v1.NewCustomConfigLogic(c, s.Core)
 
 	// 获取AI使用配置
 	configs, _, err := customLogic.ListCustomConfigs("", types.AI_USAGE_CATEGORY, nil, 0, 0)

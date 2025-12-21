@@ -85,7 +85,7 @@ func ValidateRequest(c *gin.Context, core *core.Core) (*UserContext, error) {
 
 	// 验证 token
 	appid := core.DefaultAppid()
-	ctx := c.Request.Context()
+	ctx := c
 
 	authLogic := v1.NewAuthLogic(ctx, core)
 	accessToken, err := authLogic.GetAccessTokenDetail(appid, token)

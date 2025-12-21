@@ -22,7 +22,7 @@ func (s *HttpSrv) CreateModelConfig(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelConfigLogic(c, s.Core)
 	model, err := logic.CreateModel(req)
 	if err != nil {
 		response.APIError(c, err)
@@ -40,7 +40,7 @@ func (s *HttpSrv) GetModelConfig(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelConfigLogic(c, s.Core)
 	model, err := logic.GetModel(id)
 	if err != nil {
 		response.APIError(c, err)
@@ -69,7 +69,7 @@ func (s *HttpSrv) ListModelConfigs(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelConfigLogic(c, s.Core)
 
 	// 构建筛选选项
 	opts := types.ListModelConfigOptions{
@@ -108,7 +108,7 @@ func (s *HttpSrv) UpdateModelConfig(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelConfigLogic(c, s.Core)
 	model, err := logic.UpdateModel(id, req)
 	if err != nil {
 		response.APIError(c, err)
@@ -126,7 +126,7 @@ func (s *HttpSrv) DeleteModelConfig(c *gin.Context) {
 		return
 	}
 
-	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelConfigLogic(c, s.Core)
 	err := logic.DeleteModel(id)
 	if err != nil {
 		response.APIError(c, err)
@@ -156,7 +156,7 @@ func (s *HttpSrv) GetAvailableModels(c *gin.Context) {
 		}
 	}
 
-	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelConfigLogic(c, s.Core)
 	models, err := logic.GetAvailableModels(modelType, isMultiModal, thinkingRequired)
 	if err != nil {
 		response.APIError(c, err)
@@ -175,7 +175,7 @@ func (s *HttpSrv) GetThinkingModels(c *gin.Context) {
 		}
 	}
 
-	logic := v1.NewModelConfigLogic(c.Request.Context(), s.Core)
+	logic := v1.NewModelConfigLogic(c, s.Core)
 	models, err := logic.GetAvailableThinkingModels(needsThinking)
 	if err != nil {
 		response.APIError(c, err)

@@ -73,6 +73,7 @@ type EditorImage struct {
 	WithBorder     bool            `json:"withBorder"`
 	WithBackground bool            `json:"withBackground"`
 	Stretched      bool            `json:"stretched"`
+	Width          float64         `json:"width"`
 }
 
 type EditorImageFile struct {

@@ -65,12 +65,14 @@ func (h *CreateKnowledgeHandler) Handle(
 
 	// 调用 KnowledgeLogic 创建知识
 	logic := v1.NewKnowledgeLogic(ctx, h.core)
-	id, err := logic.InsertContentAsync(
+	id, err := logic.InsertContentAsyncWithSource(
 		userCtx.Field("space_id"),
 		lo.If(args.Resource != "", args.Resource).Else(userCtx.Field("resource")),
 		types.KindNewFromString(args.Kind),
 		content,
 		contentType,
+		types.KNOWLEDGE_SOURCE_MCP,
+		"",
 	)
 	if err != nil {
 		return nil, CreateKnowledgeOutput{}, err

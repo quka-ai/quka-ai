@@ -93,6 +93,7 @@ const (
 type ToolTips struct {
 	ID       string `json:"id"`
 	ToolName string `json:"tool_name"`
+	Args     string `json:"args"`
 	Content  string `json:"content"`
 }
 

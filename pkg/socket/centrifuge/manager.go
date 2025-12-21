@@ -24,7 +24,7 @@ type Manager struct {
 	// 流信号管理 (用于模拟Tower的流控制功能)
 	streamSignals cmap.ConcurrentMap[string, func()]
 
-	mu            sync.RWMutex
+	mu sync.RWMutex
 }
 
 // ChannelStats 频道统计信息

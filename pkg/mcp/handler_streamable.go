@@ -68,8 +68,7 @@ func MCPStreamableHandler(appCore *core.Core) gin.HandlerFunc {
 
 		// 2. 将用户上下文注入到 Request Context
 		// 这样工具处理器可以从 context 中获取用户信息
-		ctx := c.Request.Context()
-		ctx = auth.SetUserContext(ctx, userCtx)
+		ctx := auth.SetUserContext(c, userCtx)
 		c.Request = c.Request.WithContext(ctx)
 
 		// 3. 调用 SDK 的 StreamableHTTPHandler

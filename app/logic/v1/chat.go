@@ -157,7 +157,7 @@ func (l *ChatLogic) NewUserMessage(chatSession *types.ChatSession, msgArgs types
 	receiver := NewChatReceiver(ctx, l.core, messager, msg)
 
 	err = l.core.Store().Transaction(ctx, func(ctx context.Context) error {
-		if err = l.core.Store().ChatMessageStore().Create(l.ctx, msg); err != nil {
+		if err = l.core.Store().ChatMessageStore().Create(ctx, msg); err != nil {
 			return errors.New("ChatLogic.NewUserMessageSend.ChatMessageStore.Create", i18n.ERROR_INTERNAL, err)
 		}
 
