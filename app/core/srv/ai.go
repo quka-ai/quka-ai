@@ -117,7 +117,7 @@ func (s *AI) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 		return false
 	}
 
-	return tokenNum > 80000
+	return tokenNum > 120000
 }
 
 func (s *AI) GetConfig(id string) types.ModelConfig {
@@ -164,7 +164,7 @@ func (s *AI) GetChatConfig(needsThinking bool) types.ModelConfig {
 	}
 
 	// 兜底返回默认chat配置
-	return s.GetConfig(types.MODEL_TYPE_CHAT)
+	return s.chatDefault.Config()
 }
 
 // GetChatAI 根据思考需求获取预组装的ChatAI实例

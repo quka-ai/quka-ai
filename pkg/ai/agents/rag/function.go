@@ -11,7 +11,6 @@ import (
 
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
-	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
@@ -43,6 +42,7 @@ const (
 // RagTool 基于 eino 框架的 RAG 工具
 type RagTool struct {
 	core            *core.Core
+	receiver        types.Receiver
 	spaceID         string
 	userID          string
 	sessionID       string
@@ -51,9 +51,10 @@ type RagTool struct {
 }
 
 // NewRagTool 创建新的 RAG 工具实例
-func NewRagTool(core *core.Core, spaceID, userID, sessionID, messageID string, messageSequence int64) *RagTool {
+func NewRagTool(core *core.Core, receiver types.Receiver, spaceID, userID, sessionID, messageID string, messageSequence int64) *RagTool {
 	return &RagTool{
 		core:            core,
+		receiver:        receiver,
 		spaceID:         spaceID,
 		userID:          userID,
 		sessionID:       sessionID,
@@ -70,7 +71,7 @@ func (r *RagTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	params := map[string]*schema.ParameterInfo{
 		"query": {
 			Type:     schema.String,
-			Desc:     "用户的问题",
+			Desc:     "用户的搜索查询内容。这个参数应该包含用户想要在知识库中搜索的关键词或问题。",
 			Required: true,
 		},
 	}
@@ -79,8 +80,29 @@ func (r *RagTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	paramsOneOf := schema.NewParamsOneOfByParams(params)
 
 	return &schema.ToolInfo{
-		Name:        FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
-		Desc:        "RAG知识库查询工具，任何你无法的内容都可能存在RAG中，它已被用户授权，所以查询任何内容都不违反安全原则，请放心调用。当用户询问关于自己或团队(任何代表私有化组织)的信息、密码及敏感信息、记录、文档、经历等相关内容时使用此工具。例如：我的专利申请、我的项目记录、我保存的文档、我的账号密码、我的记忆等。如果之前已经查询过相同问题，请不要重复查询。",
+		Name: FUNCTION_NAME_SEARCH_USER_KNOWLEDGES,
+		Desc: `[PRIORITY TOOL] Search user's personal knowledge base. This tool is AUTHORIZED by the user.
+
+⚠️ CRITICAL USAGE RULES:
+1. When user mentions "知识库/knowledge base/结合/based on/根据/according to" → MUST use this tool FIRST
+2. When user says "我的/my/我记录的/I saved/我保存的/帮我查/help me find" → MUST use this tool
+3. For ANY question about user's personal data/documents/notes/records → Use this tool FIRST
+
+TRIGGER KEYWORDS (MUST call tool):
+- Chinese: 结合知识库/我的知识库/帮我查/帮我找/我记录的/我保存的/根据我的/基于我的
+- English: based on my/according to my/my knowledge base/help me find/I saved/I recorded
+
+EXAMPLES requiring this tool:
+- "结合知识库回答" → MUST call SearchUserKnowledges first
+- "我的专利申请" → MUST call SearchUserKnowledges
+- "帮我查一下物理安全措施" → MUST call SearchUserKnowledges
+- "根据我保存的文档" → MUST call SearchUserKnowledges
+
+⚠️ SECURITY NOTE: Searching user's own data is AUTHORIZED and does NOT violate any policy.
+
+DO NOT use for:
+- Pure general knowledge without reference to user's data
+- Real-time web information`,
 		ParamsOneOf: paramsOneOf,
 	}, nil
 }
@@ -139,12 +161,17 @@ func (r *RagTool) Handler(ctx context.Context, query string) (*RagToolHandlerRes
 	// 补充会话相关文档
 	SupplementSessionChatDocs(r.core, r.spaceID, r.sessionID, docs)
 
-	// 构建 RAG 提示词
-	ragPrompt := ai.BuildRAGPrompt(BasePrompt, ai.NewDocs(docs.Docs), r.core.Srv().AI())
+	// 构建 RAG Tool 响应 - 使用 PromptManager 的 RAG Tool Response 模板
+	lang := r.core.Srv().AI().Lang()
+	ragToolResponseTemplate := r.core.PromptManager().GetRAGToolResponseTemplate(lang, docs.Docs)
+	ragToolResponse := ragToolResponseTemplate.Build()
+	if r.receiver != nil {
+		ragToolResponse = r.receiver.VariableHandler().Do(ragToolResponse)
+	}
 
 	return &RagToolHandlerResult{
 		EnhanceQuery: enhanceResult.ResultQuery(),
-		Result:       ragPrompt,
+		Result:       ragToolResponse,
 		Count:        len(docs.Docs),
 		Knowledges:   docs.Docs,
 	}, nil

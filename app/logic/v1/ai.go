@@ -501,7 +501,19 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 		}
 	}
 
-	prompt := butler.BuildButlerPrompt("", s.core.Srv().AI(), userExistsTable.String())
+	// 使用 PromptManager 获取 Butler Prompt
+	lang := s.core.Srv().AI().Lang()
+	butlerTemplate := s.core.PromptManager().GetButlerTemplate(lang)
+
+	// 添加用户数据表信息到 Body
+	if lang == ai.MODEL_BASE_LANGUAGE_CN {
+		butlerTemplate.AppendBody(butler.BUTLER_MODIFY_PROMPT_CN)
+	} else {
+		butlerTemplate.AppendBody(butler.BUTLER_MODIFY_PROMPT_EN)
+	}
+	butlerTemplate.AppendBody("\n\n" + userExistsTable.String())
+
+	prompt := butlerTemplate.Build()
 	prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
@@ -516,6 +528,7 @@ func (s *ButlerAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Ch
 
 	agentCtx := types.NewAgentContextWithOptions(
 		ctx,
+		receiver,
 		reqMsg.SpaceID,
 		reqMsg.UserID,
 		reqMsg.SessionID,
@@ -651,8 +664,18 @@ var (
 )
 
 func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.ChatMessage, receiver types.Receiver, aiCallOptions *types.AICallOptions) error {
-	// 2. 准备提示词 - 使用journal专用提示词
-	prompt := journal.BuildJournalPrompt("", s.core.Srv().AI())
+	// 2. 准备提示词 - 使用 PromptManager 获取 Journal Prompt
+	lang := s.core.Srv().AI().Lang()
+	journalTemplate := s.core.PromptManager().GetJournalTemplate(lang)
+
+	// 添加 Journal 特定内容到 Body
+	if lang == ai.MODEL_BASE_LANGUAGE_CN {
+		journalTemplate.AppendBody(journal.JOURNAL_PROMPT_CN)
+	} else {
+		journalTemplate.AppendBody(journal.JOURNAL_PROMPT_EN)
+	}
+
+	prompt := journalTemplate.Build()
 	prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
@@ -667,6 +690,7 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.C
 
 	agentCtx := types.NewAgentContextWithOptions(
 		ctx,
+		receiver,
 		reqMsg.SpaceID,
 		reqMsg.UserID,
 		reqMsg.SessionID,
@@ -979,7 +1003,7 @@ ReGen:
 			item := &types.MessageContext{
 				Role: types.USER_ROLE_USER,
 			}
-			item.MultiContent = v.Attach.ToMultiContent("", core.FileStorage())
+			item.MultiContent = v.Attach.ToMultiContent(v.Message, core.FileStorage())
 			reqMsg = append(reqMsg, item)
 		} else {
 			if v.Role == types.USER_ROLE_TOOL {
@@ -1086,12 +1110,13 @@ type SessionContext struct {
 // GenChatSessionContextSummary 生成dialog上下文总结
 func GenChatSessionContextSummary(ctx context.Context, core *core.Core, spaceID, sessionID string, summaryMessageSeqID int64, reqMsg []*types.MessageContext) error {
 	// slog.Debug("start generating context summary", slog.String("session_id", sessionID), slog.String("msg_id", summaryMessageID), slog.Any("request_message", reqMsg))
-	prompt := core.Cfg().Prompt.ChatSummary
-	if prompt == "" {
-		prompt = ai.PROMPT_SUMMARY_DEFAULT_CN
-	}
 
-	cfg := core.Srv().AI().GetConfig(types.MODEL_TYPE_CHAT)
+	// 使用 PromptManager 获取总结 Prompt
+	lang := ai.MODEL_BASE_LANGUAGE_CN
+	summaryTemplate := core.PromptManager().GetSummaryTemplate(lang)
+	prompt := summaryTemplate.Build()
+
+	cfg := core.Srv().AI().GetChatAI(false).Config()
 	model, err := GetToolCallingModel(&types.AgentContext{
 		Context:        ctx,
 		EnableThinking: false,

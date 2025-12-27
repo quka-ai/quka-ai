@@ -110,15 +110,10 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 		return HandleAssistantEarlyError(err, reqMsg, receiver, "获取空间信息失败")
 	}
 
-	// 2. 准备提示词
-	var prompt string
-	if space.BasePrompt != "" {
-		prompt = space.BasePrompt + ai.BASE_GENERATE_PROMPT_CN
-	}
-	if space.ChatPrompt != "" {
-		prompt += space.ChatPrompt
-	}
-	prompt = ai.BuildPrompt(prompt, ai.MODEL_BASE_LANGUAGE_CN)
+	// 2. 准备提示词 - 使用 PromptManager
+	lang := ai.MODEL_BASE_LANGUAGE_CN
+	promptTemplate := a.core.PromptManager().GetChatTemplate(lang, space)
+	prompt := promptTemplate.Build()
 	// prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
@@ -130,6 +125,7 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	// 4. 创建 AgentContext - 提取思考和搜索配置
 	agentCtx := types.NewAgentContextWithOptions(
 		ctx,
+		receiver,
 		reqMsg.SpaceID,
 		reqMsg.UserID,
 		reqMsg.SessionID,
@@ -472,7 +468,7 @@ func (f *EinoAgentFactory) CreateAutoRagReActAgent(agentCtx *types.AgentContext,
 		&WithRAG{
 			Enable: agentCtx.EnableKnowledge,
 		}, // 支持知识库搜索
-		NewWithKnowledgeTools(agentCtx.EnableKnowledge), // 支持知识库 CRUD 工具
+		NewWithKnowledgeTools(true), // 支持知识库 CRUD 工具
 	}
 
 	for _, option := range options {
@@ -722,7 +718,7 @@ func (o *WithRAG) Apply(config *AgentConfig) error {
 		return nil
 	}
 
-	ragTool := rag.NewRagTool(config.Core, config.AgentCtx.SpaceID, config.AgentCtx.UserID, config.AgentCtx.SessionID, config.AgentCtx.MessageID, config.AgentCtx.MessageSequence)
+	ragTool := rag.NewRagTool(config.Core, config.AgentCtx.Receiver, config.AgentCtx.SpaceID, config.AgentCtx.UserID, config.AgentCtx.SessionID, config.AgentCtx.MessageID, config.AgentCtx.MessageSequence)
 	notifyingRagTool := config.ToolWrapper.Wrap(ragTool)
 	config.Tools = append(config.Tools, notifyingRagTool)
 	return nil

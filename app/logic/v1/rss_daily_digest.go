@@ -250,7 +250,7 @@ func (l *RSSDailyDigestLogic) buildChineseDigestPrompt(articles []*types.RSSDige
    - 主题名称（简洁、准确，使用 🏷️ emoji）
    - 主题概述（50-100字，综合该主题下所有文章的核心观点）
    - 相关文章列表（每篇文章需包含）：
-     * 文章标题作为链接，格式为：[标题](#article-文章ID)
+     * 文章标题作为链接，格式为：[标题](#article-KnowledgeID)
      * 一句话总结（20-30字）
      * 关键词标签（使用反引号包裹）
 
@@ -278,7 +278,7 @@ func (l *RSSDailyDigestLogic) buildChineseDigestPrompt(articles []*types.RSSDige
 
 空一行
 
-文章列表：- **[文章标题](#article-ID)** - 一句话总结
+文章列表：- **[文章标题](#article-KnowledgeID)** - 一句话总结
   标签：反引号关键词1反引号 反引号关键词2反引号
 
 空一行
@@ -329,7 +329,7 @@ Generate a daily RSS digest report for %s. The user received %d article updates 
    - Topic name (concise and accurate, with 🏷️ emoji)
    - Topic overview (50-100 words, synthesizing key points from all articles in this topic)
    - Related articles list (for each article):
-     * Article title as link: [Title](#article-ArticleID)
+     * Article title as link: [Title](#article-KnowledgeID)
      * One-sentence summary (15-25 words)
      * Keyword tags (wrapped in backticks)
 
@@ -374,7 +374,7 @@ Blank line
 - Don't miss any articles
 - Ensure every article is categorized under a topic
 - Topic classification should be reasonable, avoiding over-fragmentation or over-generalization
-- Article link format must be #article-ID (ID is numeric only)
+- Article link format must be #article-KnowledgeID (ID is numeric only)
 - Maintain objectivity and neutrality, no personal opinions
 - Wrap keyword tags in backticks
 
@@ -390,7 +390,10 @@ func (l *RSSDailyDigestLogic) buildArticlesContent(articles []*types.RSSDigestAr
 	builder.WriteString("## 文章列表\n\n")
 
 	for i, article := range articles {
-		builder.WriteString(fmt.Sprintf("### 文章 %d (ID: %s)\n\n", i+1, article.ID))
+		builder.WriteString(fmt.Sprintf("### 文章 %d\n\n", i+1))
+		if article.KnowledgeID != "" {
+			builder.WriteString(fmt.Sprintf("- **Knowledge ID**: %s\n", article.KnowledgeID))
+		}
 		builder.WriteString(fmt.Sprintf("- **标题**: %s\n", article.Title))
 		builder.WriteString(fmt.Sprintf("- **来源**: %s\n", article.Source))
 
@@ -402,10 +405,6 @@ func (l *RSSDailyDigestLogic) buildArticlesContent(articles []*types.RSSDigestAr
 
 		if article.Link != "" {
 			builder.WriteString(fmt.Sprintf("- **链接**: %s\n", article.Link))
-		}
-
-		if article.KnowledgeID != "" {
-			builder.WriteString(fmt.Sprintf("- **Knowledge ID**: %s\n", article.KnowledgeID))
 		}
 
 		builder.WriteString("\n")

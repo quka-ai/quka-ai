@@ -57,7 +57,7 @@ func TestGenSummary(t *testing.T) {
 			item := &types.MessageContext{
 				Role: types.USER_ROLE_USER,
 			}
-			item.MultiContent = v.Attach.ToMultiContent("", core.FileStorage())
+			item.MultiContent = v.Attach.ToMultiContent(v.Message, core.FileStorage())
 			reqMsg = append(reqMsg, item)
 		}
 

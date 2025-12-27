@@ -3,6 +3,7 @@ package sqlstore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -200,6 +201,8 @@ func (s *ChatMessageStore) ListSessionMessage(ctx context.Context, spaceID, sess
 	if err != nil {
 		return nil, ErrorSqlBuild(err)
 	}
+
+	fmt.Println(queryString, args)
 
 	var list []*types.ChatMessage
 	if err = s.GetReplica(ctx).Select(&list, queryString, args...); err != nil {

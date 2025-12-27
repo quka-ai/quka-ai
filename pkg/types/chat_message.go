@@ -33,7 +33,7 @@ type ChatMessageAttach []ChatAttach
 func (s ChatMessageAttach) ToMultiContent(text string, fileReader interface {
 	DownloadFile(ctx context.Context, filePath string) (*s3.GetObjectResult, error)
 }) []openai.ChatMessagePart {
-	return lo.Map(s, func(item ChatAttach, _ int) openai.ChatMessagePart {
+	parts := lo.Map(s, func(item ChatAttach, _ int) openai.ChatMessagePart {
 		var (
 			base64Image string
 			err         error
@@ -78,12 +78,21 @@ func (s ChatMessageAttach) ToMultiContent(text string, fileReader interface {
 		}
 		return openai.ChatMessagePart{
 			Type: openai.ChatMessagePartTypeImageURL,
-			Text: text,
+			Text: "",
 			ImageURL: &openai.ChatMessageImageURL{
 				URL: base64Image,
 			},
 		}
 	})
+
+	if text != "" {
+		parts = append(parts, openai.ChatMessagePart{
+			Type: openai.ChatMessagePartTypeText,
+			Text: text,
+		})
+	}
+
+	return parts
 }
 
 func (s *ChatMessageAttach) String() string {

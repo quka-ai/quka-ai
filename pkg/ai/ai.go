@@ -474,30 +474,6 @@ func BuildRAGPrompt(tpl string, docs Docs, driver Lang) string {
 	return tpl
 }
 
-func BuildPrompt(basePrompt string, lang string) string {
-	sb := strings.Builder{}
-	if basePrompt == "" {
-		switch lang {
-		case MODEL_BASE_LANGUAGE_EN:
-			basePrompt = GENERATE_PROMPT_TPL_NONE_CONTENT_CN + BASE_GENERATE_PROMPT_CN
-		default:
-			basePrompt = GENERATE_PROMPT_TPL_NONE_CONTENT_CN + BASE_GENERATE_PROMPT_CN
-		}
-	} else {
-		sb.WriteString(basePrompt)
-	}
-
-	sb.WriteString(ReplaceVarWithLang(basePrompt, lang))
-	sb.WriteString("\n")
-	switch lang {
-	case MODEL_BASE_LANGUAGE_EN:
-		sb.WriteString(APPEND_PROMPT_EN)
-	default:
-		sb.WriteString(APPEND_PROMPT_CN)
-	}
-	return sb.String()
-}
-
 func ReplaceVarWithLang(tpl, lang string) string {
 	switch lang {
 	case MODEL_BASE_LANGUAGE_CN:

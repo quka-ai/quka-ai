@@ -23,10 +23,31 @@ access_key = "myminioadmin"
 secret_key = "minio-secret-key-change-me"
 use_path_style = true
 
+# Prompt 配置
+# 用于自定义系统中各种场景下使用的 prompt
+# 所有字段都是可选的，为空则使用系统内置的默认 prompt
+[prompt]
+# 全局头部 Prompt（可选）
+# 用于定义项目名称、时间信息、基本约束等
+# 注意：此部分不应由业务逻辑修改
+base = ""
+
+# 聊天总结 Prompt（可选）
+# 用于对用户对话历史进行总结
+chat_summary = ""
+
+# 查询增强 Prompt（可选）
+# 用于从不同角度生成多个检索词，提高检索精度
+enhance_query = ""
+
+# 会话命名 Prompt（可选）
+# 用于根据对话内容生成会话名称
+session_name = ""
+
 [custom_config]
 encrypt_key="aaaaaaaaaaaaaaaa"
 
 [custom_config.chunk_service]
-enabled=true 
+enabled=true
 address="chunker:35051"
 timeout=10

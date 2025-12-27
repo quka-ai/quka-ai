@@ -18,6 +18,11 @@ func GenChatSessionAIRequestKey(sessionID string) string {
 	return fmt.Sprintf("%ssession_ai_request_%s", REDIS_CACHE_KEY_PREFIX, sessionID)
 }
 
+// GenKnowledgeSummaryGlobalSemaphoreKey 全局知识总结信号量 key
+func GenKnowledgeSummaryGlobalSemaphoreKey() string {
+	return fmt.Sprintf("%sknowledge_summary_semaphore", REDIS_CACHE_KEY_PREFIX)
+}
+
 const (
 	RedisCacheKeyNamespaceSep string = ":"
 )
