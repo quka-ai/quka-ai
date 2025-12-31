@@ -2,7 +2,6 @@ package handler
 
 import (
 	"io"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 
@@ -105,29 +104,6 @@ func (s *HttpSrv) ProcessOCRFromURL(c *gin.Context) {
 	response.APISuccess(c, result)
 }
 
-// DownloadFile 下载文件
-func (s *HttpSrv) DownloadFile(c *gin.Context) {
-	fileURL := c.Query("url")
-	if fileURL == "" {
-		response.APIError(c, errors.New("DownloadFile.EmptyURL", "File URL is required", nil))
-		return
-	}
-
-	// 下载文件
-	fileData, contentType, err := utils.DownloadFileFromURLWithContext(c.Request.Context(), fileURL)
-	if err != nil {
-		response.APIError(c, errors.New("DownloadFile.DownloadFile", "Failed to download file", err))
-		return
-	}
-
-	// 设置响应头
-	c.Header("Content-Type", contentType)
-	c.Header("Content-Length", string(rune(len(fileData))))
-
-	// 返回文件数据
-	c.Data(http.StatusOK, contentType, fileData)
-}
-
 // convertOCRResult 转换OCR结果为响应格式
 func convertOCRResult(ocrResult *baidu.OCRProcessResult) OCRResponse {
 	response := OCRResponse{
@@ -136,10 +112,10 @@ func convertOCRResult(ocrResult *baidu.OCRProcessResult) OCRResponse {
 		Images:       ocrResult.Images,
 		Model:        ocrResult.Model,
 	}
-	
+
 	if ocrResult.Usage != nil {
 		response.TokensUsed = ocrResult.Usage.TokensUsed
 	}
-	
+
 	return response
 }
