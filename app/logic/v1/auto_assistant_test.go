@@ -10,6 +10,7 @@ import (
 	"github.com/sashabaranov/go-openai"
 
 	"github.com/quka-ai/quka-ai/app/core"
+	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
@@ -28,23 +29,6 @@ func TestAutoAssistant_Creation(t *testing.T) {
 	}
 
 	t.Log("✅ AutoAssistant creation test passed")
-}
-
-func TestEinoMessageConverter_Creation(t *testing.T) {
-	// 测试消息转换器的创建
-	core := &core.Core{}
-
-	converter := NewEinoMessageConverter(core)
-
-	if converter == nil {
-		t.Fatal("EinoMessageConverter creation failed")
-	}
-
-	if converter.core != core {
-		t.Error("EinoMessageConverter core not set correctly")
-	}
-
-	t.Log("✅ EinoMessageConverter creation test passed")
 }
 
 func TestEinoAgentFactory_Creation(t *testing.T) {
@@ -111,21 +95,19 @@ func TestToolCallPersister_Creation(t *testing.T) {
 
 // TestEinoMessageConverter_ConvertFromChatMessages 测试从数据库消息转换到 eino 消息
 func TestEinoMessageConverter_ConvertFromChatMessages(t *testing.T) {
-	converter := &EinoMessageConverter{core: &core.Core{}}
-
 	// 创建测试用的 ChatMessage
-	testMessages := []types.ChatMessage{
+	testMessages := []*types.MessageContext{
 		{
 			Role:    types.USER_ROLE_USER,
-			Message: "Hello, this is a test message",
+			Content: "Hello, this is a test message",
 		},
 		{
 			Role:    types.USER_ROLE_ASSISTANT,
-			Message: "This is a response from assistant",
+			Content: "This is a response from assistant",
 		},
 	}
 
-	result := converter.ConvertFromChatMessages(testMessages)
+	result := ai.ConvertMessageContextToEinoMessages(testMessages)
 
 	// 验证转换结果
 	if len(result) != 2 {

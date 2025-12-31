@@ -948,23 +948,26 @@ func ConvertMessageContextToEinoMessages(messageContexts []*types.MessageContext
 			})
 		}
 
-		// 处理多媒体内容
+		// 处理多媒体内容 - 方案 B: 将图片 URL 转换为 markdown 格式附加到 Content 中
 		if len(msgCtx.MultiContent) > 0 {
-			einoMsg.MultiContent = make([]schema.ChatMessagePart, len(msgCtx.MultiContent))
-			for i, part := range msgCtx.MultiContent {
-				einoMsg.MultiContent[i] = schema.ChatMessagePart{
-					Type: schema.ChatMessagePartType(part.Type),
-					Text: part.Text,
-				}
-
-				// 转换 ImageURL
-				if part.ImageURL != nil {
-					einoMsg.MultiContent[i].ImageURL = &schema.ChatMessageImageURL{
-						URL:    part.ImageURL.URL,
-						Detail: schema.ImageURLDetail(part.ImageURL.Detail),
+			imageCount := 0
+			for _, part := range msgCtx.MultiContent {
+				// 只处理图片类型，将其转换为 markdown 格式
+				if part.Type == goopenai.ChatMessagePartTypeImageURL && part.ImageURL != nil {
+					if einoMsg.Content != "" {
+						einoMsg.Content += "\n\n"
 					}
+					imageCount++
+					einoMsg.Content += fmt.Sprintf("![图片%d](%s)\n", imageCount, part.ImageURL.URL)
+				} else if part.Type == goopenai.ChatMessagePartTypeText && part.Text != "" {
+					// 文本类型，附加到 Content
+					if einoMsg.Content != "" {
+						einoMsg.Content += "\n"
+					}
+					einoMsg.Content += part.Text
 				}
 			}
+			// 注意：不再设置 MultiContent，因为我们已经将内容转换为 markdown 格式
 		}
 
 		einoMessages = append(einoMessages, einoMsg)

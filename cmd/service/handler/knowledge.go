@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 
-	"github.com/quka-ai/quka-ai/app/core"
 	v1 "github.com/quka-ai/quka-ai/app/logic/v1"
 	"github.com/quka-ai/quka-ai/app/response"
 	"github.com/quka-ai/quka-ai/pkg/types"
@@ -16,10 +15,6 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
-type HttpSrv struct {
-	Core   *core.Core
-	Engine *gin.Engine
-}
 
 type UpdateKnowledgeRequest struct {
 	ID          string                     `json:"id" binding:"required"`

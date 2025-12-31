@@ -24,6 +24,7 @@ type AIUsageRequest struct {
 	Rerank       string `json:"rerank,omitempty"`
 	Reader       string `json:"reader,omitempty"`
 	Enhance      string `json:"enhance,omitempty"`
+	OCR          string `json:"ocr,omitempty"`
 }
 
 // ReloadAIConfig 重新加载AI配置
@@ -173,6 +174,18 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 		})
 	}
 
+	if req.OCR != "" {
+		configs = append(configs, types.CustomConfig{
+			Name:        types.AI_USAGE_OCR,
+			Category:    types.AI_USAGE_CATEGORY,
+			Value:       json.RawMessage(`"` + req.OCR + `"`),
+			Description: types.AI_USAGE_OCR_DESC,
+			Status:      types.StatusEnabled,
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
+		})
+	}
+
 	// 批量保存配置（使用事务保证原子性）
 	if err := customLogic.BatchUpsertCustomConfigs(configs); err != nil {
 		response.APIError(c, errors.New("UpdateAIUsage.BatchSaveConfig", i18n.ERROR_INTERNAL, err))
@@ -225,6 +238,8 @@ func (s *HttpSrv) GetAIUsage(c *gin.Context) {
 			usage["reader"] = modelID
 		case types.AI_USAGE_ENHANCE:
 			usage["enhance"] = modelID
+		case types.AI_USAGE_OCR:
+			usage["ocr"] = modelID
 		}
 	}
 

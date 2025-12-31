@@ -248,7 +248,7 @@ func (l *ModelProviderLogic) DeleteProvider(id string) error {
 }
 
 // ListProviders 列出模型提供商
-func (l *ModelProviderLogic) ListProviders(name string, status *int, isReader *bool) ([]types.ModelProvider, error) {
+func (l *ModelProviderLogic) ListProviders(name string, status *int, isReader *bool, isOCR *bool) ([]types.ModelProvider, error) {
 	opts := types.ListModelProviderOptions{
 		Name:   name,
 		Status: status,
@@ -259,17 +259,26 @@ func (l *ModelProviderLogic) ListProviders(name string, status *int, isReader *b
 		return nil, errors.New("ModelProviderLogic.ListProviders.List", i18n.ERROR_INTERNAL, err)
 	}
 
-	// 根据is_reader过滤提供商
-	if isReader != nil {
+	// 根据is_reader和is_ocr过滤提供商
+	if isReader != nil || isOCR != nil {
 		filteredProviders := make([]types.ModelProvider, 0)
 		for _, provider := range providers {
 			var config types.ModelProviderConfig
 			if err := json.Unmarshal(provider.Config, &config); err != nil {
 				continue // 如果配置解析失败，跳过
 			}
-			if config.IsReader == *isReader {
-				filteredProviders = append(filteredProviders, provider)
+			
+			// 检查reader过滤条件
+			if isReader != nil && config.IsReader != *isReader {
+				continue
 			}
+			
+			// 检查OCR过滤条件
+			if isOCR != nil && config.IsOCR != *isOCR {
+				continue
+			}
+			
+			filteredProviders = append(filteredProviders, provider)
 		}
 		providers = filteredProviders
 	}
@@ -283,10 +292,10 @@ func (l *ModelProviderLogic) ListProviders(name string, status *int, isReader *b
 }
 
 // GetProviderTotal 获取提供商总数
-func (l *ModelProviderLogic) GetProviderTotal(name string, status *int, isReader *bool) (int64, error) {
-	// 如果需要按Reader功能筛选，我们需要获取所有数据然后过滤
-	if isReader != nil {
-		providers, err := l.ListProviders(name, status, isReader)
+func (l *ModelProviderLogic) GetProviderTotal(name string, status *int, isReader *bool, isOCR *bool) (int64, error) {
+	// 如果需要按Reader或OCR功能筛选，我们需要获取所有数据然后过滤
+	if isReader != nil || isOCR != nil {
+		providers, err := l.ListProviders(name, status, isReader, isOCR)
 		if err != nil {
 			return 0, err
 		}

@@ -358,6 +358,9 @@ func (s *Core) loadAIUsageFromDB(ctx context.Context) (srv.Usage, error) {
 		case types.AI_USAGE_READER:
 			// Reader配置存储的是provider_id，不是model_id
 			usage.Reader = modelID
+		case types.AI_USAGE_OCR:
+			// OCR配置存储的是provider_id，不是model_id
+			usage.OCR = modelID
 		}
 	}
 
