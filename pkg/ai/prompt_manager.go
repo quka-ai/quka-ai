@@ -346,7 +346,7 @@ func (pm *PromptManager) GetRAGToolResponseTemplate(lang string, docs []*types.P
 	template.SetVar(PROMPT_VAR_RELEVANT_PASSAGE, d)
 
 	// 设置知识数量变量
-	template.SetVar("knowledge_count", strconv.Itoa(len(docs)))
+	template.SetVar("${knowledge_count}", strconv.Itoa(len(docs)))
 
 	return template
 }

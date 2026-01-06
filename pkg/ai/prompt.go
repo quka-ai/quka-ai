@@ -197,8 +197,8 @@ ${relevant_passage}
 ---
 
 **回答要求**:
-- 基于以上检索内容组织答案
-- 在答案中标注参考的知识ID（格式：参考：[知识ID]）
+- 基于以上检索内容组织回答
+- 在回答中标注参考的内容（格式：[${标题}(${时间})](#knowledge-${ID})）
 - 如果包含图片、视频等多媒体内容，一并展示给用户
 - 使用清晰的结构组织回答内容
 - 如果检索内容与用户问题不完全匹配，说明差异并尽可能回答
@@ -222,7 +222,7 @@ ${relevant_passage}
 
 **Answer Requirements**:
 - Organize answer based on the retrieved content above
-- Cite referenced knowledge IDs in the answer (format: Reference: [Knowledge ID])
+- Cite referenced knowledge IDs in the answer (format: Reference: [${Title}(${Time})](#knowledge-${ID}))
 - If multimedia content (images, videos, etc.) is included, present it to the user
 - Use clear structure to organize the answer
 - If retrieved content doesn't perfectly match the user's question, explain the differences and answer as best as possible
@@ -368,7 +368,6 @@ const BASE_GENERATE_PROMPT_CN = `
   - SearchUserKnowledges查询无相关结果时
   - 询问一般性知识、最新资讯、公开信息时
   - 需要获取实时或最新信息时
-  - **注意：不要用WebSearch查询任何私密信息**
 
   **优先级3 - 直接回答：**
   - 基础常识性问题

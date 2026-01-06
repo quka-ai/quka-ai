@@ -11,6 +11,7 @@ import (
 
 	"github.com/quka-ai/quka-ai/app/core"
 	"github.com/quka-ai/quka-ai/app/logic/v1/process"
+	"github.com/quka-ai/quka-ai/pkg/mark"
 	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
@@ -42,7 +43,7 @@ const (
 // RagTool 基于 eino 框架的 RAG 工具
 type RagTool struct {
 	core            *core.Core
-	receiver        types.Receiver
+	variableHandler mark.VariableHandler
 	spaceID         string
 	userID          string
 	sessionID       string
@@ -51,10 +52,10 @@ type RagTool struct {
 }
 
 // NewRagTool 创建新的 RAG 工具实例
-func NewRagTool(core *core.Core, receiver types.Receiver, spaceID, userID, sessionID, messageID string, messageSequence int64) *RagTool {
+func NewRagTool(core *core.Core, variableHandler mark.VariableHandler, spaceID, userID, sessionID, messageID string, messageSequence int64) *RagTool {
 	return &RagTool{
 		core:            core,
-		receiver:        receiver,
+		variableHandler: variableHandler,
 		spaceID:         spaceID,
 		userID:          userID,
 		sessionID:       sessionID,
@@ -165,9 +166,6 @@ func (r *RagTool) Handler(ctx context.Context, query string) (*RagToolHandlerRes
 	lang := r.core.Srv().AI().Lang()
 	ragToolResponseTemplate := r.core.PromptManager().GetRAGToolResponseTemplate(lang, docs.Docs)
 	ragToolResponse := ragToolResponseTemplate.Build()
-	if r.receiver != nil {
-		ragToolResponse = r.receiver.VariableHandler().Do(ragToolResponse)
-	}
 
 	return &RagToolHandlerResult{
 		EnhanceQuery: enhanceResult.ResultQuery(),

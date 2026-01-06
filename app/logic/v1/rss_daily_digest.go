@@ -250,7 +250,7 @@ func (l *RSSDailyDigestLogic) buildChineseDigestPrompt(articles []*types.RSSDige
    - 主题名称（简洁、准确，使用 🏷️ emoji）
    - 主题概述（50-100字，综合该主题下所有文章的核心观点）
    - 相关文章列表（每篇文章需包含）：
-     * 文章标题作为链接，格式为：[标题](#article-KnowledgeID)
+     * 文章标题作为链接，格式为：[标题](#knowledge-KnowledgeID)
      * 一句话总结（20-30字）
      * 关键词标签（使用反引号包裹）
 
@@ -278,7 +278,7 @@ func (l *RSSDailyDigestLogic) buildChineseDigestPrompt(articles []*types.RSSDige
 
 空一行
 
-文章列表：- **[文章标题](#article-KnowledgeID)** - 一句话总结
+文章列表：- **[文章标题](#knowledge-KnowledgeID)** - 一句话总结
   标签：反引号关键词1反引号 反引号关键词2反引号
 
 空一行
@@ -295,7 +295,7 @@ func (l *RSSDailyDigestLogic) buildChineseDigestPrompt(articles []*types.RSSDige
 - 不要遗漏任何文章
 - 确保每篇文章都被归类到某个主题下
 - 主题分类要合理，避免过于细碎或过于笼统
-- 文章链接格式必须是 #article-ID（ID 是纯数字）
+- 文章链接格式必须是 #knowledge-KnowledgeID（KnowledgeID 是纯数字）
 - 保持客观中立，不添加个人评价
 - 关键词标签使用反引号包裹
 
@@ -329,7 +329,7 @@ Generate a daily RSS digest report for %s. The user received %d article updates 
    - Topic name (concise and accurate, with 🏷️ emoji)
    - Topic overview (50-100 words, synthesizing key points from all articles in this topic)
    - Related articles list (for each article):
-     * Article title as link: [Title](#article-KnowledgeID)
+     * Article title as link: [Title](#knowledge-KnowledgeID)
      * One-sentence summary (15-25 words)
      * Keyword tags (wrapped in backticks)
 
@@ -357,7 +357,7 @@ Blank line
 
 Blank line
 
-Article entry: - **[Article Title](#article-ID)** - One-sentence summary
+Article entry: - **[Article Title](#knowledge-KnowledgeID)** - One-sentence summary
   Tags: backtick-keyword1-backtick backtick-keyword2-backtick
 
 Blank line
@@ -374,7 +374,7 @@ Blank line
 - Don't miss any articles
 - Ensure every article is categorized under a topic
 - Topic classification should be reasonable, avoiding over-fragmentation or over-generalization
-- Article link format must be #article-KnowledgeID (ID is numeric only)
+- Article link format must be #knowledge-KnowledgeID (ID is numeric only)
 - Maintain objectivity and neutrality, no personal opinions
 - Wrap keyword tags in backticks
 

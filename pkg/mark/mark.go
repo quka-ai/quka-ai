@@ -13,8 +13,7 @@ type VariableHandler interface {
 }
 
 type sensitiveWorker struct {
-	contents []string
-	index    map[string]string
+	index map[string]string
 }
 
 var (
@@ -41,10 +40,11 @@ func (s *sensitiveWorker) Do(text string) string {
 		if match[1] == "..." {
 			continue
 		}
-		s.contents = append(s.contents, match[0])
 		n := strings.ReplaceAll(match[0], match[1], utils.RandomStr(10))
 		o := match[0]
-		s.index[n] = o
+		if s.index[n] == "" {
+			s.index[n] = o
+		}
 
 		text = strings.Replace(text, o, n, 1)
 	}

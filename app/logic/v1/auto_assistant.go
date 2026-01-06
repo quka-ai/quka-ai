@@ -39,6 +39,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai/tools/reader"
 	"github.com/quka-ai/quka-ai/pkg/ai/tools/vision"
 	"github.com/quka-ai/quka-ai/pkg/errors"
+	"github.com/quka-ai/quka-ai/pkg/mark"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
@@ -690,7 +691,11 @@ func (o *WithRAG) Apply(config *AgentConfig) error {
 		return nil
 	}
 
-	ragTool := rag.NewRagTool(config.Core, config.AgentCtx.Receiver, config.AgentCtx.SpaceID, config.AgentCtx.UserID, config.AgentCtx.SessionID, config.AgentCtx.MessageID, config.AgentCtx.MessageSequence)
+	var variableHandler mark.VariableHandler
+	if config.AgentCtx.Receiver != nil {
+		variableHandler = config.AgentCtx.Receiver.VariableHandler()
+	}
+	ragTool := rag.NewRagTool(config.Core, variableHandler, config.AgentCtx.SpaceID, config.AgentCtx.UserID, config.AgentCtx.SessionID, config.AgentCtx.MessageID, config.AgentCtx.MessageSequence)
 	notifyingRagTool := config.ToolWrapper.Wrap(ragTool)
 	config.Tools = append(config.Tools, notifyingRagTool)
 	return nil
@@ -1020,7 +1025,9 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 			return ctx.Err()
 		case <-ticker.C:
 			ticker.Reset(time.Millisecond * 300)
-			flushResponse()
+			if !maybeMarks {
+				flushResponse()
+			}
 		default:
 		}
 

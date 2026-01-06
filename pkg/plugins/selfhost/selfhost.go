@@ -316,6 +316,7 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 
 		docs = append(docs, &types.PassageInfo{
 			ID:       v.ID,
+			Title:    v.Title,
 			Content:  content,
 			DateTime: v.MaybeDate,
 			Resource: lo.If(resourceTitle[v.Resource] != "", resourceTitle[v.Resource]).Else(v.Resource),

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS quka_knowledge (
     content TEXT NOT NULL,
     content_type VARCHAR(30) NOT NULL,
     summary TEXT NOT NULL,
-    maybe_date VARCHAR(20) NOT NULL,
+    maybe_date VARCHAR(100) NOT NULL,
     retry_times SMALLINT NOT NULL DEFAULT 0,
     rel_doc_id VARCHAR(32) NOT NULL DEFAULT '',
     source VARCHAR(50) NOT NULL DEFAULT '',

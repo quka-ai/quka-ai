@@ -153,6 +153,7 @@ type RAGDocs struct {
 
 type PassageInfo struct {
 	ID       string `json:"id"`
+	Title    string `json:"title"`
 	Content  string `json:"content"`
 	Resource string `json:"resource"`
 	DateTime string `json:"date_time"`

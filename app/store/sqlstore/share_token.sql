@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS quka_share_token (
     expire_at BIGINT NOT NULL,      -- 过期时间戳，单位为秒
     created_at BIGINT NOT NULL,     -- 创建时间戳，单位为秒
     CONSTRAINT unique_token UNIQUE (token),            -- 确保 token 唯一
-    CONSTRAINT unique_object_id_type UNIQUE (object_id, type) -- 确保 object_id 和 type 的组合唯一
+    CONSTRAINT unique_space_id_object_id_type UNIQUE (space_id, object_id, type) -- 确保 space_id, object_id 和 type 的组合唯一
 );
 
 -- 为每个字段添加注释

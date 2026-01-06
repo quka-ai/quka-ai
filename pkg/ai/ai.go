@@ -506,10 +506,10 @@ type docs struct {
 
 func (d *docs) ConvertPassageToPromptText(lang string) string {
 	switch lang {
-	case MODEL_BASE_LANGUAGE_CN:
-		return convertPassageToPromptTextCN(d.docs)
-	default:
+	case MODEL_BASE_LANGUAGE_EN:
 		return convertPassageToPromptTextEN(d.docs)
+	default:
+		return convertPassageToPromptTextCN(d.docs)
 	}
 }
 
@@ -528,12 +528,17 @@ func convertPassageToPromptTextCN(docs []*types.PassageInfo) string {
 		if i != 0 {
 			s.WriteString("------\n")
 		}
-		s.WriteString("这件事发生在：")
+		s.WriteString("时间：")
 		s.WriteString(v.DateTime)
 		s.WriteString("\n")
 		if v.ID != "" {
 			s.WriteString("ID：")
 			s.WriteString(v.ID)
+			s.WriteString("\n")
+		}
+		if v.Title != "" {
+			s.WriteString("标题：")
+			s.WriteString(v.Title)
 			s.WriteString("\n")
 		}
 		if v.Resource != "" {
@@ -555,15 +560,20 @@ func convertPassageToPromptTextEN(docs []*types.PassageInfo) string {
 		if i != 0 {
 			s.WriteString("------\n")
 		}
-		s.WriteString("Event Time：")
+		s.WriteString("Time: ")
 		s.WriteString(v.DateTime)
 		s.WriteString("\n")
-		s.WriteString("ID：")
+		s.WriteString("ID: ")
 		s.WriteString(v.ID)
 		s.WriteString("\n")
-		s.WriteString("Resource Kind：")
+		if v.Title != "" {
+			s.WriteString("Title: ")
+			s.WriteString(v.Title)
+			s.WriteString("\n")
+		}
+		s.WriteString("ResourceKind: ")
 		s.WriteString(v.Resource)
-		s.WriteString("\nContent：")
+		s.WriteString("\nContent: ")
 		s.WriteString(v.Content)
 		s.WriteString("\n")
 	}

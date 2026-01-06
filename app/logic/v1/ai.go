@@ -669,10 +669,10 @@ func (s *JournalAssistant) RequestAssistant(ctx context.Context, reqMsg *types.C
 	journalTemplate := s.core.PromptManager().GetJournalTemplate(lang)
 
 	// 添加 Journal 特定内容到 Body
-	if lang == ai.MODEL_BASE_LANGUAGE_CN {
-		journalTemplate.AppendBody(journal.JOURNAL_PROMPT_CN)
-	} else {
+	if lang == ai.MODEL_BASE_LANGUAGE_EN {
 		journalTemplate.AppendBody(journal.JOURNAL_PROMPT_EN)
+	} else {
+		journalTemplate.AppendBody(journal.JOURNAL_PROMPT_CN)
 	}
 
 	prompt := journalTemplate.Build()

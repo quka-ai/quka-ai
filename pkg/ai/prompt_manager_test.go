@@ -550,7 +550,7 @@ func TestPromptManager_GetRAGToolResponseTemplate(t *testing.T) {
 			}
 
 			// Verify variables can be set
-			template.SetVar("knowledge_count", "5")
+			template.SetVar("${knowledge_count}", "5")
 			template.SetVar("relevant_passage", "test content")
 			built = template.Build()
 
