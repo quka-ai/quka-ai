@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 
 	"github.com/quka-ai/quka-ai/pkg/object-storage/s3"
 	"github.com/quka-ai/quka-ai/pkg/utils"
@@ -32,58 +31,87 @@ type ChatMessageAttach []ChatAttach
 
 func (s ChatMessageAttach) ToMultiContent(text string, fileReader interface {
 	DownloadFile(ctx context.Context, filePath string) (*s3.GetObjectResult, error)
+	GetStaticDomain() string
+	GenGetObjectPreSignURL(url string) (string, error)
 }) []openai.ChatMessagePart {
-	return lo.Map(s, func(item ChatAttach, _ int) openai.ChatMessagePart {
-		var (
-			base64Image string
-			err         error
-		)
+	// 增加了 ocr 和 vl tools，不再需要把图片转成 base64 传给模型，而是由模型决定使用哪个工具来处理图像(PDF)
+	parts := lo.Map(s, func(item ChatAttach, _ int) openai.ChatMessagePart {
 		if item.SignURL != "" {
-			base64Image, err = utils.FileToBase64(lo.If(item.SignURL != "", item.SignURL).Else(item.URL))
+			return openai.ChatMessagePart{
+				Type: openai.ChatMessagePartTypeImageURL,
+				Text: "",
+				ImageURL: &openai.ChatMessageImageURL{
+					URL: item.SignURL,
+				},
+			}
+			// base64Image, err = utils.FileToBase64(lo.If(item.SignURL != "", item.SignURL).Else(item.URL))
+			// if err != nil {
+			// 	slog.Error("Failed to convert file to base64", "error", err, "file", lo.If(item.SignURL != "", item.SignURL).Else(item.URL))
+			// 	return openai.ChatMessagePart{
+			// 		Type: openai.ChatMessagePartTypeText,
+			// 		Text: fmt.Sprintf("Failed to download file: %s", item.URL),
+			// 	}
+			// }
+		} else {
+			signURL, err := fileReader.GenGetObjectPreSignURL(item.URL)
 			if err != nil {
-				slog.Error("Failed to convert file to base64", "error", err, "file", lo.If(item.SignURL != "", item.SignURL).Else(item.URL))
 				return openai.ChatMessagePart{
 					Type: openai.ChatMessagePartTypeText,
-					Text: fmt.Sprintf("Failed to download file: %s", item.URL),
+					Text: fmt.Sprintf("Failed to generate presigned URL: %s", err.Error()),
 				}
 			}
-		} else {
-			if fileReader != nil {
-				res, err := fileReader.DownloadFile(context.Background(), item.URL)
-				if err != nil {
-					slog.Error("Failed to download file", "error", err, "file", item.URL)
-					return openai.ChatMessagePart{
-						Type: openai.ChatMessagePartTypeText,
-						Text: fmt.Sprintf("Failed to download file: %s", item.URL),
-					}
-				}
+			return openai.ChatMessagePart{
+				Type: openai.ChatMessagePartTypeImageURL,
+				Text: "",
+				ImageURL: &openai.ChatMessageImageURL{
+					URL: signURL,
+				},
+			}
+			// if fileReader != nil {
+			// 	res, err := fileReader.DownloadFile(context.Background(), item.URL)
+			// 	if err != nil {
+			// 		slog.Error("Failed to download file", "error", err, "file", item.URL)
+			// 		return openai.ChatMessagePart{
+			// 			Type: openai.ChatMessagePartTypeText,
+			// 			Text: fmt.Sprintf("Failed to download file: %s", item.URL),
+			// 		}
+			// 	}
 
-				if base64Image, err = utils.FileBytesToBase64(res.File, res.FileType); err != nil {
-					slog.Error("Failed to convert file bytes to base64", "error", err, "file", item.URL)
-					return openai.ChatMessagePart{
-						Type: openai.ChatMessagePartTypeText,
-						Text: fmt.Sprintf("Failed to convert file bytes to base64: %s", item.URL),
-					}
-				}
-			} else {
-				base64Image, err = utils.FileToBase64(item.URL)
-				if err != nil {
-					slog.Error("Failed to convert file to base64", "error", err, "file", item.URL)
-					return openai.ChatMessagePart{
-						Type: openai.ChatMessagePartTypeText,
-						Text: fmt.Sprintf("Failed to convert file to base64: %s", item.URL),
-					}
-				}
-			}
+			// 	if base64Image, err = utils.FileBytesToBase64(res.File, res.FileType); err != nil {
+			// 		slog.Error("Failed to convert file bytes to base64", "error", err, "file", item.URL)
+			// 		return openai.ChatMessagePart{
+			// 			Type: openai.ChatMessagePartTypeText,
+			// 			Text: fmt.Sprintf("Failed to convert file bytes to base64: %s", item.URL),
+			// 		}
+			// 	}
+			// } else {
+			// 	base64Image, err = utils.FileToBase64(item.URL)
+			// 	if err != nil {
+			// 		slog.Error("Failed to convert file to base64", "error", err, "file", item.URL)
+			// 		return openai.ChatMessagePart{
+			// 			Type: openai.ChatMessagePartTypeText,
+			// 			Text: fmt.Sprintf("Failed to convert file to base64: %s", item.URL),
+			// 		}
+			// 	}
+			// }
 		}
-		return openai.ChatMessagePart{
-			Type: openai.ChatMessagePartTypeImageURL,
-			Text: text,
-			ImageURL: &openai.ChatMessageImageURL{
-				URL: base64Image,
-			},
-		}
+		// return openai.ChatMessagePart{
+		// 	Type: openai.ChatMessagePartTypeImageURL,
+		// 	Text: "",
+		// 	ImageURL: &openai.ChatMessageImageURL{
+		// 		URL: base64Image,
+		// 	},
+		// }
 	})
+
+	if text != "" {
+		parts = append(parts, openai.ChatMessagePart{
+			Type: openai.ChatMessagePartTypeText,
+			Text: text,
+		})
+	}
+
+	return parts
 }
 
 func (s *ChatMessageAttach) String() string {
@@ -125,6 +153,7 @@ type RAGDocs struct {
 
 type PassageInfo struct {
 	ID       string `json:"id"`
+	Title    string `json:"title"`
 	Content  string `json:"content"`
 	Resource string `json:"resource"`
 	DateTime string `json:"date_time"`

@@ -143,16 +143,15 @@ func (l *HistoryLogic) GetHistoryMessage(spaceID, sessionID string, afterMsgSequ
 			}
 		}
 
-		if len(item.Attach) > 0 {
-			for i := range item.Attach {
-				preSignURL, err := l.core.FileStorage().GenGetObjectPreSignURL(item.Attach[i].URL)
-				if err != nil {
-					slog.Error("Failed to generate pre-signed URL for attachment", slog.String("message_id", item.ID), slog.String("error", err.Error()))
-				} else {
-					item.Attach[i].URL = preSignURL
-				}
+		for i := range item.Attach {
+			preSignURL, err := l.core.FileStorage().GenGetObjectPreSignURL(item.Attach[i].URL)
+			if err != nil {
+				slog.Error("Failed to generate pre-signed URL for attachment", slog.String("message_id", item.ID), slog.String("error", err.Error()))
+			} else {
+				item.Attach[i].URL = preSignURL
 			}
 		}
+
 		return chatMsgAndExtToMessageDetail(item, ext)
 	})
 

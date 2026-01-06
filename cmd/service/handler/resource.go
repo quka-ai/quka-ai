@@ -36,7 +36,9 @@ func (s *HttpSrv) CreateResource(c *gin.Context) {
 	if req.ID == "" {
 		req.ID = utils.GenUniqIDStr()
 	}
-	err = v1.NewResourceLogic(c, s.Core).CreateResource(spaceID, req.ID, req.Title, req.Description, req.Tag, cycle)
+
+	userInfo, _ := v1.InjectTokenClaim(c)
+	err = v1.NewResourceLogic(c, s.Core).CreateResource(spaceID, userInfo.User, req.ID, req.Title, req.Description, req.Tag, cycle)
 	if err != nil {
 		response.APIError(c, err)
 		return
@@ -146,7 +148,8 @@ func (s *HttpSrv) ListUserResources(c *gin.Context) {
 		return
 	}
 
-	list, err := v1.NewResourceLogic(c, s.Core).ListUserResources(req.Page, req.Pagesize)
+	userInfo, _ := v1.InjectTokenClaim(c)
+	list, err := v1.NewResourceLogic(c, s.Core).ListUserResources(userInfo.User, req.Page, req.Pagesize)
 	if err != nil {
 		response.APIError(c, err)
 		return

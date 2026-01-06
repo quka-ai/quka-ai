@@ -139,6 +139,13 @@ func setupHttpRouter(s *handler.HttpSrv) {
 		authed := apiV1.Group("")
 		authed.Use(middleware.Authorization(s.Core))
 
+		// OCR 路由，暂不开放，需要考虑限流和用量统计
+		// ocr := authed.Group("/ocr")
+		// {
+		// 	ocr.POST("/file", aiLimit("ocr"), s.ProcessOCRFromFile)
+		// 	ocr.POST("/url", aiLimit("ocr"), s.ProcessOCRFromURL)
+		// }
+
 		spaceShare := authed.Group("/space/landing/:token")
 		{
 			spaceShare.GET("", s.GetSpaceApplicationLandingDetail)

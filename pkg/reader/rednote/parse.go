@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/davidscottmills/goeditorjs"
 	"github.com/lib/pq"
@@ -38,7 +35,7 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 	images := make(map[string]*FileWithContentType)
 	for _, v := range detail.Images {
 		// 下载图片
-		imageData, contentType, err := DownloadFile(v)
+		imageData, contentType, err := utils.DownloadFileFromURLWithContext(ctx, v)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to download rednote images, %w", err)
 		}
@@ -69,8 +66,8 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 
 	videos := make(map[string]*FileWithContentType)
 	for _, v := range detail.Videos {
-		// 下载图片
-		data, contentType, err := DownloadFile(v)
+		// 下载视频
+		data, contentType, err := utils.DownloadFileFromURLWithContext(ctx, v)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to download rednote videos, %w", err)
 		}
@@ -134,23 +131,4 @@ func ParseRedNote(ctx context.Context, spaceID string, detail *NoteDetail, objec
 		ContentType: types.KNOWLEDGE_CONTENT_TYPE_BLOCKS,
 	}
 	return result, nil
-}
-
-var downloader = &http.Client{
-	Timeout: time.Minute,
-}
-
-func DownloadFile(url string) ([]byte, string, error) {
-	resp, err := downloader.Get(url)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", err
-	}
-	return body, resp.Header.Get("content-type"), nil
 }

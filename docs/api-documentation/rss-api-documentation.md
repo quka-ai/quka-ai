@@ -15,6 +15,7 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 ## 通用响应格式
 
 ### 成功响应
+
 ```json
 {
   "meta": {
@@ -27,6 +28,7 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 ```
 
 ### 错误响应
+
 ```json
 {
   "meta": {
@@ -49,18 +51,20 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 **权限**: `PermissionEdit`
 
 **请求参数**:
+
 ```json
 {
-  "resource_id": "string (必填)",      // Resource ID
-  "url": "string (必填)",              // RSS Feed URL
-  "title": "string (可选)",           // 订阅标题，不填则使用 Feed 自带标题
-  "description": "string (可选)",     // 订阅描述，不填则使用 Feed 自带描述
-  "category": "string (可选)",        // 分类标签
+  "resource_id": "string (必填)", // Resource ID
+  "url": "string (必填)", // RSS Feed URL
+  "title": "string (可选)", // 订阅标题，不填则使用 Feed 自带标题
+  "description": "string (可选)", // 订阅描述，不填则使用 Feed 自带描述
+  "category": "string (可选)", // 分类标签
   "update_frequency": "number (可选)" // 更新频率（秒），默认 3600（1小时）
 }
 ```
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -87,6 +91,7 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 ```
 
 **错误情况**:
+
 - `400`: URL 无效或订阅已存在
 - `403`: 没有编辑权限
 - `404`: Resource 不存在
@@ -102,6 +107,7 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 **请求参数**: 无
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -130,6 +136,7 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 ```
 
 **说明**:
+
 - 返回当前用户在指定 Space 下的所有订阅
 - 如果没有订阅，返回空数组
 
@@ -142,9 +149,11 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 **权限**: `PermissionView`
 
 **路径参数**:
+
 - `id`: 订阅 ID
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -171,6 +180,7 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 ```
 
 **错误情况**:
+
 - `403`: 没有查看权限
 - `404`: 订阅不存在
 
@@ -183,20 +193,23 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 **权限**: `PermissionEdit`
 
 **路径参数**:
+
 - `id`: 订阅 ID
 
 **请求参数** (所有字段可选，只更新提供的字段):
+
 ```json
 {
   "title": "string (可选)",
   "description": "string (可选)",
   "category": "string (可选)",
   "update_frequency": "number (可选)",
-  "enabled": "boolean (可选)"  // 启用/禁用订阅
+  "enabled": "boolean (可选)" // 启用/禁用订阅
 }
 ```
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -209,6 +222,7 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 ```
 
 **错误情况**:
+
 - `403`: 没有编辑权限或不是订阅所有者
 - `404`: 订阅不存在
 
@@ -221,9 +235,11 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 **权限**: `PermissionEdit`
 
 **路径参数**:
+
 - `id`: 订阅 ID
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -236,10 +252,12 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 ```
 
 **说明**:
+
 - 删除订阅不会删除已生成的 Knowledge 记录
 - 已抓取的文章会保留在数据库中
 
 **错误情况**:
+
 - `403`: 没有编辑权限或不是订阅所有者
 - `404`: 订阅不存在
 
@@ -252,11 +270,13 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 **权限**: `PermissionEdit`
 
 **路径参数**:
+
 - `id`: 订阅 ID
 
 **请求参数**: 无
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -271,10 +291,12 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 ```
 
 **说明**:
+
 - 立即将抓取任务加入队列，无需等待定时任务
 - 适用于用户想要立即查看新文章的场景
 
 **错误情况**:
+
 - `403`: 没有编辑权限或不是订阅所有者
 - `404`: 订阅不存在
 
@@ -289,11 +311,13 @@ QukaAI 的 RSS 功能支持用户订阅 RSS 源、自动抓取文章、AI 生成
 **权限**: `PermissionView`
 
 **请求参数** (Query String):
+
 ```
 date: string (可选)  // 日期格式：2006-01-02，不填则默认为前一天
 ```
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -314,12 +338,14 @@ date: string (可选)  // 日期格式：2006-01-02，不填则默认为前一�
 ```
 
 **说明**:
+
 - 如果指定日期的摘要已存在，直接返回
 - 如果不存在，自动调用 AI 生成并保存
 - 如果当天没有文章，返回空摘要提示
-- content 为 Markdown 格式，包含文章链接（格式：`#article-文章ID`）
+- content 为 Markdown 格式，包含文章链接（格式：`#knowledge-文章ID`）
 
 **错误情况**:
+
 - `400`: 日期格式错误
 - `403`: 没有查看权限
 
@@ -332,13 +358,15 @@ date: string (可选)  // 日期格式：2006-01-02，不填则默认为前一�
 **权限**: `PermissionEdit`
 
 **请求参数**:
+
 ```json
 {
-  "date": "string (可选)"  // 日期格式：2006-01-02，不填则默认为前一天
+  "date": "string (可选)" // 日期格式：2006-01-02，不填则默认为前一天
 }
 ```
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -359,12 +387,14 @@ date: string (可选)  // 日期格式：2006-01-02，不填则默认为前一�
 ```
 
 **说明**:
+
 - 返回完整的摘要内容（包含 Markdown 格式的 content 字段）
 - 如果指定日期的摘要已存在，直接返回已有摘要（不会重新生成）
 - 主动生成场景，适合用户主动请求生成历史摘要
 - 如果文章数量为 0，不会创建数据库记录
 
 **错误情况**:
+
 - `400`: 日期格式错误
 - `403`: 没有编辑权限
 
@@ -377,6 +407,7 @@ date: string (可选)  // 日期格式：2006-01-02，不填则默认为前一�
 **权限**: `PermissionView`
 
 **请求参数** (Query String):
+
 ```
 start_date: string (可选)  // 开始日期，格式：2006-01-02
 end_date: string (可选)    // 结束日期，格式：2006-01-02
@@ -384,6 +415,7 @@ limit: number (可选)       // 返回条数，默认 30
 ```
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -411,12 +443,14 @@ limit: number (可选)       // 返回条数，默认 30
 ```
 
 **说明**:
+
 - 按日期倒序返回（最新的在前）
 - 如果指定日期范围，返回该范围内的摘要
 - 如果不指定日期范围，返回最近的 N 条摘要（N 为 limit 参数）
 - 不包含摘要内容，仅元数据
 
 **错误情况**:
+
 - `403`: 没有查看权限
 
 ---
@@ -428,9 +462,11 @@ limit: number (可选)       // 返回条数，默认 30
 **权限**: `PermissionView`
 
 **路径参数**:
+
 - `id`: 摘要 ID
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -451,10 +487,12 @@ limit: number (可选)       // 返回条数，默认 30
 ```
 
 **说明**:
+
 - 包含完整的摘要内容（Markdown 格式）
 - 适用于查看历史摘要详情
 
 **错误情况**:
+
 - `403`: 没有查看权限
 - `404`: 摘要不存在
 
@@ -467,9 +505,11 @@ limit: number (可选)       // 返回条数，默认 30
 **权限**: `PermissionEdit`
 
 **路径参数**:
+
 - `id`: 摘要 ID
 
 **响应示例**:
+
 ```json
 {
   "meta": {
@@ -482,10 +522,12 @@ limit: number (可选)       // 返回条数，默认 30
 ```
 
 **说明**:
+
 - 只删除摘要记录，不影响原始文章
 - 删除后可重新生成
 
 **错误情况**:
+
 - `403`: 没有编辑权限
 - `404`: 摘要不存在
 
@@ -494,44 +536,47 @@ limit: number (可选)       // 返回条数，默认 30
 ## 数据模型说明
 
 ### RSSSubscription (订阅)
+
 ```typescript
 interface RSSSubscription {
-  id: number;                // 订阅 ID
-  user_id: string;           // 用户 ID
-  space_id: string;          // Space ID
-  resource_id: string;       // Resource ID
-  url: string;               // RSS Feed URL
-  title: string;             // 订阅标题
-  description: string;       // 订阅描述
-  category: string;          // 分类标签
-  update_frequency: number;  // 更新频率（秒）
-  last_fetched_at: number;   // 上次抓取时间戳（Unix 时间戳）
-  enabled: boolean;          // 是否启用
-  created_at: number;        // 创建时间戳
-  updated_at: number;        // 更新时间戳
+  id: number; // 订阅 ID
+  user_id: string; // 用户 ID
+  space_id: string; // Space ID
+  resource_id: string; // Resource ID
+  url: string; // RSS Feed URL
+  title: string; // 订阅标题
+  description: string; // 订阅描述
+  category: string; // 分类标签
+  update_frequency: number; // 更新频率（秒）
+  last_fetched_at: number; // 上次抓取时间戳（Unix 时间戳）
+  enabled: boolean; // 是否启用
+  created_at: number; // 创建时间戳
+  updated_at: number; // 更新时间戳
 }
 ```
 
 ### DailyDigest (每日摘要)
+
 ```typescript
 interface DailyDigest {
-  id: number;           // 摘要 ID
-  date: string;         // 日期（YYYY-MM-DD）
-  content: string;      // 摘要内容（Markdown 格式）
+  id: number; // 摘要 ID
+  date: string; // 日期（YYYY-MM-DD）
+  content: string; // 摘要内容（Markdown 格式）
   article_count: number; // 文章总数
   article_ids: number[]; // 文章 ID 列表
-  model: string;        // AI 模型名称
+  model: string; // AI 模型名称
   generated_at: number; // 生成时间戳
 }
 ```
 
 ### DailyDigestItem (摘要列表项)
+
 ```typescript
 interface DailyDigestItem {
-  id: number;           // 摘要 ID
-  date: string;         // 日期（YYYY-MM-DD）
+  id: number; // 摘要 ID
+  date: string; // 日期（YYYY-MM-DD）
   article_count: number; // 文章总数
-  model: string;        // AI 模型名称
+  model: string; // AI 模型名称
   generated_at: number; // 生成时间戳
 }
 ```
@@ -580,20 +625,22 @@ interface DailyDigestItem {
 
 ### 3. 文章链接处理
 
-每日摘要中的文章链接格式为 `#article-{文章ID}`，前端需要实现锚点跳转到对应的 Knowledge 详情页面。
+每日摘要中的文章链接格式为 `#knowledge-{文章ID}`，前端需要实现锚点跳转到对应的 Knowledge 详情页面。
 
 **示例**:
-- Markdown: `[如何优化 React 性能](#article-123456)`
+
+- Markdown: `[如何优化 React 性能](#knowledge-123456)`
 - 前端路由: `/knowledge/123456` 或 `/space/{spaceid}/knowledge/123456`
 
 建议前端实现:
+
 ```typescript
 // 监听链接点击事件
-document.addEventListener('click', (e) => {
+document.addEventListener("click", (e) => {
   const target = e.target as HTMLAnchorElement;
-  if (target.hash && target.hash.startsWith('#article-')) {
+  if (target.hash && target.hash.startsWith("#knowledge-")) {
     e.preventDefault();
-    const articleId = target.hash.replace('#article-', '');
+    const articleId = target.hash.replace("#knowledge-", "");
     // 跳转到 Knowledge 详情页
     router.push(`/space/${spaceId}/knowledge/${articleId}`);
   }
@@ -604,37 +651,41 @@ document.addEventListener('click', (e) => {
 
 ## 错误码说明
 
-| 错误码 | 说明 |
-|--------|------|
-| 0 | 成功 |
-| 400 | 请求参数错误 |
-| 401 | 未授权（Token 无效或过期）|
-| 403 | 权限不足 |
-| 404 | 资源不存在 |
-| 500 | 服务器内部错误 |
+| 错误码 | 说明                       |
+| ------ | -------------------------- |
+| 0      | 成功                       |
+| 400    | 请求参数错误               |
+| 401    | 未授权（Token 无效或过期） |
+| 403    | 权限不足                   |
+| 404    | 资源不存在                 |
+| 500    | 服务器内部错误             |
 
 ---
 
 ## 开发建议
 
 ### 1. 订阅管理页面
+
 - 显示订阅列表，支持分类筛选
 - 提供创建、编辑、删除订阅功能
 - 显示上次抓取时间和启用状态
 - 支持手动触发抓取
 
 ### 2. 每日摘要页面
+
 - 日历视图，显示有摘要的日期
 - 点击日期查看摘要详情
 - 摘要内容用 Markdown 渲染器展示
 - 支持文章链接跳转到 Knowledge 详情
 
 ### 3. 性能优化
+
 - 订阅列表考虑分页或虚拟滚动
 - 摘要内容较长，考虑懒加载
 - 缓存摘要内容，避免重复请求
 
 ### 4. 用户体验
+
 - 创建订阅时实时验证 URL
 - 显示抓取进度和状态
 - 摘要生成时显示 Loading 状态
@@ -645,19 +696,24 @@ document.addEventListener('click', (e) => {
 ## 常见问题 (FAQ)
 
 ### Q1: 为什么创建订阅后立即请求列表看不到文章？
+
 A: 订阅创建后会加入抓取队列，由后台异步处理。第一次抓取可能需要几秒到几分钟时间。可以通过 `last_fetched_at` 字段判断是否已完成首次抓取。
 
 ### Q2: 摘要生成需要多长时间？
+
 A: 取决于文章数量和 AI 模型响应速度，通常在 5-30 秒之间。建议前端使用 Loading 状态提示用户等待。
 
 ### Q3: 如果某天没有文章会返回什么？
+
 A: 会返回一个空摘要提示，`article_count` 为 0，`content` 包含友好提示信息。
 
 ### Q4: 可以修改已生成的摘要吗？
+
 A: 当前不支持修改已生成的摘要。可以删除后重新生成，但由于 AI 生成结果可能不同，内容可能会有差异。
 
 ### Q5: 订阅的 `update_frequency` 如何影响抓取？
-A: 后台定时任务会根据 `update_frequency` 和 `last_fetched_at` 判断是否需要抓取。建议设置为 3600（1小时）或更长，避免频繁抓取。
+
+A: 后台定时任务会根据 `update_frequency` 和 `last_fetched_at` 判断是否需要抓取。建议设置为 3600（1 小时）或更长，避免频繁抓取。
 
 ---
 

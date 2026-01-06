@@ -207,7 +207,7 @@ func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeAr
 		return errors.New("KnowledgeLogic.Update.KnowledgeStore.GetKnowledge", i18n.ERROR_INTERNAL, err)
 	}
 
-	if oldKnowledge == nil || oldKnowledge.UserID != l.GetUserInfo().User {
+	if oldKnowledge == nil {
 		return errors.New("KnowledgeLogic.Update.KnowledgeStore.GetKnowledge", i18n.ERROR_NOT_FOUND, err).Code(http.StatusNotFound)
 	}
 

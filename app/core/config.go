@@ -69,6 +69,8 @@ type CoreConfig struct {
 
 	Prompt Prompt `toml:"prompt"`
 
+	Semaphore SemaphoreConfig `toml:"semaphore"`
+
 	bytes []byte `toml:"-"`
 }
 
@@ -103,12 +105,14 @@ func (c *CoreConfig) SetConfigBytes(raw []byte) {
 	c.bytes = raw
 }
 
+// Prompt 配置结构
+// 用于自定义系统中各种场景下使用的 prompt
 type Prompt struct {
-	Base         string `toml:"base"`
-	Query        string `toml:"query"`
-	ChatSummary  string `toml:"chat_summary"`
-	EnhanceQuery string `toml:"enhance_query"`
-	SessionName  string `toml:"session_name"`
+	Base         string `toml:"base"`          // 全局头部 Prompt，为空则使用系统默认
+	Query        string `toml:"query"`         // 查询 Prompt（已废弃，保留用于向后兼容）
+	ChatSummary  string `toml:"chat_summary"`  // 聊天总结 Prompt，为空则使用系统默认
+	EnhanceQuery string `toml:"enhance_query"` // 查询增强 Prompt，为空则使用系统默认
+	SessionName  string `toml:"session_name"`  // 会话命名 Prompt，为空则使用系统默认
 }
 
 type CentrifugeConfig struct {
@@ -127,6 +131,14 @@ type CentrifugeConfig struct {
 
 type Security struct {
 	EncryptKey string `json:"encrypt_key"`
+}
+
+type SemaphoreConfig struct {
+	Knowledge KnowledgeSemaphoreConfig `toml:"knowledge"`
+}
+
+type KnowledgeSemaphoreConfig struct {
+	SummaryMaxConcurrency int `toml:"summary_max_concurrency"` // 知识总结最大并发数，默认 10
 }
 
 func (c *CoreConfig) FromENV() {

@@ -291,15 +291,22 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 	var list []*types.MessageDetail
 
 	for _, v := range messageList {
-		if v.IsEncrypt != types.MESSAGE_IS_ENCRYPT {
-			continue
-		}
-		deData, err := l.core.DecryptData([]byte(v.Message))
-		if err != nil {
-			return nil, errors.New("ShareLogic.GetSessionByShareToken.ChatMessageStore.DecryptData", i18n.ERROR_INTERNAL, err)
+		if v.IsEncrypt == types.MESSAGE_IS_ENCRYPT {
+			deData, err := l.core.DecryptData([]byte(v.Message))
+			if err != nil {
+				return nil, errors.New("ShareLogic.GetSessionByShareToken.ChatMessageStore.DecryptData", i18n.ERROR_INTERNAL, err)
+			}
+			v.Message = string(deData)
 		}
 
-		v.Message = string(deData)
+		for i := range v.Attach {
+			preSignURL, err := l.core.FileStorage().GenGetObjectPreSignURL(v.Attach[i].URL)
+			if err != nil {
+				slog.Error("Failed to generate pre-signed URL for attachment", slog.String("message_id", v.ID), slog.String("error", err.Error()))
+			} else {
+				v.Attach[i].URL = preSignURL
+			}
+		}
 
 		list = append(list, chatMsgAndExtToMessageDetail(v, extMap[v.ID]))
 	}

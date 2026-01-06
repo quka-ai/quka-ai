@@ -474,30 +474,6 @@ func BuildRAGPrompt(tpl string, docs Docs, driver Lang) string {
 	return tpl
 }
 
-func BuildPrompt(basePrompt string, lang string) string {
-	sb := strings.Builder{}
-	if basePrompt == "" {
-		switch lang {
-		case MODEL_BASE_LANGUAGE_EN:
-			basePrompt = GENERATE_PROMPT_TPL_NONE_CONTENT_CN + BASE_GENERATE_PROMPT_CN
-		default:
-			basePrompt = GENERATE_PROMPT_TPL_NONE_CONTENT_CN + BASE_GENERATE_PROMPT_CN
-		}
-	} else {
-		sb.WriteString(basePrompt)
-	}
-
-	sb.WriteString(ReplaceVarWithLang(basePrompt, lang))
-	sb.WriteString("\n")
-	switch lang {
-	case MODEL_BASE_LANGUAGE_EN:
-		sb.WriteString(APPEND_PROMPT_EN)
-	default:
-		sb.WriteString(APPEND_PROMPT_CN)
-	}
-	return sb.String()
-}
-
 func ReplaceVarWithLang(tpl, lang string) string {
 	switch lang {
 	case MODEL_BASE_LANGUAGE_CN:
@@ -530,10 +506,10 @@ type docs struct {
 
 func (d *docs) ConvertPassageToPromptText(lang string) string {
 	switch lang {
-	case MODEL_BASE_LANGUAGE_CN:
-		return convertPassageToPromptTextCN(d.docs)
-	default:
+	case MODEL_BASE_LANGUAGE_EN:
 		return convertPassageToPromptTextEN(d.docs)
+	default:
+		return convertPassageToPromptTextCN(d.docs)
 	}
 }
 
@@ -552,12 +528,17 @@ func convertPassageToPromptTextCN(docs []*types.PassageInfo) string {
 		if i != 0 {
 			s.WriteString("------\n")
 		}
-		s.WriteString("这件事发生在：")
+		s.WriteString("时间：")
 		s.WriteString(v.DateTime)
 		s.WriteString("\n")
 		if v.ID != "" {
 			s.WriteString("ID：")
 			s.WriteString(v.ID)
+			s.WriteString("\n")
+		}
+		if v.Title != "" {
+			s.WriteString("标题：")
+			s.WriteString(v.Title)
 			s.WriteString("\n")
 		}
 		if v.Resource != "" {
@@ -579,15 +560,20 @@ func convertPassageToPromptTextEN(docs []*types.PassageInfo) string {
 		if i != 0 {
 			s.WriteString("------\n")
 		}
-		s.WriteString("Event Time：")
+		s.WriteString("Time: ")
 		s.WriteString(v.DateTime)
 		s.WriteString("\n")
-		s.WriteString("ID：")
+		s.WriteString("ID: ")
 		s.WriteString(v.ID)
 		s.WriteString("\n")
-		s.WriteString("Resource Kind：")
+		if v.Title != "" {
+			s.WriteString("Title: ")
+			s.WriteString(v.Title)
+			s.WriteString("\n")
+		}
+		s.WriteString("ResourceKind: ")
 		s.WriteString(v.Resource)
-		s.WriteString("\nContent：")
+		s.WriteString("\nContent: ")
 		s.WriteString(v.Content)
 		s.WriteString("\n")
 	}
@@ -972,23 +958,26 @@ func ConvertMessageContextToEinoMessages(messageContexts []*types.MessageContext
 			})
 		}
 
-		// 处理多媒体内容
+		// 处理多媒体内容 - 方案 B: 将图片 URL 转换为 markdown 格式附加到 Content 中
 		if len(msgCtx.MultiContent) > 0 {
-			einoMsg.MultiContent = make([]schema.ChatMessagePart, len(msgCtx.MultiContent))
-			for i, part := range msgCtx.MultiContent {
-				einoMsg.MultiContent[i] = schema.ChatMessagePart{
-					Type: schema.ChatMessagePartType(part.Type),
-					Text: part.Text,
-				}
-
-				// 转换 ImageURL
-				if part.ImageURL != nil {
-					einoMsg.MultiContent[i].ImageURL = &schema.ChatMessageImageURL{
-						URL:    part.ImageURL.URL,
-						Detail: schema.ImageURLDetail(part.ImageURL.Detail),
+			imageCount := 0
+			for _, part := range msgCtx.MultiContent {
+				// 只处理图片类型，将其转换为 markdown 格式
+				if part.Type == goopenai.ChatMessagePartTypeImageURL && part.ImageURL != nil {
+					if einoMsg.Content != "" {
+						einoMsg.Content += "\n\n"
 					}
+					imageCount++
+					einoMsg.Content += fmt.Sprintf("![图片%d](%s)\n", imageCount, part.ImageURL.URL)
+				} else if part.Type == goopenai.ChatMessagePartTypeText && part.Text != "" {
+					// 文本类型，附加到 Content
+					if einoMsg.Content != "" {
+						einoMsg.Content += "\n"
+					}
+					einoMsg.Content += part.Text
 				}
 			}
+			// 注意：不再设置 MultiContent，因为我们已经将内容转换为 markdown 格式
 		}
 
 		einoMessages = append(einoMessages, einoMsg)

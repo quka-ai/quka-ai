@@ -20,6 +20,7 @@ import (
 	"github.com/quka-ai/quka-ai/app/core/srv"
 	"github.com/quka-ai/quka-ai/app/store"
 	"github.com/quka-ai/quka-ai/app/store/sqlstore"
+	"github.com/quka-ai/quka-ai/pkg/ai"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
@@ -29,13 +30,15 @@ type Core struct {
 	cfgReader io.Reader
 	srv       *srv.Srv
 
-	prompt Prompt
+	prompt        Prompt
+	promptManager *ai.PromptManager
 
-	stores      func() *sqlstore.Provider
-	redisClient redis.UniversalClient
-	asynqClient *asynq.Client
-	httpClient  *http.Client
-	httpEngine  *gin.Engine
+	stores           func() *sqlstore.Provider
+	redisClient      redis.UniversalClient
+	asynqClient      *asynq.Client
+	httpClient       *http.Client
+	httpEngine       *gin.Engine
+	semaphoreManager *SemaphoreManager
 
 	metrics *Metrics
 	Plugins
@@ -59,12 +62,22 @@ func MustSetupCore(cfg CoreConfig) *Core {
 		slog.SetDefault(l)
 	}
 
+	// 初始化 PromptManager
+	promptConfig := &ai.PromptConfig{
+		Header:       cfg.Prompt.Base,
+		ChatSummary:  cfg.Prompt.ChatSummary,
+		EnhanceQuery: cfg.Prompt.EnhanceQuery,
+		SessionName:  cfg.Prompt.SessionName,
+	}
+	promptManager := ai.NewPromptManager(promptConfig, ai.MODEL_BASE_LANGUAGE_CN)
+
 	core := &Core{
-		cfg:        cfg,
-		httpClient: &http.Client{Timeout: time.Second * 3},
-		metrics:    NewMetrics("quka", "core"),
-		httpEngine: gin.New(),
-		prompt:     cfg.Prompt,
+		cfg:           cfg,
+		httpClient:    &http.Client{Timeout: time.Second * 3},
+		metrics:       NewMetrics("quka", "core"),
+		httpEngine:    gin.New(),
+		prompt:        cfg.Prompt,
+		promptManager: promptManager,
 	}
 	editorjs.SetupGlobalEditorJS(cfg.ObjectStorage.StaticDomain)
 
@@ -177,6 +190,11 @@ func (s *Core) UpdatePrompt(p Prompt) {
 	s.prompt = p
 }
 
+// PromptManager 获取 prompt 管理器
+func (s *Core) PromptManager() *ai.PromptManager {
+	return s.promptManager
+}
+
 func (s *Core) HttpEngine() *gin.Engine {
 	return s.httpEngine
 }
@@ -214,6 +232,14 @@ func (s *Core) Asynq() *asynq.Client {
 
 func (s *Core) Srv() *srv.Srv {
 	return s.srv
+}
+
+// Semaphore 获取信号量管理器
+func (c *Core) Semaphore() *SemaphoreManager {
+	if c.semaphoreManager == nil {
+		c.semaphoreManager = NewSemaphoreManager(c)
+	}
+	return c.semaphoreManager
 }
 
 func setupRedis(core *Core) {
@@ -332,6 +358,9 @@ func (s *Core) loadAIUsageFromDB(ctx context.Context) (srv.Usage, error) {
 		case types.AI_USAGE_READER:
 			// Reader配置存储的是provider_id，不是model_id
 			usage.Reader = modelID
+		case types.AI_USAGE_OCR:
+			// OCR配置存储的是provider_id，不是model_id
+			usage.OCR = modelID
 		}
 	}
 

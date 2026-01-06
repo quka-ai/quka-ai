@@ -35,8 +35,11 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/journal"
 	"github.com/quka-ai/quka-ai/pkg/ai/agents/rag"
 	"github.com/quka-ai/quka-ai/pkg/ai/tools/duckduckgo"
+	"github.com/quka-ai/quka-ai/pkg/ai/tools/ocr"
 	"github.com/quka-ai/quka-ai/pkg/ai/tools/reader"
+	"github.com/quka-ai/quka-ai/pkg/ai/tools/vision"
 	"github.com/quka-ai/quka-ai/pkg/errors"
+	"github.com/quka-ai/quka-ai/pkg/mark"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 )
@@ -110,15 +113,10 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 		return HandleAssistantEarlyError(err, reqMsg, receiver, "获取空间信息失败")
 	}
 
-	// 2. 准备提示词
-	var prompt string
-	if space.BasePrompt != "" {
-		prompt = space.BasePrompt + ai.BASE_GENERATE_PROMPT_CN
-	}
-	if space.ChatPrompt != "" {
-		prompt += space.ChatPrompt
-	}
-	prompt = ai.BuildPrompt(prompt, ai.MODEL_BASE_LANGUAGE_CN)
+	// 2. 准备提示词 - 使用 PromptManager
+	lang := ai.MODEL_BASE_LANGUAGE_CN
+	promptTemplate := a.core.PromptManager().GetChatTemplate(lang, space)
+	prompt := promptTemplate.Build()
 	// prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
@@ -130,6 +128,7 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	// 4. 创建 AgentContext - 提取思考和搜索配置
 	agentCtx := types.NewAgentContextWithOptions(
 		ctx,
+		receiver,
 		reqMsg.SpaceID,
 		reqMsg.UserID,
 		reqMsg.SessionID,
@@ -241,47 +240,6 @@ func (a *AutoAssistant) handleDirectResponse(ctx context.Context, agent *react.A
 // EinoMessageConverter 消息转换器，处理 schema.Message 和数据库记录的转换
 type EinoMessageConverter struct {
 	core *core.Core
-}
-
-// NewEinoMessageConverter 创建消息转换器
-func NewEinoMessageConverter(core *core.Core) *EinoMessageConverter {
-	return &EinoMessageConverter{core: core}
-}
-
-// ConvertFromChatMessages 将数据库中的 ChatMessage 转换为 eino schema.Message
-func (c *EinoMessageConverter) ConvertFromChatMessages(chatMessages []types.ChatMessage) []*schema.Message {
-	messages := make([]*schema.Message, 0, len(chatMessages))
-
-	for _, msg := range chatMessages {
-		einoMsg := &schema.Message{
-			Content: msg.Message,
-		}
-
-		// 转换角色
-		switch msg.Role {
-		case types.USER_ROLE_SYSTEM:
-			einoMsg.Role = schema.System
-		case types.USER_ROLE_USER:
-			einoMsg.Role = schema.User
-		case types.USER_ROLE_ASSISTANT:
-			einoMsg.Role = schema.Assistant
-		case types.USER_ROLE_TOOL:
-			einoMsg.Role = schema.Tool
-		default:
-			einoMsg.Role = schema.User
-		}
-
-		// 处理多媒体内容 - 从 ChatMessageAttach 转换为 schema.ChatMessagePart
-		if len(msg.Attach) > 0 {
-			// 使用 core 中的文件存储服务来下载文件
-			multiContent := msg.Attach.ToMultiContent(msg.Message, c.core.FileStorage())
-			einoMsg.MultiContent = c.convertToEinoMultiContent(multiContent)
-		}
-
-		messages = append(messages, einoMsg)
-	}
-
-	return messages
 }
 
 // ConvertToChatMessage 将 schema.Message 转换为数据库 ChatMessage 格式（用于持久化）
@@ -464,6 +422,9 @@ func NewEinoAgentFactory(core *core.Core) *EinoAgentFactory {
 func (f *EinoAgentFactory) CreateAutoRagReActAgent(agentCtx *types.AgentContext, toolWrapper NotifyToolWrapper, messages []*schema.Message) (*react.Agent, *types.ModelConfig, error) {
 	config := NewAgentConfig(agentCtx, toolWrapper, f.core, agentCtx.EnableThinking, messages)
 
+	// 检查消息中是否包含多媒体内容
+	hasMultimedia := f.containsMultimediaContent(messages)
+
 	// 应用选项
 	options := []AgentOption{
 		&WithWebSearch{
@@ -472,12 +433,14 @@ func (f *EinoAgentFactory) CreateAutoRagReActAgent(agentCtx *types.AgentContext,
 		&WithRAG{
 			Enable: agentCtx.EnableKnowledge,
 		}, // 支持知识库搜索
-		NewWithKnowledgeTools(agentCtx.EnableKnowledge), // 支持知识库 CRUD 工具
+		NewWithKnowledgeTools(true),      // 支持知识库 CRUD 工具
+		NewWithOCRTool(hasMultimedia),    // 支持 OCR 图片文字提取工具
+		NewWithVisionTool(hasMultimedia), // 支持 Vision 图片理解工具
 	}
 
 	for _, option := range options {
 		if err := option.Apply(config); err != nil {
-			slog.Warn("Failed to apply butler agent option", slog.Any("error", err))
+			slog.Warn("Failed to apply agent option", slog.Any("error", err))
 		}
 	}
 
@@ -634,9 +597,15 @@ func (f *EinoAgentFactory) getVisionModelConfig(agentCtx *types.AgentContext) (*
 }
 
 // containsMultimediaContent 检查消息中是否包含多媒体内容（图片、音频、视频等）
+// 方案 B: 图片 URL 已经通过 markdown 语法包含在 Content 文本中，所以检查文本中是否有 markdown 图片语法
 func (f *EinoAgentFactory) containsMultimediaContent(messages []*schema.Message) bool {
 	for _, msg := range messages {
+		// 检查 MultiContent (向后兼容，以防某些地方还在使用)
 		if len(msg.MultiContent) > 0 {
+			return true
+		}
+		// 检查 Content 中是否包含 markdown 图片语法: ![...](...)
+		if strings.Contains(msg.Content, "![") && strings.Contains(msg.Content, "](") {
 			return true
 		}
 	}
@@ -722,7 +691,11 @@ func (o *WithRAG) Apply(config *AgentConfig) error {
 		return nil
 	}
 
-	ragTool := rag.NewRagTool(config.Core, config.AgentCtx.SpaceID, config.AgentCtx.UserID, config.AgentCtx.SessionID, config.AgentCtx.MessageID, config.AgentCtx.MessageSequence)
+	var variableHandler mark.VariableHandler
+	if config.AgentCtx.Receiver != nil {
+		variableHandler = config.AgentCtx.Receiver.VariableHandler()
+	}
+	ragTool := rag.NewRagTool(config.Core, variableHandler, config.AgentCtx.SpaceID, config.AgentCtx.UserID, config.AgentCtx.SessionID, config.AgentCtx.MessageID, config.AgentCtx.MessageSequence)
 	notifyingRagTool := config.ToolWrapper.Wrap(ragTool)
 	config.Tools = append(config.Tools, notifyingRagTool)
 	return nil
@@ -798,6 +771,70 @@ func (o *WithKnowledgeTools) Apply(config *AgentConfig) error {
 	return nil
 }
 
+// WithOCRTool 添加OCR图像提取工具选项
+type WithOCRTool struct {
+	Enable bool
+}
+
+func NewWithOCRTool(enable bool) *WithOCRTool {
+	return &WithOCRTool{Enable: enable}
+}
+
+func (o *WithOCRTool) Apply(config *AgentConfig) error {
+	if !o.Enable {
+		return nil
+	}
+
+	ocrAI := config.Core.Srv().AI().GetOCRAI()
+	if ocrAI == nil {
+		slog.Warn("OCR AI not available, skipping OCR tool")
+		return nil
+	}
+
+	ocrTool, err := ocr.NewTool(config.AgentCtx, ocrAI)
+	if err != nil {
+		slog.Warn("Failed to create OCR tool", slog.String("error", err.Error()))
+		return nil
+	}
+
+	notifyingOCRTool := config.ToolWrapper.Wrap(ocrTool)
+	config.Tools = append(config.Tools, notifyingOCRTool)
+
+	return nil
+}
+
+// WithVisionTool 添加Vision图像理解工具选项
+type WithVisionTool struct {
+	Enable bool
+}
+
+func NewWithVisionTool(enable bool) *WithVisionTool {
+	return &WithVisionTool{Enable: enable}
+}
+
+func (o *WithVisionTool) Apply(config *AgentConfig) error {
+	if !o.Enable {
+		return nil
+	}
+
+	visionModel := config.Core.Srv().AI().GetVisionAI()
+	if visionModel == nil {
+		slog.Warn("Vision model not available, skipping Vision tool")
+		return nil
+	}
+
+	visionTool, err := vision.NewTool(config.AgentCtx, visionModel)
+	if err != nil {
+		slog.Warn("Failed to create Vision tool", slog.String("error", err.Error()))
+		return nil
+	}
+
+	notifyingVisionTool := config.ToolWrapper.Wrap(visionTool)
+	config.Tools = append(config.Tools, notifyingVisionTool)
+
+	return nil
+}
+
 // === 模型相关选项 ===
 
 // WithModelOverride 覆盖默认模型配置
@@ -855,12 +892,9 @@ func (f *EinoAgentFactory) CreateReActAgentWithConfig(config *AgentConfig) (*rea
 			return nil, nil, err
 		}
 	} else {
-		// 检查消息中是否包含多媒体内容，决定使用哪种模型
-		if f.containsMultimediaContent(config.Messages) {
-			chatModel = config.Core.Srv().AI().GetVisionAI()
-		} else {
-			chatModel = config.Core.Srv().AI().GetChatAI(config.EnableThinking)
-		}
+		// 始终使用 Chat Model，不再根据是否包含多媒体内容切换模型
+		// 图片处理通过 OCR Tool 和 Vision Tool 来完成，由 LLM 根据语义选择合适的工具
+		chatModel = config.Core.Srv().AI().GetChatAI(config.EnableThinking)
 	}
 
 	toolsConfig := compose.ToolsNodeConfig{
@@ -991,7 +1025,9 @@ func (h *EinoResponseHandler) HandleStreamResponse(ctx context.Context, stream *
 			return ctx.Err()
 		case <-ticker.C:
 			ticker.Reset(time.Millisecond * 300)
-			flushResponse()
+			if !maybeMarks {
+				flushResponse()
+			}
 		default:
 		}
 

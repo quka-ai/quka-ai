@@ -34,6 +34,7 @@ type ModelProvider struct {
 // ModelProviderConfig 模型提供商配置结构
 type ModelProviderConfig struct {
 	IsReader   bool `json:"is_reader"`   // 是否支持Reader功能（厂商特有功能）
+	IsOCR      bool `json:"is_ocr"`      // 是否支持OCR功能（厂商特有功能）
 	Timeout    int  `json:"timeout"`     // 请求超时时间（秒）
 	MaxRetries int  `json:"max_retries"` // 最大重试次数
 }

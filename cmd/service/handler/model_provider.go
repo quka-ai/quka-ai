@@ -65,16 +65,23 @@ func (s *HttpSrv) ListModelProviders(c *gin.Context) {
 		}
 	}
 
+	var isOCR *bool
+	if ocrStr := c.Query("is_ocr"); ocrStr != "" {
+		if ocrBool, err := strconv.ParseBool(ocrStr); err == nil {
+			isOCR = &ocrBool
+		}
+	}
+
 	name := c.Query("name")
 
 	logic := v1.NewModelProviderLogic(c, s.Core)
-	providers, err := logic.ListProviders(name, status, isReader)
+	providers, err := logic.ListProviders(name, status, isReader, isOCR)
 	if err != nil {
 		response.APIError(c, err)
 		return
 	}
 
-	total, err := logic.GetProviderTotal(name, status, isReader)
+	total, err := logic.GetProviderTotal(name, status, isReader, isOCR)
 	if err != nil {
 		response.APIError(c, err)
 		return

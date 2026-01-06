@@ -15,20 +15,18 @@ import (
 type ResourceLogic struct {
 	ctx  context.Context
 	core *core.Core
-	UserInfo
 }
 
 func NewResourceLogic(ctx context.Context, core *core.Core) *ResourceLogic {
 	l := &ResourceLogic{
-		ctx:      ctx,
-		core:     core,
-		UserInfo: SetupUserInfo(ctx, core),
+		ctx:  ctx,
+		core: core,
 	}
 
 	return l
 }
 
-func (l *ResourceLogic) CreateResource(spaceID, id, title, desc, tag string, cycle int) error {
+func (l *ResourceLogic) CreateResource(spaceID, userID, id, title, desc, tag string, cycle int) error {
 	if title == "" {
 		title = id
 	}
@@ -48,7 +46,7 @@ func (l *ResourceLogic) CreateResource(spaceID, id, title, desc, tag string, cyc
 
 	err = l.core.Store().ResourceStore().Create(l.ctx, types.Resource{
 		ID:          id,
-		UserID:      l.GetUserInfo().User,
+		UserID:      userID,
 		SpaceID:     spaceID,
 		Title:       title,
 		Description: desc,
@@ -163,8 +161,8 @@ func (l *ResourceLogic) GetResource(spaceID, id string) (*types.Resource, error)
 	return data, nil
 }
 
-func (l *ResourceLogic) ListUserResources(page, pagesize uint64) ([]types.Resource, error) {
-	list, err := l.core.Store().ResourceStore().ListUserResources(l.ctx, l.GetUserInfo().User, page, pagesize)
+func (l *ResourceLogic) ListUserResources(userID string, page, pagesize uint64) ([]types.Resource, error) {
+	list, err := l.core.Store().ResourceStore().ListUserResources(l.ctx, userID, page, pagesize)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, errors.New("ResourceLogic.ListUserResources.ResourceStore.ListUserResources", i18n.ERROR_INTERNAL, err)
 	}

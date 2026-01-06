@@ -13,6 +13,7 @@ const (
 	AI_USAGE_RERANK        = "ai_usage_rerank"
 	AI_USAGE_READER        = "ai_usage_reader"
 	AI_USAGE_ENHANCE       = "ai_usage_enhance"
+	AI_USAGE_OCR           = "ai_usage_ocr"
 
 	// 模型类型常量
 	MODEL_TYPE_CHAT       = "chat"
@@ -22,6 +23,7 @@ const (
 	MODEL_TYPE_RERANK     = "rerank"
 	MODEL_TYPE_ENHANCE    = "enhance"
 	MODEL_TYPE_READER     = "reader" // 虚拟模型类型，用于标识Reader提供商
+	MODEL_TYPE_OCR        = "ocr"    // 虚拟模型类型，用于标识OCR提供商
 )
 
 // AI使用配置描述
@@ -33,6 +35,7 @@ const (
 	AI_USAGE_RERANK_DESC        = "重排序功能使用的模型"
 	AI_USAGE_READER_DESC        = "阅读功能使用的模型"
 	AI_USAGE_ENHANCE_DESC       = "增强功能使用的模型"
+	AI_USAGE_OCR_DESC           = "OCR功能使用的提供商"
 )
 
 // 分页相关常量已在common.go中定义

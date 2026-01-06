@@ -298,7 +298,7 @@ func buildDailyDigestPrompt(articleCount int, date time.Time, core *core.Core) s
    - 主题名称（简洁、准确，使用 🏷️ emoji）
    - 主题概述（50-100字，综合该主题下所有文章的核心观点）
    - 相关文章列表（每篇文章需包含）：
-     * 文章标题作为链接，格式为：[标题](#article-文章ID)
+     * 文章标题作为链接，格式为：[标题](#knowledge-文章ID)
      * 一句话总结（20-30字）
      * 关键词标签（使用反引号包裹）
 

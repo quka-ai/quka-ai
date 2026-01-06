@@ -50,8 +50,6 @@ func (s *RSSSubscriptionStore) Create(ctx context.Context, data *types.RSSSubscr
 		return ErrorSqlBuild(err)
 	}
 
-	fmt.Println(queryString, args)
-
 	_, err = s.GetMaster(ctx).Exec(queryString, args...)
 	return err
 }

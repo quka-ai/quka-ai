@@ -111,6 +111,7 @@ func (t *ToolTips) Type() MessageType {
 type AgentContext struct {
 	context.Context
 
+	Receiver Receiver
 	// 业务标识信息
 	SpaceID         string
 	UserID          string
@@ -125,9 +126,10 @@ type AgentContext struct {
 }
 
 // NewAgentContext 创建一个新的 AgentContext
-func NewAgentContext(ctx context.Context, spaceID, userID, sessionID, messageID string) *AgentContext {
+func NewAgentContext(ctx context.Context, receiver Receiver, spaceID, userID, sessionID, messageID string) *AgentContext {
 	return &AgentContext{
 		Context:   ctx,
+		Receiver:  receiver,
 		SpaceID:   spaceID,
 		UserID:    userID,
 		SessionID: sessionID,
@@ -139,8 +141,9 @@ func NewAgentContext(ctx context.Context, spaceID, userID, sessionID, messageID 
 }
 
 // NewAgentContextWithOptions 创建一个带有自定义选项的 AgentContext
-func NewAgentContextWithOptions(ctx context.Context, spaceID, userID, sessionID, messageID string, messageSequence int64, enableThinking, enableWebSearch, enableKnowledge bool) *AgentContext {
+func NewAgentContextWithOptions(ctx context.Context, receiver Receiver, spaceID, userID, sessionID, messageID string, messageSequence int64, enableThinking, enableWebSearch, enableKnowledge bool) *AgentContext {
 	return &AgentContext{
+		Receiver:        receiver,
 		Context:         ctx,
 		SpaceID:         spaceID,
 		UserID:          userID,

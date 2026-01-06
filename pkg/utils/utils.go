@@ -3,6 +3,7 @@ package utils
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
@@ -625,4 +626,60 @@ type FileInfo struct {
 func RemoveAttacheURLHost(fileURL, bucketName string) string {
 	u, _ := url.Parse(fileURL)
 	return lo.If(bucketName != "" && strings.HasPrefix(u.Path, "/"+bucketName), u.Path[len(bucketName)+1:]).Else(u.Path)
+}
+
+// DownloadFileFromURL 从URL下载文件并返回文件内容和Content-Type
+func DownloadFileFromURL(fileURL string) ([]byte, string, error) {
+	return DownloadFileFromURLWithContext(nil, fileURL)
+}
+
+// DownloadFileFromURLWithContext 从URL下载文件并返回文件内容和Content-Type,支持context
+func DownloadFileFromURLWithContext(ctx context.Context, fileURL string) ([]byte, string, error) {
+	if fileURL == "" {
+		return nil, "", fmt.Errorf("file URL is empty")
+	}
+
+	var req *http.Request
+	var err error
+
+	if ctx != nil {
+		req, err = http.NewRequestWithContext(ctx, "GET", fileURL, nil)
+	} else {
+		req, err = http.NewRequest("GET", fileURL, nil)
+	}
+
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: time.Minute,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("failed to download file, status code: %d", resp.StatusCode)
+	}
+
+	fileData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read file data: %w", err)
+	}
+
+	contentType := cleanContentType(resp.Header.Get("Content-Type"))
+	if contentType == "" {
+		// 尝试从URL路径推断
+		ext := filepath.Ext(resp.Request.URL.Path)
+		contentType = cleanContentType(mime.TypeByExtension(ext))
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	return fileData, contentType, nil
 }

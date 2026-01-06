@@ -54,12 +54,13 @@ func decryptMessageLists(core *core.Core, messages []*types.ChatMessage) {
 }
 
 func EnhanceQuery(ctx context.Context, core *core.Core, query string, histories []*types.ChatMessage) (ai.EnhanceQueryResult, error) {
+	// 使用 PromptManager 获取查询增强 Prompt
+	lang := ai.MODEL_BASE_LANGUAGE_CN
+	enhanceTemplate := core.PromptManager().GetEnhanceQueryTemplate(lang)
+	prompt := enhanceTemplate.Build()
+
 	aiOpts := ai.NewEnhance(ctx, core.Srv().AI().GetEnhanceAI())
-	prompt := core.Prompt().EnhanceQuery
-	if prompt == "" {
-		prompt = ai.PROMPT_ENHANCE_QUERY_CN
-	}
-	resp, err := aiOpts.WithPrompt(core.Prompt().EnhanceQuery).
+	resp, err := aiOpts.WithPrompt(prompt).
 		WithHistories(histories).
 		EnhanceQuery(query)
 	if err != nil {

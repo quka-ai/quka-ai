@@ -10,7 +10,7 @@ import (
 
 func TestRagTool_Info(t *testing.T) {
 	// 创建测试用的 RagTool
-	ragTool := NewRagTool(&core.Core{}, "space123", "user456", "session789", "msg000", 0)
+	ragTool := NewRagTool(&core.Core{}, nil, "space123", "user456", "session789", "msg000", 0)
 
 	// 测试 Info 方法
 	ctx := context.Background()
@@ -40,7 +40,7 @@ func TestRagTool_Info(t *testing.T) {
 
 func TestRagTool_InvokableRun_InvalidJSON(t *testing.T) {
 	// 创建测试用的 RagTool
-	ragTool := NewRagTool(&core.Core{}, "space123", "user456", "session789", "msg000", 0)
+	ragTool := NewRagTool(&core.Core{}, nil, "space123", "user456", "session789", "msg000", 0)
 
 	// 测试无效 JSON 输入
 	ctx := context.Background()
@@ -54,7 +54,7 @@ func TestRagTool_InvokableRun_InvalidJSON(t *testing.T) {
 
 func TestRagTool_InvokableRun_ValidJSON(t *testing.T) {
 	// 创建测试用的 RagTool
-	ragTool := NewRagTool(&core.Core{}, "space123", "user456", "session789", "msg000", 0)
+	ragTool := NewRagTool(&core.Core{}, nil, "space123", "user456", "session789", "msg000", 0)
 
 	// 测试有效 JSON 输入 (这个测试预期会因为 nil core 而 panic)
 	ctx := context.Background()
@@ -83,7 +83,7 @@ func TestRagTool_InvokableRun_ValidJSON(t *testing.T) {
 
 func TestRagTool_InterfaceCompliance(t *testing.T) {
 	// 验证 RagTool 实现了 tool.InvokableTool 接口
-	ragTool := NewRagTool(&core.Core{}, "space123", "user456", "session789", "msg000", 0)
+	ragTool := NewRagTool(&core.Core{}, nil, "space123", "user456", "session789", "msg000", 0)
 
 	// 编译时类型检查
 	var _ tool.InvokableTool = ragTool

@@ -16,6 +16,7 @@ import (
 	oai "github.com/sashabaranov/go-openai"
 
 	"github.com/quka-ai/quka-ai/pkg/ai"
+	"github.com/quka-ai/quka-ai/pkg/ai/baidu"
 	"github.com/quka-ai/quka-ai/pkg/ai/fusion"
 	"github.com/quka-ai/quka-ai/pkg/ai/jina"
 	"github.com/quka-ai/quka-ai/pkg/ai/volcengine/voice"
@@ -41,11 +42,17 @@ type RerankAI interface {
 	Rerank(ctx context.Context, query string, docs []*ai.RerankDoc) ([]ai.RankDocItem, *ai.Usage, error)
 }
 
+type OCRAI interface {
+	ProcessOCR(ctx context.Context, fileData []byte) (*baidu.OCRProcessResult, error)
+	Lang() string
+}
+
 type AIDriver interface {
 	EmbeddingAI
 	SummarizeAI
 	ReaderAI
 	RerankAI
+	OCRAI
 	Lang() string
 	DescribeImage(ctx context.Context, lang, imageURL string) (*DescribeImageResult, error)
 	MsgIsOverLimit(msgs []*types.MessageContext) bool
@@ -53,6 +60,7 @@ type AIDriver interface {
 	GetChatAI(needsThinking bool) types.ChatModel
 	GetVisionAI() types.ChatModel
 	GetEnhanceAI() types.ChatModel
+	GetOCRAI() OCRAI
 }
 
 type AIConfig struct {
@@ -90,6 +98,7 @@ type AI struct {
 	visionDrivers       map[string]types.ChatModel
 	readerDrivers       map[string]ReaderAI
 	rerankDrivers       map[string]RerankAI
+	ocrDrivers          map[string]OCRAI
 
 	summarize SummarizeAI
 
@@ -100,6 +109,7 @@ type AI struct {
 	readerDefault       ReaderAI
 	visionDefault       types.ChatModel
 	rerankDefault       RerankAI
+	ocrDefault          OCRAI
 
 	allModels map[string]types.ModelConfig
 	usage     Usage
@@ -117,7 +127,7 @@ func (s *AI) MsgIsOverLimit(msgs []*types.MessageContext) bool {
 		return false
 	}
 
-	return tokenNum > 80000
+	return tokenNum > 120000
 }
 
 func (s *AI) GetConfig(id string) types.ModelConfig {
@@ -164,7 +174,7 @@ func (s *AI) GetChatConfig(needsThinking bool) types.ModelConfig {
 	}
 
 	// 兜底返回默认chat配置
-	return s.GetConfig(types.MODEL_TYPE_CHAT)
+	return s.chatDefault.Config()
 }
 
 // GetChatAI 根据思考需求获取预组装的ChatAI实例
@@ -196,12 +206,31 @@ func (s *AI) GetEnhanceAI() types.ChatModel {
 	return s.enhanceDefault
 }
 
-// GetEnhanceAI 获取增强AI模型
+// GetVisionAI 获取视觉AI模型
 func (s *AI) GetVisionAI() types.ChatModel {
 	if d := s.visionDrivers[s.usage.Vision]; d != nil {
 		return d
 	}
 	return s.visionDefault
+}
+
+// GetOCRAI 获取OCR AI模型
+func (s *AI) GetOCRAI() OCRAI {
+	if d := s.ocrDrivers[s.usage.OCR]; d != nil {
+		return d
+	}
+	return s.ocrDefault
+}
+
+// ProcessOCR 处理OCR识别，自动检测文件类型（PDF或图片）
+func (s *AI) ProcessOCR(ctx context.Context, fileData []byte) (*baidu.OCRProcessResult, error) {
+	if d := s.ocrDrivers[s.usage.OCR]; d != nil {
+		return d.ProcessOCR(ctx, fileData)
+	}
+	if s.ocrDefault == nil {
+		return nil, errors.ERROR_UNSUPPORTED_FEATURE
+	}
+	return s.ocrDefault.ProcessOCR(ctx, fileData)
 }
 
 type DescribeImageResult struct {
@@ -460,6 +489,7 @@ type Usage struct {
 
 	// 提供商级别配置（指向provider_id）
 	Reader string `json:"reader"`
+	OCR    string `json:"ocr"`
 }
 
 func SetupReader(s *AI, providers []types.ModelProvider) error {
@@ -488,6 +518,35 @@ func SetupReader(s *AI, providers []types.ModelProvider) error {
 	return nil
 }
 
+func SetupOCR(s *AI, providers []types.ModelProvider) error {
+	for _, v := range providers {
+		var providerConfig types.ModelProviderConfig
+		if err := json.Unmarshal(v.Config, &providerConfig); err != nil {
+			slog.Error("Failed to unmarshal provider config for SetupOCR", slog.String("provider_id", v.ID), slog.Any("error", err))
+			continue // 如果配置解析失败，跳过该提供商
+		}
+		fmt.Println("setup ocr", v.Name)
+		// 只有配置了is_ocr为true的提供商才会设置OCR功能
+		if !providerConfig.IsOCR {
+			continue
+		}
+
+		switch true {
+		case strings.Contains(strings.ToLower(v.Name), strings.ToLower(baidu.NAME)):
+			driver := baidu.New(baidu.Config{
+				APIURL: v.ApiUrl,
+				Token:  v.ApiKey,
+			})
+			// 使用provider_id作为key
+			s.ocrDrivers[v.ID] = driver
+			if s.ocrDefault == nil {
+				s.ocrDefault = driver
+			}
+		}
+	}
+	return nil
+}
+
 func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, usage Usage) (*AI, error) {
 	a := &AI{
 		chatDrivers:         make(map[string]types.ChatModel),
@@ -497,6 +556,7 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 		readerDrivers:       make(map[string]ReaderAI),
 		visionDrivers:       make(map[string]types.ChatModel),
 		rerankDrivers:       make(map[string]RerankAI),
+		ocrDrivers:          make(map[string]OCRAI),
 
 		allModels: lo.SliceToMap(models, func(item types.ModelConfig) (string, types.ModelConfig) {
 			return item.ID, item
@@ -550,6 +610,11 @@ func SetupAI(models []types.ModelConfig, modelProviders []types.ModelProvider, u
 	}
 	// 设置提供商级别的Reader配置
 	if err := SetupReader(a, modelProviders); err != nil {
+		return nil, err
+	}
+
+	// 设置提供商级别的OCR配置
+	if err := SetupOCR(a, modelProviders); err != nil {
 		return nil, err
 	}
 
