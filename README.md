@@ -13,7 +13,8 @@
 
 **Quka** is a lightweight and user-friendly Retrieval-Augmented Generation (RAG) system designed to help you build your own second brain. With its fast and easy-to-use interface. **Archive Results, Fuel Future Creation.**
 
-![QukaAI Preview](https://www.youtube.com/watch?v=e1eWAcwmnHY)
+[![QukaAI Previews](https://img.youtube.com/vi/e1eWAcwmnHY/0.jpg)](https://www.youtube.com/watch?v=e1eWAcwmnHY)
+👆 The Latest Version Previews Video.
 
 [![LLMAPIS](https://llmapis.com/api/badge/quka-ai/quka-ai)](https://github.com/quka-ai/quka-ai)
 
