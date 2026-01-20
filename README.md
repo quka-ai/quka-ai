@@ -11,9 +11,13 @@
 
 ![Discord](https://img.shields.io/discord/1293497229096521768?logo=discord&logoColor=white)
 
-**Quka** is a lightweight and user-friendly Retrieval-Augmented Generation (RAG) system designed to help you build your own second brain. With its fast and easy-to-use interface, Brew empowers users to efficiently manage and retrieve information.
+**Quka** is a lightweight and user-friendly Retrieval-Augmented Generation (RAG) system designed to help you build your own second brain. With its fast and easy-to-use interface. **Archive Results, Fuel Future Creation.**
 
-https://github.com/user-attachments/assets/78751333-e02f-482d-b2da-12d0ea59a66c
+![QukaAI Preview](https://www.youtube.com/watch?v=e1eWAcwmnHY)
+
+[![LLMAPIS](https://llmapis.com/api/badge/quka-ai/quka-ai)](https://github.com/quka-ai/quka-ai)
+
+_Partnership with [llmapis.com](https://llmapis.com) - Discover more AI tools and resources_
 
 ## Community
 
