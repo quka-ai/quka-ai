@@ -103,6 +103,9 @@ func setupHttpRouter(s *handler.HttpSrv) {
 	spaceLimit := GetSpaceLimitBuilder(s.Core)
 	aiLimit := GetAILimitBuilder(s.Core)
 
+	// panic recovery middleware 必须在所有其他中间件之前
+	s.Engine.Use(middleware.PanicRecovery())
+
 	s.Engine.Use(middleware.Cors)
 	s.Engine.LoadHTMLGlob("./tpls/*")
 	s.Engine.GET("/s/k/:token", s.BuildKnowledgeSharePage)

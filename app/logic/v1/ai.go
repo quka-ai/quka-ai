@@ -402,6 +402,7 @@ type QueryReceiveHandler struct {
 	ctx          context.Context
 	core         *core.Core
 	resp         chan types.MessageContent
+	messageID    string
 	sendedLength int64
 
 	varHandler mark.VariableHandler
@@ -412,7 +413,10 @@ func (s *QueryReceiveHandler) VariableHandler() mark.VariableHandler {
 }
 
 func (s *QueryReceiveHandler) MessageID() string {
-	return s.MessageID()
+	if s.messageID == "" {
+		s.messageID = s.core.GenMessageID()
+	}
+	return s.messageID
 }
 
 func (s *QueryReceiveHandler) Copy() types.Receiver {

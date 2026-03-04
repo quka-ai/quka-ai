@@ -120,9 +120,26 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	// prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
-	sessionContext, err := a.GenSessionContext(ctx, prompt, reqMsg)
-	if err != nil {
-		return HandleAssistantEarlyError(err, reqMsg, receiver, "生成会话上下文失败")
+	var sessionContext *SessionContext
+	if reqMsg.SessionID != "" {
+		if sessionContext, err = a.GenSessionContext(ctx, prompt, reqMsg); err != nil {
+			return HandleAssistantEarlyError(err, reqMsg, receiver, "生成会话上下文失败")
+		}
+	} else {
+		sessionContext = &SessionContext{
+			Prompt:    prompt,
+			MessageID: receiver.MessageID(),
+			MessageContext: []*types.MessageContext{
+				{
+					Role:    types.USER_ROLE_SYSTEM,
+					Content: prompt,
+				},
+				{
+					Role:    types.USER_ROLE_USER,
+					Content: reqMsg.Message,
+				},
+			},
+		}
 	}
 
 	// 4. 创建 AgentContext - 提取思考和搜索配置
@@ -147,7 +164,12 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	})
 
 	// adapter := ai.NewEinoAdapter(receiver, reqMsg.SessionID, reqMsg.ID)
-	notifyToolWrapper := NewNotifyToolWrapper(a.core, reqMsg, receiver.Copy())
+	var notifyToolWrapper NotifyToolWrapper
+	if receiver.IsStream() {
+		notifyToolWrapper = NewNotifyToolWrapper(a.core, reqMsg, receiver.Copy())
+	} else {
+		notifyToolWrapper = &FakeToolWrapper{}
+	}
 
 	factory := NewEinoAgentFactory(a.core)
 	agent, modelConfig, err := factory.CreateAutoRagReActAgent(agentCtx, notifyToolWrapper, einoMessages)
@@ -328,10 +350,16 @@ type NotifyingTool struct {
 // }
 
 type NotifyToolWrapper interface {
-	Wrap(baseTool tool.InvokableTool) *NotifyingTool
+	Wrap(baseTool tool.InvokableTool) tool.InvokableTool
 }
 
-func NewNotifyToolWrapper(core *core.Core, reqMsg *types.ChatMessage, receiver types.Receiver) NotifyToolWrapper {
+type FakeToolWrapper struct{}
+
+func (*FakeToolWrapper) Wrap(baseTool tool.InvokableTool) tool.InvokableTool {
+	return baseTool
+}
+
+func NewNotifyToolWrapper(core *core.Core, reqMsg *types.ChatMessage, receiver types.Receiver) *NotifyingTool {
 	return &NotifyingTool{
 		core:     core,
 		reqMsg:   reqMsg,
@@ -340,7 +368,7 @@ func NewNotifyToolWrapper(core *core.Core, reqMsg *types.ChatMessage, receiver t
 	}
 }
 
-func (nt *NotifyingTool) Wrap(baseTool tool.InvokableTool) *NotifyingTool {
+func (nt *NotifyingTool) Wrap(baseTool tool.InvokableTool) tool.InvokableTool {
 	c := *nt
 	c.InvokableTool = baseTool
 	return &c
