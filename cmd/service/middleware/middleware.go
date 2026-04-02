@@ -55,6 +55,9 @@ const (
 	ACCESS_TOKEN_HEADER_KEY = "X-Access-Token"
 	AUTH_TOKEN_HEADER_KEY   = "X-Authorization"
 	APPID_HEADER            = "X-Appid"
+	CLIENT_SOURCE_HEADER    = "X-Client-Source"
+	CLIENT_SOURCE_WEB       = "web"
+	CLIENT_SOURCE_APP       = "app"
 )
 
 func AuthorizationFromQuery(core *core.Core) gin.HandlerFunc {
@@ -114,6 +117,13 @@ func SetAppid(core *core.Core) gin.HandlerFunc {
 		// appid := ctx.Request.Header.Get(APPID_HEADER)
 		// check appid exist
 		ctx.Set(v1.APPID_KEY, core.DefaultAppid())
+		clientSource := strings.ToLower(strings.TrimSpace(ctx.GetHeader(CLIENT_SOURCE_HEADER)))
+		switch clientSource {
+		case "":
+			ctx.Set(v1.CLIENT_SOURCE_KEY, CLIENT_SOURCE_WEB)
+		default:
+			ctx.Set(v1.CLIENT_SOURCE_KEY, CLIENT_SOURCE_APP)
+		}
 	}
 }
 
@@ -311,7 +321,7 @@ func Cors(c *gin.Context) {
 	if origin != "" {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, UPDATE")
-		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Access-Token, X-Authorization, X-Appid")
+		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Access-Token, X-Authorization, X-Appid, X-Client-Source")
 		c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Cache-Control, Content-Language, Content-Type")
 		c.Header("Access-Control-Allow-Credentials", "true")
 	}

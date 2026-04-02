@@ -34,6 +34,7 @@ func SetupGlobalEditorJS(staticDomain string) {
 
 // ConvertEditorJSRawToMarkdown 将EditorJS原始数据转换为Markdown
 func ConvertEditorJSRawToMarkdown(blockString json.RawMessage) (string, error) {
+	fmt.Println("1", string(blockString))
 	return editorJSMarkdownEngine.GenerateMarkdownWithUnknownBlock(string(blockString))
 }
 
@@ -200,14 +201,11 @@ func (h *VideoHandler) GenerateHTML(editorJSBlock goeditorjs.EditorJSBlock) (str
 		return "", err
 	}
 
-	res, _ := url.Parse(data.File.URL)
-	if res.Host == "" {
-		res.Host = h.StaticDomain
-	}
+	videoURL := buildStaticResourceURL(data.File.URL, h.StaticDomain)
 
 	html := strings.Builder{}
 	html.WriteString("<video controls preload=\"metadata\">")
-	html.WriteString(fmt.Sprintf("<source src=\"%s\">", res.RawPath))
+	html.WriteString(fmt.Sprintf("<source src=\"%s\">", videoURL))
 	html.WriteString("</video>")
 	if data.Caption != "" {
 		html.WriteString("\n")
@@ -340,13 +338,30 @@ func (h *ImageHandler) generateHTML(image *EditorImage) (string, error) {
 		class = fmt.Sprintf(`class="%s"`, strings.Join(classes, " "))
 	}
 
-	res, _ := url.Parse(image.File.URL)
-	if res.Host == "" {
-		res.Host = h.StaticDomain
-	}
-	url := res.RawPath
+	url := buildStaticResourceURL(image.File.URL, h.StaticDomain)
 
 	return fmt.Sprintf(`<img src="%s" alt="%s" %s/>`, url, image.Caption, class), nil
+}
+
+func buildStaticResourceURL(rawURL, staticDomain string) string {
+	res, err := url.Parse(rawURL)
+	if err != nil || rawURL == "" {
+		return rawURL
+	}
+
+	if res.IsAbs() {
+		return res.String()
+	}
+
+	if staticDomain == "" {
+		if res.RawPath != "" {
+			return res.RawPath
+		}
+		return res.RequestURI()
+	}
+
+	base := &url.URL{Scheme: "https", Host: staticDomain}
+	return base.ResolveReference(res).String()
 }
 
 type QuoteHandler struct{}

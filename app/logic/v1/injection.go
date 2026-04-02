@@ -13,11 +13,22 @@ const (
 	TOKEN_CONTEXT_KEY = "__quka.access_token"
 	LANGUAGE_KEY      = "__quka.accept_language"
 	APPID_KEY         = "__quka.appid"
+	CLIENT_SOURCE_KEY = "__quka.client_source"
 )
 
 func InjectAppid(ctx context.Context) (string, bool) {
 	val, ok := ctx.Value(APPID_KEY).(string)
 	return val, ok
+}
+
+func InjectClientSource(ctx context.Context) (string, bool) {
+	val, ok := ctx.Value(CLIENT_SOURCE_KEY).(string)
+	return val, ok
+}
+
+func IsAppClient(ctx context.Context) bool {
+	val, ok := InjectClientSource(ctx)
+	return ok && val == "app"
 }
 
 // InjectTokenClaim get user/platform token claims from context

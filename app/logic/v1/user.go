@@ -136,7 +136,11 @@ func (l *UserLogic) GetUser(appid, id string) (*UserBaseInfo, error) {
 	}
 
 	// 处理存储URL，如果是本地存储的文件则生成预签名URL
-	if user.Avatar, err = utils.ProcessStorageURL(user.Avatar, l.core.Plugins.FileStorage().GetStaticDomain(), l.core.Plugins.FileStorage().GenGetObjectPreSignURL); err != nil {
+	// if user.Avatar, err = utils.ProcessStorageURL(user.Avatar, l.core.Plugins.FileStorage().GetStaticDomain(), l.core.Plugins.FileStorage().GenGetObjectPreSignURL); err != nil {
+	// 	return nil, errors.New("AuthedUserLogin.GetUser.FileStorage.GenGetObjectPreSignURL", i18n.ERROR_INTERNAL, err)
+	// }
+
+	if user.Avatar, err = l.core.Plugins.FileStorage().GenGetObjectPreSignURL(user.Avatar); err != nil {
 		return nil, errors.New("AuthedUserLogin.GetUser.FileStorage.GenGetObjectPreSignURL", i18n.ERROR_INTERNAL, err)
 	}
 

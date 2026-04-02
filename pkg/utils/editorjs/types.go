@@ -1,7 +1,9 @@
 package editorjs
 
 import (
+	"crypto/rand"
 	"encoding/json"
+	"math/big"
 
 	"github.com/davidscottmills/goeditorjs"
 )
@@ -130,4 +132,19 @@ type BlockContent struct {
 	Blocks  []goeditorjs.EditorJSBlock `json:"blocks"`
 	Time    int64                      `json:"time"` // javascript time
 	Version string                     `json:"version"`
+}
+
+func generateEditorJSBlockID() (string, error) {
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const size = 10
+
+	result := make([]byte, size)
+	for i := 0; i < size; i++ {
+		index, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+		if err != nil {
+			return "", err
+		}
+		result[i] = alphabet[index.Int64()]
+	}
+	return string(result), nil
 }

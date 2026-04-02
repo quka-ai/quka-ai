@@ -182,4 +182,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/davidscottmills/goeditorjs => github.com/holdno/goeditorjs v0.1.4
+replace github.com/davidscottmills/goeditorjs => github.com/holdno/goeditorjs v0.1.5

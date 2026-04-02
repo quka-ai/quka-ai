@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/i18n"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
+	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
 
 type UpsertJournalRequest struct {
@@ -26,6 +29,16 @@ func (s *HttpSrv) UpsertJournal(c *gin.Context) {
 	if err = utils.BindArgsWithGin(c, &req); err != nil {
 		response.APIError(c, err)
 		return
+	}
+
+	if v1.IsAppClient(c) {
+		raw, convErr := editorjs.ConvertMarkdownToEditorJSRaw(req.Content.String())
+		if convErr != nil {
+			response.APIError(c, errors.New("api.UpsertJournal.ConvertMarkdownToEditorJSRaw", i18n.ERROR_INVALIDARGUMENT, convErr).Code(http.StatusBadRequest))
+			return
+		}
+		fmt.Println(string(raw))
+		req.Content = types.KnowledgeContent(raw)
 	}
 
 	spaceID, _ := v1.InjectSpaceID(c)
@@ -80,6 +93,12 @@ func (s *HttpSrv) GetJournal(c *gin.Context) {
 	if err != nil {
 		response.APIError(c, err)
 		return
+	}
+
+	if data != nil && v1.IsAppClient(c) {
+		if markdown, convErr := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(data.Content)); convErr == nil {
+			data.Content = types.KnowledgeContent(markdown)
+		}
 	}
 
 	response.APISuccess(c, data)

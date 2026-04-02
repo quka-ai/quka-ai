@@ -21,6 +21,7 @@ const (
 // FileStorageInterface 文件存储接口定义
 type FileStorageInterface interface {
 	GenGetObjectPreSignURL(objectPath string) (string, error)
+	GetStaticDomain() string
 }
 
 // ReplaceMarkdownStaticResourcesWithPresignedURL 替换markdown中的静态资源URL为预签名URL
@@ -180,10 +181,12 @@ func processImageBlockWithStruct(block goeditorjs.EditorJSBlock, fileStorage Fil
 func processVideoBlockWithStruct(block goeditorjs.EditorJSBlock, fileStorage FileStorageInterface) goeditorjs.EditorJSBlock {
 	video := &EditorVideo{}
 	if err := json.Unmarshal(block.Data, video); err != nil {
+		slog.Error("Failed to process video block", slog.String("error", err.Error()))
 		return block
 	}
 
-	originalURL := video.File.URL
+	originalURL := strings.Replace(video.File.URL, fileStorage.GetStaticDomain(), "", 1)
+
 	if ShouldPresignURL(originalURL) {
 		objectPath := ExtractObjectPath(originalURL)
 		if objectPath != "" {

@@ -10,11 +10,11 @@ import (
 
 	v1 "github.com/quka-ai/quka-ai/app/logic/v1"
 	"github.com/quka-ai/quka-ai/app/response"
+	"github.com/quka-ai/quka-ai/pkg/mark"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 	"github.com/quka-ai/quka-ai/pkg/utils/editorjs"
 )
-
 
 type UpdateKnowledgeRequest struct {
 	ID          string                     `json:"id" binding:"required"`
@@ -119,7 +119,7 @@ func (s *HttpSrv) GetKnowledge(c *gin.Context) {
 		return
 	}
 
-	response.APISuccess(c, KnowledgeToKnowledgeResponse(knowledge))
+	response.APISuccess(c, KnowledgeToKnowledgeResponse(knowledge, v1.IsAppClient(c)))
 }
 
 type ListKnowledgeRequest struct {
@@ -237,7 +237,7 @@ func (s *HttpSrv) GetTaskKnowledge(c *gin.Context) {
 	})
 }
 
-func KnowledgeToKnowledgeResponse(item *types.Knowledge) *types.KnowledgeResponse {
+func KnowledgeToKnowledgeResponse(item *types.Knowledge, preferMarkdown bool) *types.KnowledgeResponse {
 	result := &types.KnowledgeResponse{
 		ID:          item.ID,
 		SpaceID:     item.SpaceID,
@@ -250,6 +250,14 @@ func KnowledgeToKnowledgeResponse(item *types.Knowledge) *types.KnowledgeRespons
 		Stage:       item.Stage,
 		UpdatedAt:   item.UpdatedAt,
 		CreatedAt:   item.CreatedAt,
+	}
+
+	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS && preferMarkdown {
+		if markdown, err := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(item.Content)); err == nil {
+			result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
+			result.Content = markdown
+			return result
+		}
 	}
 
 	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
@@ -281,19 +289,25 @@ func KnowledgeToKnowledgeResponseLite(item *types.Knowledge) *types.KnowledgeRes
 			slog.Error("Failed to parse editor blocks", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
 		}
 
-		if len(blocks.Blocks) > 6 {
-			blocks.Blocks = blocks.Blocks[:6]
-		}
+		// if len(blocks.Blocks) > 6 {
+		// 	blocks.Blocks = blocks.Blocks[:6]
+		// }
 
 		result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
 		result.Content, err = editorjs.ConvertEditorJSBlocksToMarkdown(blocks.Blocks)
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
 		}
+		result.Content = replaceHiddenContent(result.Content)
 	} else {
-		result.Content = string(item.Content)
+		result.Content = replaceHiddenContent(string(item.Content))
 	}
+
 	return result
+}
+
+func replaceHiddenContent(content string) string {
+	return mark.HiddenRegexp.ReplaceAllString(content, "[Secret]")
 }
 
 type DeleteKnowledgeRequest struct {

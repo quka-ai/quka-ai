@@ -525,7 +525,7 @@ func SetupOCR(s *AI, providers []types.ModelProvider) error {
 			slog.Error("Failed to unmarshal provider config for SetupOCR", slog.String("provider_id", v.ID), slog.Any("error", err))
 			continue // 如果配置解析失败，跳过该提供商
 		}
-		fmt.Println("setup ocr", v.Name)
+
 		// 只有配置了is_ocr为true的提供商才会设置OCR功能
 		if !providerConfig.IsOCR {
 			continue

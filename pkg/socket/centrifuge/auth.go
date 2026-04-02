@@ -3,6 +3,7 @@ package centrifuge
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -43,8 +44,31 @@ func (a *SimpleAuthHandler) OnConnecting(ctx context.Context, event centrifuge.C
 		slog.String("token", event.Token),
 		slog.Any("headers", event.Headers))
 
-	// 首先尝试从缓存中验证 auth token
+	if event.Headers["x-auth-type"] == "" {
+		slog.Debug("None headers in websocket connection request", slog.String("data", string(event.Data)))
+		var connectData struct {
+			AppID    string `json:"x-appid"`
+			AuthType string `json:"x-auth-type"`
+		}
+		if err := json.Unmarshal(event.Data, &connectData); err != nil {
+			slog.Debug("Failed to unmarshal connection data", slog.String("error", err.Error()), slog.String("data", string(event.Data)))
+			return centrifuge.ConnectReply{}, err
+		}
+
+		if event.Headers == nil {
+			event.Headers = make(map[string]string)
+		}
+
+		event.Headers["x-appid"] = connectData.AppID
+		event.Headers["x-auth-type"] = connectData.AuthType
+
+		slog.Debug("Parsed connection data from payload",
+			slog.String("appid", connectData.AppID),
+			slog.String("auth_type", connectData.AuthType))
+	}
+
 	if event.Headers["x-auth-type"] == "authorization" {
+		// 首先尝试从缓存中验证 auth token
 		tokenMeta, err := auth.ValidateTokenFromCache(ctx, event.Token, a.Store.Cache())
 		if err != nil {
 			slog.Debug("Auth token validation failed", slog.String("error", err.Error()))
