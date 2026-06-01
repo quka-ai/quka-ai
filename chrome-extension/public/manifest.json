@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Quka Quick Memory",
+  "description": "Summarize the current page with QukaAI and save new memories.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "Quka",
+    "default_popup": "index.html"
+  },
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"]
+}

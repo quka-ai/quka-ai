@@ -22,3 +22,5 @@ docker-compose/etc
 
 .gocache
 .agents/
+chrome-extension/node_modules
+chrome-extension/dist
