@@ -13,6 +13,9 @@ const TABLE_PREFIX = "quka_"
 const (
 	TABLE_KNOWLEDGE          = TableName("knowledge")
 	TABLE_KNOWLEDGE_CHUNK    = TableName("knowledge_chunk")
+	TABLE_MEMORY             = TableName("memory")
+	TABLE_MEMORY_EDGE        = TableName("memory_edge")
+	TABLE_MEMORY_BINDING     = TableName("memory_binding")
 	TABLE_VECTORS            = TableName("vectors")
 	TABLE_ACCESS_TOKEN       = TableName("access_token")
 	TABLE_USER_SPACE         = TableName("user_space")

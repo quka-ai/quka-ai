@@ -3,7 +3,6 @@ package v1
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -254,23 +253,16 @@ func (l *PodcastLogic) getKnowledgeContent(spaceID, knowledgeID string) (*Source
 	}
 
 	// 2. 根据内容类型转换为 markdown
-	var markdownContent string
-	if knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		// blocks 格式转换为 markdown
-		markdownContent, err = editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(decryptedContent))
-		if err != nil {
-			return nil, errors.New("PodcastLogic.getKnowledgeContent.ConvertEditorJSRawToMarkdown", i18n.ERROR_INTERNAL, err)
-		}
-	} else {
-		// 其他格式直接使用字符串
-		markdownContent = string(decryptedContent)
+	markdownContent, err := editorjs.ConvertKnowledgeRawToMarkdown(knowledge.ContentType, decryptedContent)
+	if err != nil {
+		return nil, errors.New("PodcastLogic.getKnowledgeContent.ConvertKnowledgeRawToMarkdown", i18n.ERROR_INTERNAL, err)
 	}
 
 	return &SourceContent{
 		Title:       knowledge.Title,
 		Description: knowledge.Summary,
 		Tags:        knowledge.Tags,
-		Content:     markdownContent,
+		Content:     string(markdownContent),
 		ContentType: "markdown", // 统一转换为 markdown
 	}, nil
 }

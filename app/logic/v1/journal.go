@@ -144,7 +144,7 @@ func (l *JournalLogic) DeleteJournal(spaceID, date string) error {
 		slog.Error("Failed to decrypt journal data for mark file status to delete", slog.String("error", err.Error()))
 		actData = journal.Content
 	}
-	if err = UpdateFilesToDelete(l.ctx, l.core, spaceID, actData); err != nil {
+	if err = UpdateFilesToDelete(l.ctx, l.core, spaceID, actData, types.KNOWLEDGE_CONTENT_TYPE_BLOCKS); err != nil {
 		slog.Error("Failed to remark journal files to delete status", slog.Int64("journal_id", journal.ID), slog.String("space_id", spaceID), slog.Any("error", err))
 	}
 

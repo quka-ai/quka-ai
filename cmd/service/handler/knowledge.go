@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -252,16 +252,15 @@ func KnowledgeToKnowledgeResponse(item *types.Knowledge, preferMarkdown bool) *t
 		CreatedAt:   item.CreatedAt,
 	}
 
-	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS && preferMarkdown {
-		if markdown, err := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(item.Content)); err == nil {
-			result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
-			result.Content = markdown
-			return result
+	if (result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS || item.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2) && preferMarkdown {
+		markdown, err := editorjs.ConvertKnowledgeRawToMarkdown(result.ContentType, item.Content)
+		if err != nil {
+			slog.Error("Failed to convert knowledge content to markdown", slog.String("knowledge_id", result.ID), slog.String("error", err.Error()))
 		}
-	}
+		fmt.Println(123, markdown)
 
-	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		result.Blocks = json.RawMessage(item.Content)
+		result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
+		result.Content = string(markdown)
 	} else {
 		result.Content = string(item.Content)
 	}
@@ -283,18 +282,14 @@ func KnowledgeToKnowledgeResponseLite(item *types.Knowledge) *types.KnowledgeRes
 		CreatedAt:   item.CreatedAt,
 	}
 
-	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		blocks, err := editorjs.ParseRawToBlocks(json.RawMessage(item.Content))
-		if err != nil {
-			slog.Error("Failed to parse editor blocks", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
-		}
+	if result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS || result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
 
 		// if len(blocks.Blocks) > 6 {
 		// 	blocks.Blocks = blocks.Blocks[:6]
 		// }
-
+		var err error
 		result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
-		result.Content, err = editorjs.ConvertEditorJSBlocksToMarkdown(blocks.Blocks)
+		result.Content, err = editorjs.ConvertKnowledgeRawToMarkdown(item.ContentType, item.Content)
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
 		}

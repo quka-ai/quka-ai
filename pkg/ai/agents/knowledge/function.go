@@ -26,9 +26,9 @@ const (
 
 // KnowledgeLogicFunctions 知识逻辑层函数接口,用于依赖注入
 type KnowledgeLogicFunctions struct {
-	InsertContentAsyncWithSource func(spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType, source types.KnowledgeSource, sourceRef string) (string, error)
-	GetKnowledge                 func(spaceID, id string) (*types.Knowledge, error)
-	Update                       func(spaceID, id string, args types.UpdateKnowledgeArgs) error
+	InsertContentAsyncWithSource func(ctx context.Context, spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType, source types.KnowledgeSource, sourceRef string) (string, error)
+	GetKnowledge                 func(ctx context.Context, spaceID, id string) (*types.Knowledge, error)
+	Update                       func(ctx context.Context, spaceID, id string, args types.UpdateKnowledgeArgs) error
 }
 
 // ResourceLogicFunctions 资源逻辑层函数接口,用于依赖注入
@@ -98,7 +98,7 @@ func (t *CreateKnowledgeTool) Info(ctx context.Context) (*schema.ToolInfo, error
 
 	return &schema.ToolInfo{
 		Name:        FUNCTION_NAME_CREATE_KNOWLEDGE,
-		Desc:        "基于当前对话历史创建知识(记忆)条目。系统会自动总结当前会话的关键信息，生成结构化的知识内容。Resource 是知识的分类标识,如果不指定,将保存到默认分类(knowledge)。",
+		Desc:        "基于当前对话历史创建空间知识库条目。系统会自动总结当前会话的关键信息，生成结构化的知识内容。Knowledge 用于共享资料、笔记、文档和 RAG 检索，不会自动创建 agent memory；需要长期记住的偏好、约束和稳定事实应使用 RememberUserMemory。Resource 是知识的分类标识,如果不指定,将保存到默认分类(knowledge)。",
 		ParamsOneOf: paramsOneOf,
 	}, nil
 }
@@ -169,6 +169,7 @@ func (t *CreateKnowledgeTool) InvokableRun(ctx context.Context, argumentsInJSON 
 
 	// 7. 创建 knowledge
 	knowledgeID, err := t.knowledgeFuncs.InsertContentAsyncWithSource(
+		ctx,
 		t.spaceID,
 		resource,
 		types.KNOWLEDGE_KIND_TEXT,
@@ -457,7 +458,7 @@ func (t *UpdateKnowledgeTool) InvokableRun(ctx context.Context, argumentsInJSON 
 	}
 
 	// 2. 验证 knowledge 存在且属于当前用户
-	existing, err := t.knowledgeFuncs.GetKnowledge(t.spaceID, params.ID)
+	existing, err := t.knowledgeFuncs.GetKnowledge(ctx, t.spaceID, params.ID)
 	if err != nil {
 		return fmt.Sprintf("Knowledge not found: %s", params.ID), nil
 	}
@@ -503,7 +504,7 @@ func (t *UpdateKnowledgeTool) InvokableRun(ctx context.Context, argumentsInJSON 
 	}
 
 	// 4. 执行更新
-	err = t.knowledgeFuncs.Update(t.spaceID, params.ID, updateArgs)
+	err = t.knowledgeFuncs.Update(ctx, t.spaceID, params.ID, updateArgs)
 	if err != nil {
 		return "", fmt.Errorf("failed to update knowledge: %w", err)
 	}

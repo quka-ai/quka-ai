@@ -1010,14 +1010,15 @@ ReGen:
 			item.MultiContent = v.Attach.ToMultiContent(v.Message, core.FileStorage())
 			reqMsg = append(reqMsg, item)
 		} else {
-			if v.Role == types.USER_ROLE_TOOL {
+			switch v.Role {
+			case types.USER_ROLE_TOOL:
 				ext, err := core.Store().ChatMessageExtStore().GetChatMessageExt(ctx, reqMsgWithDocs.SpaceID, reqMsgWithDocs.SessionID, v.ID)
 				if err != nil {
 					slog.Error("failed to get tool call message ext", slog.Any("error", err))
 					continue
 				}
 				reqMsg = append(reqMsg, &types.MessageContext{
-					Role:    types.USER_ROLE_ASSISTANT,
+					Role:    types.USER_ROLE_TOOL,
 					Content: "",
 					ToolCalls: []openai.ToolCall{
 						{
@@ -1029,12 +1030,12 @@ ReGen:
 						},
 					},
 				})
+			default:
+				reqMsg = append(reqMsg, &types.MessageContext{
+					Role:    v.Role,
+					Content: v.Message,
+				})
 			}
-
-			reqMsg = append(reqMsg, &types.MessageContext{
-				Role:    v.Role,
-				Content: v.Message,
-			})
 		}
 
 		// if v.ID == reqMsgWithDocs.ID {
@@ -1129,21 +1130,20 @@ func GenChatSessionContextSummary(ctx context.Context, core *core.Core, spaceID,
 		return err
 	}
 
-	messages := lo.Map(reqMsg, func(item *types.MessageContext, i int) *schema.Message {
-		if i == 0 {
-			return schema.SystemMessage(prompt)
-		}
+	var messages []*schema.Message
+	messages = append(messages, schema.SystemMessage(prompt))
+	messages = append(messages, lo.Map(reqMsg, func(item *types.MessageContext, i int) *schema.Message {
 		return &schema.Message{
 			Role:    schema.RoleType(item.Role.String()),
-			Content: item.Content,
+			Content: stringifySummaryMessageContext(item),
 		}
-	})
+	})...)
 
 	messages = append(messages, schema.UserMessage("请对上述对话做一个总结。"))
 
 	resp, err := model.Generate(ctx, messages)
 	if err != nil {
-		return errors.New("g11enDialogContextSummary.gptSrv.Chat", i18n.ERROR_INTERNAL, err)
+		return errors.New("genDialogContextSummary.gptSrv.Chat", i18n.ERROR_INTERNAL, err)
 	}
 
 	if err = core.Store().ChatSummaryStore().Create(ctx, types.ChatSummary{
@@ -1157,4 +1157,43 @@ func GenChatSessionContextSummary(ctx context.Context, core *core.Core, spaceID,
 	}
 	slog.Debug("succeed to generate summary", slog.String("session_id", sessionID), slog.Int64("message_sequence", summaryMessageSeqID))
 	return nil
+}
+
+func stringifySummaryMessageContext(item *types.MessageContext) string {
+	if item == nil {
+		return ""
+	}
+
+	parts := make([]string, 0, 4)
+	if item.Content != "" {
+		parts = append(parts, item.Content)
+	}
+
+	if len(item.ToolCalls) > 0 {
+		toolCalls := lo.Map(item.ToolCalls, func(call openai.ToolCall, _ int) string {
+			if call.Function.Name == "" && call.Function.Arguments == "" {
+				raw, _ := json.Marshal(call)
+				return string(raw)
+			}
+			return fmt.Sprintf("tool_call: %s(%s)", call.Function.Name, call.Function.Arguments)
+		})
+		parts = append(parts, strings.Join(toolCalls, "\n"))
+	}
+
+	if len(item.MultiContent) > 0 {
+		multiParts := lo.Map(item.MultiContent, func(part openai.ChatMessagePart, _ int) string {
+			switch {
+			case part.Text != "":
+				return part.Text
+			case part.ImageURL != nil && part.ImageURL.URL != "":
+				return fmt.Sprintf("[image] %s", part.ImageURL.URL)
+			default:
+				raw, _ := json.Marshal(part)
+				return string(raw)
+			}
+		})
+		parts = append(parts, strings.Join(multiParts, "\n"))
+	}
+
+	return strings.TrimSpace(strings.Join(parts, "\n"))
 }

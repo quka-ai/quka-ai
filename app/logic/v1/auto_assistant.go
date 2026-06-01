@@ -116,7 +116,8 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 	// 2. 准备提示词 - 使用 PromptManager
 	lang := ai.MODEL_BASE_LANGUAGE_CN
 	promptTemplate := a.core.PromptManager().GetChatTemplate(lang, space)
-	prompt := promptTemplate.Build()
+	prompt := WithMemorySystemInstructions(promptTemplate.Build())
+
 	// prompt = receiver.VariableHandler().Do(prompt)
 
 	// 3. 生成会话上下文
@@ -139,6 +140,11 @@ func (a *AutoAssistant) RequestAssistant(ctx context.Context, reqMsg *types.Chat
 					Content: reqMsg.Message,
 				},
 			},
+		}
+	}
+	if aiCallOptions.EnableKnowledge {
+		if err = InjectMemoryContext(ctx, a.core, reqMsg, sessionContext); err != nil {
+			slog.Warn("Failed to inject memory context", slog.String("error", err.Error()), slog.String("space_id", reqMsg.SpaceID), slog.String("session_id", reqMsg.SessionID))
 		}
 	}
 
@@ -461,9 +467,10 @@ func (f *EinoAgentFactory) CreateAutoRagReActAgent(agentCtx *types.AgentContext,
 		&WithRAG{
 			Enable: agentCtx.EnableKnowledge,
 		}, // 支持知识库搜索
-		NewWithKnowledgeTools(true),      // 支持知识库 CRUD 工具
-		NewWithOCRTool(hasMultimedia),    // 支持 OCR 图片文字提取工具
-		NewWithVisionTool(hasMultimedia), // 支持 Vision 图片理解工具
+		NewWithMemoryTools(agentCtx.EnableKnowledge), // 支持主动记忆与记忆检索
+		NewWithKnowledgeTools(true),                  // 支持知识库 CRUD 工具
+		NewWithOCRTool(hasMultimedia),                // 支持 OCR 图片文字提取工具
+		NewWithVisionTool(hasMultimedia),             // 支持 Vision 图片理解工具
 	}
 
 	for _, option := range options {
@@ -776,6 +783,35 @@ type WithKnowledgeTools struct {
 
 func NewWithKnowledgeTools(enable bool) *WithKnowledgeTools {
 	return &WithKnowledgeTools{Enable: enable}
+}
+
+// WithMemoryTools 添加Memory工具选项
+type WithMemoryTools struct {
+	Enable bool
+}
+
+func NewWithMemoryTools(enable bool) *WithMemoryTools {
+	return &WithMemoryTools{Enable: enable}
+}
+
+func (o *WithMemoryTools) Apply(config *AgentConfig) error {
+	if !o.Enable {
+		return nil
+	}
+
+	memoryTools := NewMemoryToolsWithLogic(
+		config.Core,
+		config.AgentCtx.SpaceID,
+		config.AgentCtx.SessionID,
+		config.AgentCtx.UserID,
+	)
+
+	for _, memoryTool := range memoryTools {
+		notifyingTool := config.ToolWrapper.Wrap(memoryTool)
+		config.Tools = append(config.Tools, notifyingTool)
+	}
+
+	return nil
 }
 
 func (o *WithKnowledgeTools) Apply(config *AgentConfig) error {

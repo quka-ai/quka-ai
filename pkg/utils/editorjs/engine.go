@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/davidscottmills/goeditorjs"
+	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/utils"
 	"github.com/samber/lo"
 )
@@ -33,9 +34,9 @@ func SetupGlobalEditorJS(staticDomain string) {
 }
 
 // ConvertEditorJSRawToMarkdown 将EditorJS原始数据转换为Markdown
-func ConvertEditorJSRawToMarkdown(blockString json.RawMessage) (string, error) {
-	fmt.Println("1", string(blockString))
-	return editorJSMarkdownEngine.GenerateMarkdownWithUnknownBlock(string(blockString))
+func ConvertEditorJSRawToMarkdown(blockString types.KnowledgeContent) (string, error) {
+	md, err := editorJSMarkdownEngine.GenerateMarkdownWithUnknownBlock(string(blockString))
+	return md, err
 }
 
 // RemoveFileBlockHost 移除块中文件的主机名
@@ -65,7 +66,7 @@ func RemoveFileBlockHost(blocks []goeditorjs.EditorJSBlock, bucketName string) [
 }
 
 // ConvertEditorJSBlocksToMarkdown 将EditorJS块转换为Markdown
-func ConvertEditorJSBlocksToMarkdown(blocks []goeditorjs.EditorJSBlock) (string, error) {
+func ConvertEditorJSBlocksToMarkdown(blocks []goeditorjs.EditorJSBlock) (types.KnowledgeContent, error) {
 	results := []string{}
 	for _, block := range blocks {
 		if generator, ok := editorJSMarkdownEngine.BlockHandlers[block.Type]; ok {
@@ -76,7 +77,7 @@ func ConvertEditorJSBlocksToMarkdown(blocks []goeditorjs.EditorJSBlock) (string,
 			results = append(results, md)
 		}
 	}
-	return strings.Join(results, "\n\n"), nil
+	return types.KnowledgeContent(strings.Join(results, "\n\n")), nil
 }
 
 // ListV2Handler is the default ListV2Handler for EditorJS HTML generation

@@ -235,7 +235,6 @@ func (s *KnowledgeStore) Update(ctx context.Context, spaceID, id string, data ty
 	if data.SourceRef != "" {
 		query = query.Set("source_ref", data.SourceRef)
 	}
-
 	queryString, args, err := query.ToSql()
 	if err != nil {
 		return ErrorSqlBuild(err)

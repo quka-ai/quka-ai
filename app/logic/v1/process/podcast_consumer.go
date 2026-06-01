@@ -193,21 +193,14 @@ func getSourceContentForPodcast(ctx context.Context, core *core.Core, podcast *t
 		}
 
 		// 2. 根据内容类型转换为 markdown
-		var markdownContent string
-		if knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			// blocks 格式转换为 markdown
-			markdownContent, err = editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(decryptedContent))
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert blocks to markdown: %w", err)
-			}
-		} else {
-			// 其他格式直接使用字符串
-			markdownContent = string(decryptedContent)
+		markdownContent, err := editorjs.ConvertKnowledgeRawToMarkdown(knowledge.ContentType, decryptedContent)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert knowledge content to markdown: %w", err)
 		}
 
 		return &SourceContentData{
 			Title:       knowledge.Title,
-			Content:     markdownContent,
+			Content:     string(markdownContent),
 			ContentType: "markdown", // 统一转换为 markdown
 		}, nil
 

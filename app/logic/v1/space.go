@@ -262,6 +262,18 @@ func (l *SpaceLogic) DeleteUserSpace(spaceID string) error {
 			return errors.New("SpaceLogic.DeleteUserSpace.VectorStore.DeleteAll", i18n.ERROR_INTERNAL, err)
 		}
 
+		if err := l.core.Store().MemoryBindingStore().DeleteAll(ctx, spaceID); err != nil {
+			return errors.New("SpaceLogic.DeleteUserSpace.MemoryBindingStore.DeleteAll", i18n.ERROR_INTERNAL, err)
+		}
+
+		if err := l.core.Store().MemoryEdgeStore().DeleteAll(ctx, spaceID); err != nil {
+			return errors.New("SpaceLogic.DeleteUserSpace.MemoryEdgeStore.DeleteAll", i18n.ERROR_INTERNAL, err)
+		}
+
+		if err := l.core.Store().MemoryStore().DeleteAll(ctx, spaceID); err != nil {
+			return errors.New("SpaceLogic.DeleteUserSpace.MemoryStore.DeleteAll", i18n.ERROR_INTERNAL, err)
+		}
+
 		if err := l.core.Store().ChatSessionStore().DeleteAll(ctx, spaceID); err != nil {
 			return errors.New("SpaceLogic.DeleteUserSpace.ChatSessionStore.DeleteAll", i18n.ERROR_INTERNAL, err)
 		}

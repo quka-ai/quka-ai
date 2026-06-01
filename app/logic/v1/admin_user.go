@@ -451,6 +451,18 @@ func (l *AdminUserLogic) deleteSpaceKnowledgeData(ctx context.Context, spaceID s
 		return fmt.Errorf("failed to delete content tasks: %w", err)
 	}
 
+	if err := l.core.Store().MemoryBindingStore().DeleteAll(ctx, spaceID); err != nil {
+		return fmt.Errorf("failed to delete memory bindings: %w", err)
+	}
+
+	if err := l.core.Store().MemoryEdgeStore().DeleteAll(ctx, spaceID); err != nil {
+		return fmt.Errorf("failed to delete memory edges: %w", err)
+	}
+
+	if err := l.core.Store().MemoryStore().DeleteAll(ctx, spaceID); err != nil {
+		return fmt.Errorf("failed to delete memories: %w", err)
+	}
+
 	// 最后删除知识库本身
 	if err := l.core.Store().KnowledgeStore().DeleteAll(ctx, spaceID); err != nil {
 		return fmt.Errorf("failed to delete knowledge: %w", err)

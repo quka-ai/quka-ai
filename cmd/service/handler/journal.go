@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -96,7 +95,7 @@ func (s *HttpSrv) GetJournal(c *gin.Context) {
 	}
 
 	if data != nil && v1.IsAppClient(c) {
-		if markdown, convErr := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(data.Content)); convErr == nil {
+		if markdown, convErr := editorjs.ConvertRawToMarkdownAuto(data.Content); convErr == nil {
 			data.Content = types.KnowledgeContent(markdown)
 		}
 	}

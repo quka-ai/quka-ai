@@ -216,6 +216,14 @@ func (l *ShareLogic) GetKnowledgeByShareToken(token string) (*KnowledgeShareInfo
 		}
 	}
 
+	if user.Avatar != "" {
+		if presignedURL, err := l.core.FileStorage().GenGetObjectPreSignURL(user.Avatar); err == nil {
+			user.Avatar = presignedURL
+		} else {
+			slog.Warn("Failed to generate presigned URL for user avatar", slog.String("avatar", user.Avatar), slog.String("error", err.Error()))
+		}
+	}
+
 	if knowledge.Content, err = l.core.DecryptData(knowledge.Content); err != nil {
 		return nil, errors.New("ShareLogic.GetKnowledgeByShareToken.DecryptData", i18n.ERROR_INTERNAL, err)
 	}
@@ -232,9 +240,16 @@ func (l *ShareLogic) GetKnowledgeByShareToken(token string) (*KnowledgeShareInfo
 		CreatedAt:    knowledge.CreatedAt,
 		EmbeddingURL: link.EmbeddingURL,
 		ContentType:  knowledge.ContentType,
-		Content: lo.If(knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS,
-			types.KnowledgeContent(editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(string(knowledge.Content), l.core.Plugins.FileStorage()))).
-			Else(knowledge.Content),
+		Content: func() types.KnowledgeContent {
+			switch knowledge.ContentType {
+			case types.KNOWLEDGE_CONTENT_TYPE_BLOCKS:
+				return types.KnowledgeContent(editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(knowledge.Content, l.core.Plugins.FileStorage()))
+			case types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2:
+				return types.KnowledgeContent(editorjs.ReplaceBlockNoteBlocksJsonStaticResourcesWithPresignedURL(knowledge.Content, l.core.Plugins.FileStorage()))
+			default:
+				return knowledge.Content
+			}
+		}(),
 	}
 
 	return data, nil
@@ -321,6 +336,14 @@ func (l *ShareLogic) GetSessionByShareToken(token string) (*SessionShareInfo, er
 			Name:   "Null",
 			Avatar: l.core.Cfg().Site.DefaultAvatar,
 			ID:     "",
+		}
+	}
+
+	if user.Avatar != "" {
+		if presignedURL, err := l.core.FileStorage().GenGetObjectPreSignURL(user.Avatar); err == nil {
+			user.Avatar = presignedURL
+		} else {
+			slog.Warn("Failed to generate presigned URL for user avatar", slog.String("avatar", user.Avatar), slog.String("error", err.Error()))
 		}
 	}
 
@@ -595,6 +618,14 @@ func (l *ShareLogic) GetPodcastByShareToken(token string) (*PodcastShareInfo, er
 		user = &types.User{
 			Name: "Null",
 			ID:   "",
+		}
+	}
+
+	if user.Avatar != "" {
+		if presignedURL, err := l.core.FileStorage().GenGetObjectPreSignURL(user.Avatar); err == nil {
+			user.Avatar = presignedURL
+		} else {
+			slog.Warn("Failed to generate presigned URL for user avatar", slog.String("avatar", user.Avatar), slog.String("error", err.Error()))
 		}
 	}
 

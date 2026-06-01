@@ -120,13 +120,13 @@ func searchJournal(ctx ToolContext, funcCall openai.FunctionCall) ([]*types.Mess
 			if err != nil {
 				return nil, err
 			}
-			md, err := editorjs.ConvertEditorJSRawToMarkdown(content)
+			md, err := editorjs.ConvertRawToMarkdownAuto(content)
 			if err != nil {
 				return nil, err
 			}
 			sb.WriteString(v.Date)
 			sb.WriteString("  \n")
-			sb.WriteString(md)
+			sb.WriteString(string(md))
 			sb.WriteString("  \n------  \n")
 		}
 	}

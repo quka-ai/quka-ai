@@ -42,6 +42,9 @@ type CoreRef struct {
 type Stores struct {
 	store.KnowledgeStore
 	store.KnowledgeChunkStore
+	store.MemoryStore
+	store.MemoryEdgeStore
+	store.MemoryBindingStore
 	store.VectorStore
 	store.AccessTokenStore
 	store.UserSpaceStore
@@ -239,6 +242,18 @@ func (p *Provider) UserStore() store.UserStore {
 
 func (p *Provider) KnowledgeChunkStore() store.KnowledgeChunkStore {
 	return p.stores.KnowledgeChunkStore
+}
+
+func (p *Provider) MemoryStore() store.MemoryStore {
+	return p.stores.MemoryStore
+}
+
+func (p *Provider) MemoryEdgeStore() store.MemoryEdgeStore {
+	return p.stores.MemoryEdgeStore
+}
+
+func (p *Provider) MemoryBindingStore() store.MemoryBindingStore {
+	return p.stores.MemoryBindingStore
 }
 
 func (p *Provider) ChatSessionStore() store.ChatSessionStore {

@@ -6,6 +6,11 @@
 **优先级**: 高  
 **作者**: Codex  
 
+**关联文档**:
+
+- [OpenClaw x QukaAI Memory 架构图](/Users/wangboyan/development/quka/quka-ai/docs/refactoring-plans/openclaw-memory-architecture.md)
+- [OpenClaw x QukaAI API Adapter Contract](/Users/wangboyan/development/quka/quka-ai/docs/refactoring-plans/openclaw-memory-api-adapter.md)
+
 ## 1. 背景
 
 OpenClaw 的记忆设计强调的不是单一 RAG 检索，而是一套面向 agent runtime 的分层记忆系统。其核心能力可以概括为：
@@ -68,6 +73,8 @@ QukaAI 当前已经具备较好的底层能力：
 1. 这条 knowledge 在 agent memory 体系中扮演什么角色
 2. 这条 memory 与哪些会话、实体、证据、其他 memory 存在关系
 
+在当前收敛版本中，knowledge 与 memory 的映射仅通过 `quka_memory.knowledge_id` 表达，不再把 memory 语义字段复制回 `quka_knowledge`。
+
 ### 3.2 增加独立 memory catalog
 
 通过单独新增 `quka_memory` 和 `quka_memory_edge` 两张表，在不破坏现有知识库结构的前提下补出记忆抽象。
@@ -91,8 +98,53 @@ QukaAI 当前已经具备较好的底层能力：
 
 - 保留 `knowledge` 作为 canonical store
 - 使用 `memory` 作为 agent runtime 层
-- 让同一份内容同时服务于 agent runtime 与 human-facing knowledge UI
+- 让被提升为 memory 的内容同时服务于 agent runtime 与 human-facing knowledge UI
 - 在 runtime 层引入更强的 lifecycle 和 recall 质量控制
+
+### 3.6 惰性激活与渐进治理
+
+本方案不要求用户显式开启 agent mode，也不希望用户为“是否启用 memory runtime”做额外配置。
+
+因此推荐采用：
+
+- 默认不提升
+  - 普通 knowledge 创建后只进入知识库、chunk、vector 和 RAG 检索，不自动生成 memory
+- 按需提升
+  - 用户明确要求“记住”、agent 调用 `remember`、knowledge 被 pin，或后台治理任务判断值得沉淀时，才创建对应 memory
+- 惰性激活
+  - 只有当 agent 真正开始对某个 space / runtime context 调用 `recall / hydrate / pin` 时，memory 才进入 active runtime usage
+- 渐进治理
+  - 去重、冲突检测、reflect、merge / supersede 等较重的治理动作，不在所有 knowledge 创建时全量触发，而是在 memory 被创建、使用、命中或周期性后台任务扫描后按需触发
+
+这样可以同时满足三点：
+
+1. 用户无感，不需要做额外配置
+2. agent 可以平滑接入，但不会把完整资料库误当作长期记忆
+3. 没有 agent 的场景不会承担完整 memory runtime 的重负担
+
+### 3.7 Memory Lifecycle 的维护主体
+
+memory lifecycle 不应由用户手工维护，而应由 agent runtime 与后台任务共同推进。
+
+建议最小版本采用三个内部阶段：
+
+- `registered`
+  - knowledge 已被提升为 memory，但尚未被 agent 实际消费
+- `activated`
+  - memory 已被某个 runtime context 用于 `recall / hydrate / pin`
+- `consolidated`
+  - memory 已进入更深的治理流程，例如 reflect、merge、supersede、evidence linking
+
+推进方式：
+
+- memory 创建时：系统自动完成 `registered`
+- agent 调用 `recall / hydrate / pin` 时：系统将命中的 memory 推进为 `activated`
+- 后台任务或 agent reflect 流程运行时：将高价值、高频使用的 memory 推进为 `consolidated`
+
+注意：
+
+- 这是内部 lifecycle，用于治理策略，不要求直接暴露给普通用户
+- 用户主要通过 knowledge 间接影响 memory，而不是直接维护这些阶段
 
 ### 3.5 面向人的可见性与可控性
 
@@ -101,13 +153,13 @@ QukaAI 的目标不是做一个只有 agent 自己可见的黑盒记忆系统，
 因此本方案增加两条产品约束：
 
 1. agent 可写入的 memory，原则上都应能映射为人可查看的 knowledge 视图
-2. 人在界面上创建或修改的 knowledge，应默认进入 agent memory runtime，被后续 recall / hydrate 使用
+2. 人在界面上创建或修改的 knowledge，可以被显式提升给 agent 使用，但不应默认进入 memory runtime
 
 这意味着：
 
 - `memory` 是 agent runtime 语义层
 - `knowledge` 是人机共享的可视化内容层
-- 两者不是二选一，而是同一套系统中的两个视图
+- 两者不是二选一，而是同一套系统中的两个视图；memory 是 knowledge 的按需 runtime 投影，不是所有 knowledge 的必然副产物
 
 ## 4. 记忆模型
 
@@ -165,7 +217,7 @@ memory 之间需要最小关系语义：
 
 ### 4.5 Runtime Context
 
-为了兼容 QukaAI 内置聊天与外部 agent runtime，`pin / hydrate / recall` 不应只绑定到 `session`，而应绑定到更通用的 `runtime_context`。
+为了兼容 QukaAI 内置聊天与外部 agent runtime，`pin / hydrate / reflect` 不应只绑定到 `session`，而应绑定到更通用的 `runtime_context`。`recall` 保持纯记忆搜索接口，不接收 runtime context；需要装配 pinned / working memories 时使用 `hydrate`。
 
 建议最小版本定义：
 
@@ -274,6 +326,7 @@ ON quka_memory (space_id, dedupe_key);
 - `memory_type`: `core / episodic / semantic / working`
 - `scope`: `user / agent / session / space`
 - `status`: `active / archived / superseded / deleted`
+- `status`: `active / archived / superseded / deleted`
 - `importance`: 业务重要度，影响 recall 排序
 - `confidence`: 可信度，用于表达“观察”与“推断”的区别
 - `author_type`: 写入主体，区分 `human / agent / shared / system`
@@ -290,6 +343,7 @@ ON quka_memory (space_id, dedupe_key);
 
 - `dedupe_key` 用于在 `remember` 入口快速做近似幂等控制
 - `conflict_state` 用于标识该记忆是否与其他记忆冲突，后续可结合 `memory_edge(relation = contradicts)` 做进一步处理
+- `registered / activated / consolidated` 建议先作为运行时治理状态存在于逻辑层或缓存层，最小版本不强制落表
 
 ### 5.2 新增表：`quka_memory_edge`
 
@@ -358,34 +412,7 @@ ON quka_memory_binding (space_id, memory_id);
 
 ### 5.4 对现有表的最小增量
 
-#### 5.4.1 `quka_knowledge`
-
-建议新增以下字段：
-
-```sql
-ALTER TABLE quka_knowledge
-ADD COLUMN IF NOT EXISTS memory_role VARCHAR(20) NOT NULL DEFAULT '',
-ADD COLUMN IF NOT EXISTS memory_format VARCHAR(20) NOT NULL DEFAULT '',
-ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'shared',
-ADD COLUMN IF NOT EXISTS managed_by VARCHAR(20) NOT NULL DEFAULT '',
-ADD COLUMN IF NOT EXISTS canonical BOOLEAN NOT NULL DEFAULT FALSE;
-```
-
-用途：
-
-- `memory_role`: 让一部分 knowledge 直接声明为 memory page
-- `memory_format`: 为后续支持 `page / daily_log / entity_page` 预留
-- `visibility`: 控制这条 knowledge 是否对人可见，最小版本建议默认 `shared`
-- `managed_by`: 标记主要由 `human / agent / shared` 哪一侧维护
-- `canonical`: 标记其是否是该 memory 的权威正文
-
-补充约束：
-
-- 默认情况下，memory 对应的 canonical knowledge 应对人可见
-- 仅少数纯运行时 working memory 可不直接暴露到 UI
-- 即使不直接暴露，也应允许通过 hydration cache 或调试视图追踪来源
-
-#### 5.4.2 `quka_chat_session_pin`
+#### 5.4.1 `quka_chat_session_pin`
 
 当前 `content` 仅承载 `knowledges` 和 `journals`。建议扩展为：
 
@@ -415,7 +442,7 @@ ADD COLUMN IF NOT EXISTS canonical BOOLEAN NOT NULL DEFAULT FALSE;
 - `quka_chat_session_pin` 只服务 QukaAI 内置聊天
 - 面向外部 agent 的 pin / hydration 不应直接写这张表，而应优先落在 `quka_memory_binding`
 
-#### 5.4.3 `quka_chat_summary`
+#### 5.4.2 `quka_chat_summary`
 
 最小版本可以不改；如果需要更强可追溯性，建议新增：
 
@@ -500,6 +527,7 @@ ADD COLUMN IF NOT EXISTS source_to_sequence BIGINT NOT NULL DEFAULT 0;
 - 如果由人从界面创建，建议默认 `author_type = human`
 - 如果由 agent 从聊天中提炼，建议默认 `author_type = agent`
 - 在本方案中，新增 knowledge 默认应进入 memory 层，不再要求用户额外勾选是否关联
+- knowledge 创建时默认只做轻量登记，不要求同步完成全部重型治理动作
 
 ### 6.2 `POST /api/v1/memory/recall`
 
@@ -510,10 +538,6 @@ ADD COLUMN IF NOT EXISTS source_to_sequence BIGINT NOT NULL DEFAULT 0;
 ```json
 {
   "query": "用户对 OpenClaw 和 AI 记忆的长期观点",
-  "runtime_context": {
-    "type": "agent_run",
-    "id": "run_xxx"
-  },
   "limit": 8,
   "scopes": ["user", "space"],
   "memory_types": ["core", "semantic", "episodic"],
@@ -539,7 +563,8 @@ ADD COLUMN IF NOT EXISTS source_to_sequence BIGINT NOT NULL DEFAULT 0;
 - 初步召回可以复用现有向量检索和后续混合检索方案
 - reranker 作为 recall 的独立阶段，避免单靠 embedding 相似度导致记忆误召回
 - 如果 recall 命中带 `conflict_state != none` 的记忆，应在返回中显式标记
-- `runtime_context` 为可选项；外部 agent 传 `agent_run / task / workspace`，内置聊天传 `chat_session`
+- `recall` 不读取 runtime context；外部 agent 或内置聊天如需上下文装配，应调用 `hydrate`
+- recall 命中的 memory 可被系统内部推进到 `activated` 阶段，并更新访问统计
 
 响应示例：
 
@@ -629,6 +654,11 @@ ADD COLUMN IF NOT EXISTS source_to_sequence BIGINT NOT NULL DEFAULT 0;
 3. 根据规则提升为 semantic 或 core
 4. 写入 `quka_memory_edge(relation = derived_from)`
 
+说明：
+
+- `reflect` 是 memory lifecycle 从 `activated` 走向 `consolidated` 的关键机制之一
+- 可由 agent 主动触发，也可由后台任务在低优先级队列中异步触发
+
 ### 6.5 `POST /api/v1/memory/pin`
 
 用途：将记忆 pin 到某个 runtime context。
@@ -650,6 +680,7 @@ ADD COLUMN IF NOT EXISTS source_to_sequence BIGINT NOT NULL DEFAULT 0;
 
 - 写入 `quka_memory_binding`
 - 如果 `runtime_context.type = chat_session`，可同步更新 `quka_chat_session_pin.content.memories` 作为缓存
+- 被 pin 的 memory 默认视为已进入 `activated` 阶段
 
 ### 6.6 `POST /api/v1/memory/forget`
 
@@ -723,32 +754,44 @@ QukaAI 中的 memory 系统需要满足以下双向关系：
 
 - agent 能主动写 memory，但不能变成黑盒
 - 人能看到 agent 在用什么 knowledge 作为记忆依据
-- 人能主动创建 knowledge 给 agent 使用
+- 人能主动创建 knowledge，并选择是否提升给 agent 使用
 - 人能纠正 agent 的错误记忆，而不是只能等待模型自行漂移
 
 ### 7.2 UI 视图建议
 
-建议在界面中至少提供三种视图：
+正式用户界面应以 knowledge 为主体，而不是直接暴露 memory runtime 操作面板。
+
+建议最小版本提供：
 
 - `Knowledge List`
   - 面向普通用户的知识列表视图
-  - 展示标题、摘要、来源、更新时间、是否被 agent 使用
-- `Memory Inspector`
-  - 面向高级用户或调试场景的记忆视图
-  - 展示 memory type、scope、confidence、conflict state、evidence
-- `Runtime Working Set`
-  - 展示某个 runtime context 被 hydrate / pin 的记忆集合
-  - 让人知道 agent 当前“脑子里带着什么”
+  - 展示标题、摘要、来源、更新时间、是否已被 agent 纳入记忆
+- `Knowledge Detail`
+  - 展示 knowledge 正文
+  - 附带展示少量 memory 映射信息，例如 memory type、来源、是否被 agent 使用
+
+对于 `Memory Inspector` 和 `Runtime Working Set`：
+
+- 建议仅作为内部调试视图或高级模式能力
+- 不作为普通用户的主交互入口
 
 ### 7.3 UI 可执行操作
 
-建议界面至少支持以下操作：
+建议普通用户界面只支持 knowledge 层操作：
 
-- 创建 knowledge；系统默认自动写入 memory
-- 将现有 knowledge 标记为 `core / semantic / episodic`
-- 手动 pin 某条 memory 到某个 runtime context
-- 对 agent 推断出的记忆执行确认、修正、归档、删除
-- 查看某条记忆来自哪段对话、哪次总结、哪条知识
+- 创建 knowledge；默认只进入知识库
+- 将某条 knowledge 显式提升为 memory
+- 编辑 knowledge 内容
+- 查看该 knowledge 是否已被 agent 使用
+- 查看该 knowledge 对应的部分 memory 属性
+
+对于以下能力：
+
+- 手动 pin memory
+- 直接确认 / 删除 memory
+- 操作 runtime working set
+
+建议先保留为内部调试能力，而不是默认开放给普通用户
 
 ### 7.4 Human-in-the-loop 原则
 
@@ -756,8 +799,8 @@ QukaAI 中的 memory 系统需要满足以下双向关系：
 
 - `human stated` 的 `core memory` 可以直接高权重参与 recall
 - `agent inferred` 的长期偏好类记忆，默认应低一档，或进入待确认状态
-- 一旦用户确认，`epistemic_status` 升级为 `confirmed`
-- 用户显式删除或归档的记忆，agent 后续不应继续 hydrate
+- 用户主要通过编辑 knowledge 来纠正 agent 的认知
+- memory 的直接确认 / 删除操作，最小版本优先保留给内部治理接口
 
 ### 7.5 为什么坚持 knowledge 作为 UI 主体
 
@@ -868,7 +911,7 @@ QukaAI 中的 memory 系统需要满足以下双向关系：
 5. 在合适时机触发 `reflect`
 6. 新的 runtime context 开始时调用 `hydrate`
 7. agent 回复阶段调用 `recall`
-8. 人可在 UI 上查看、确认、修正或 pin 这些记忆
+8. 人可在 UI 上通过 knowledge 查看这些记忆的映射结果，并通过编辑 knowledge 间接影响 memory
 
 这样可以先完成一个“可写入、可召回、可压缩、可注入”的最小 memory runtime。
 
@@ -889,11 +932,11 @@ QukaAI 中的 memory 系统需要满足以下双向关系：
 3. 新增 `quka_memory_binding`
 4. 扩展 `quka_chat_session_pin.content` 作为内置聊天兼容缓存
 5. 为 `quka_memory` 增加 `author_type / epistemic_status`
-6. 为 `quka_knowledge` 增加面向 UI 的 `visibility / managed_by`
-7. 新增 `remember / recall / hydrate / update / delete / pin` API，并统一接收 `runtime_context`
-8. 在 `remember` 中加入去重与冲突标记
-9. 在 `recall` 中加入 reranker 接口位
-10. 在 UI 侧增加 knowledge 与 memory 的映射展示能力
+6. 新增 `remember / recall / hydrate / update / delete / pin` API，其中 `hydrate / pin / reflect` 接收 `runtime_context`
+7. 在 `remember` 中加入去重与冲突标记
+8. 在 `recall` 中加入 reranker 接口位
+9. 在 UI 侧增加 knowledge 与 memory 的映射展示能力
+10. 增加 lifecycle 推进逻辑：`registered -> activated`
 
 ### Phase 2
 
@@ -901,7 +944,7 @@ QukaAI 中的 memory 系统需要满足以下双向关系：
 2. 补充 memory edge 写入逻辑
 3. 把 `chat_summary` 更明确纳入 episodic consolidation
 4. 增强 `merge / supersede` 规则
-5. 支持用户确认 agent 推断记忆
+5. 增加 lifecycle 推进逻辑：`activated -> consolidated`
 6. 打通外部 agent runtime 的 context binding
 
 ### Phase 3
@@ -909,7 +952,7 @@ QukaAI 中的 memory 系统需要满足以下双向关系：
 1. 将 recall 接入混合检索
 2. 增加时间维度召回
 3. 增加 entity page 和 memory export/import adapter
-4. 增加可视化 memory inspector 和 runtime working set 视图
+4. 增加可视化 memory inspector 和 runtime working set 调试视图
 
 ## 12. 风险与注意事项
 
@@ -974,7 +1017,7 @@ QukaAI 中的 memory 系统需要满足以下双向关系：
 更准确地说：
 
 - QukaAI 可以成为一个更强的 structured memory runtime / backend
-- 但如果希望优雅替代 OpenClaw 当前的记忆工作方式，还需要补一层 OpenClaw adapter / projection
+- 但如果希望优雅替代 OpenClaw 当前的记忆工作方式，还需要补 agent skill adapter / projection
 
 ### 13.2 已可替代的部分
 
@@ -1046,18 +1089,18 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 
 ### 13.5 为了优雅替代，还需要什么
 
-如果希望 QukaAI 不只是“能接住 OpenClaw 的记忆需求”，而是真正优雅替代其记忆系统，建议新增一层 adapter：
+如果希望 QukaAI 不只是“能接住 OpenClaw 的记忆需求”，而是真正优雅替代其记忆系统，建议新增 agent skill adapter：
 
-#### 13.5.1 Tool Adapter
+#### 13.5.1 Skill Adapter
 
 对外暴露与 OpenClaw 习惯接近的工具语义：
 
 - `memory_search`
   - 内部映射到 `recall`
 - `memory_get`
-  - 内部读取某条 memory 对应的 canonical knowledge 或 projection view
+  - 通过 `/memory/get` 读取某条 memory 对应的 canonical content 或 projection view
 
-这样外部 agent runtime 无需理解 QukaAI 全部内部结构，就能接入。
+这样外部 agent runtime 无需理解 QukaAI 全部内部结构，也无需服务端新增 OpenClaw 专用兼容入口，就能接入。
 
 #### 13.5.2 Markdown Projection
 
@@ -1090,9 +1133,9 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 - 作为 memory capability replacement：可以
 - 作为 structured backend for OpenClaw-style runtime：可以，而且更强
 - 作为 OpenClaw current memory form 的原生直接替代：还不够
-- 如果补上 tool adapter + markdown projection + reflect mapping：可以比较优雅地取代
+- 如果补上 skill adapter + markdown projection + reflect mapping：可以比较优雅地取代
 
-这意味着当前方案的方向是对的，且基础已经足够好；后续的关键不是重做 memory schema，而是增加一层面向 OpenClaw 工作方式的兼容层。
+这意味着当前方案的方向是对的，且基础已经足够好；后续的关键不是重做 memory schema，而是在 agent skill / 文档层提供面向 OpenClaw 工作方式的语义映射。
 
 ## 14. 落地计划
 
@@ -1101,8 +1144,8 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 落地计划的目标不是一次性做完所有 memory 能力，而是分阶段完成三个结果：
 
 1. QukaAI 内部先具备可写入、可召回、可管理的 structured memory runtime
-2. human-facing knowledge UI 能看到并管理这些 memory
-3. 在此基础上补出适配 OpenClaw 工作方式的 adapter / projection
+2. human-facing knowledge UI 能看到并管理已提升的 memory
+3. 在此基础上补出适配 OpenClaw 工作方式的 skill adapter / projection
 
 ### 14.2 总体节奏
 
@@ -1111,21 +1154,21 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 1. Phase A: 数据与领域模型落地
 2. Phase B: Memory Runtime API 落地
 3. Phase C: Human-facing UI 与治理能力落地
-4. Phase D: OpenClaw Adapter 与 Markdown Projection 落地
+4. Phase D: OpenClaw Skill Adapter 与 Markdown Projection 落地
 
 建议执行原则：
 
 - 先做 QukaAI 自己的 source of truth
 - 再做 recall / hydrate 的 runtime 闭环
 - 再做 UI 可见与人工纠偏
-- 最后做 OpenClaw 兼容层
+- 最后做 OpenClaw skill adapter 与可选 projection
 
 ### 14.3 Phase A: 数据与领域模型
 
 目标：
 
 - 完成 memory 相关表结构、类型和基础 store
-- 明确 knowledge 与 memory 的一对一映射关系
+- 明确 memory 必须依附 knowledge，但 knowledge 不必然拥有 memory
 
 开发项：
 
@@ -1159,7 +1202,7 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 
 验收标准：
 
-- 创建一条 knowledge 后，能创建对应 memory
+- 可以把一条已有 knowledge 提升为对应 memory
 - 能为某条 memory 创建 `chat_session / agent_run / task / workspace` binding
 - 内置聊天场景下 `chat_session_pin` 可继续正常工作
 
@@ -1169,6 +1212,7 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 
 - 跑通 memory 作为 runtime 层的最小闭环
 - 让 external agent 和 internal chat 都能使用统一 API
+- 让 lifecycle 可由 agent runtime 自动推进，而不是依赖用户维护
 
 开发项：
 
@@ -1193,9 +1237,11 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 关键实现要求：
 
 - `remember` 可由 knowledge 创建流程自动触发
-- `recall` 接收 `runtime_context`，不依赖内部 chat session
+- `recall` 保持纯搜索，不接收 `runtime_context`
+- `hydrate` 接收 `runtime_context`，负责装配 pinned / working memories
 - `pin` 写入 `quka_memory_binding`
 - `chat_session` 场景下同步更新 `quka_chat_session_pin` 作为缓存
+- `recall / hydrate / pin` 命中的 memory 自动推进到 `activated`
 
 交付物：
 
@@ -1203,10 +1249,12 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 
 验收标准：
 
-- 创建 knowledge 后，默认生成 memory
+- 创建普通 knowledge 后，不默认生成 memory
+- 传入已有 `knowledge_id` 调用 `remember` 时，可以生成对应 memory
 - agent_run 场景可以成功 `recall / hydrate / pin`
 - chat_session 场景可以继续使用缓存 working set
 - recall 返回结果包含 memory metadata
+- memory 的访问统计和 activated 状态能够被自动推进
 
 ### 14.5 Phase C: Human-facing UI 与治理能力
 
@@ -1248,6 +1296,7 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 
 - 将碎片化交互沉淀成更稳定的长期记忆
 - 控制 episodic 膨胀
+- 让 consolidated 阶段由 agent reflect 和后台任务共同维护
 
 开发项：
 
@@ -1267,8 +1316,9 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 - 可从一段聊天或 agent run log 中生成 episodic memory
 - 可从 episodic 提升出 semantic/core
 - evidence chain 可追溯
+- consolidated memory 可以被稳定地产生和复用
 
-### 14.7 Phase E: OpenClaw Adapter
+### 14.7 Phase E: OpenClaw Skill Adapter
 
 目标：
 
@@ -1276,31 +1326,32 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 
 开发项：
 
-1. `memory_search` adapter
-2. `memory_get` adapter
+1. `memory_search` skill mapping
+2. `memory_get` skill mapping
 3. `MEMORY.md` projection
 4. `memory/YYYY-MM-DD.md` projection
 5. reflect 结果映射到 daily / curated 视图
 
 建议新增模块：
 
-- `app/logic/v1/openclaw_memory_adapter.go`
-- `app/logic/v1/openclaw_memory_projection.go`
+- OpenClaw adapter skill：负责 `memory_search / memory_get / memory_flush` 到原生 `/memory/*` API 的语义映射
+- `app/logic/v1/openclaw_memory_projection.go`：仅在需要 Markdown projection 时再考虑
 
 设计要求：
 
 - projection 不作为 source of truth
 - source of truth 仍是 `knowledge + memory`
 - projection 只用于兼容 OpenClaw 的使用方式、调试和迁移
+- 不新增 OpenClaw 专用兼容 HTTP 入口；agent 通过 skill 直接调用 QukaAI 原生 memory API
 
 交付物：
 
-- OpenClaw-compatible tool surface
+- OpenClaw-facing skill contract
 - Markdown-compatible memory views
 
 验收标准：
 
-- 外部 agent 可通过 adapter 完成 search/get
+- 外部 agent 可通过 skill adapter 完成 search/get
 - 可导出 `MEMORY.md` 和 daily memory files
 - projection 内容与 DB 中 memory 状态一致
 
@@ -1349,11 +1400,11 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 
 目标：
 
-- 形成 OpenClaw-compatible 兼容层
+- 形成 OpenClaw-facing skill contract
 
 验收：
 
-- OpenClaw-style runtime 可通过 adapter 接入
+- OpenClaw-style runtime 可通过 skill adapter 接入
 - Markdown projection 可稳定生成
 
 ### 14.9 人力与复杂度评估
@@ -1370,7 +1421,7 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 
 - 仅后端最小 runtime 闭环：约 2 周
 - 加上 UI 和治理闭环：约 3-4 周
-- 加上 OpenClaw adapter：约 4-5 周
+- 加上 OpenClaw skill adapter：约 4-5 周
 
 如果前后端并行，可压缩总周期；如果单人串行开发，则应按完整 4-5 周估计。
 
@@ -1382,14 +1433,14 @@ OpenClaw 当前公开的记忆工作方式有两个明显特征：
 2. 再落 `remember / recall / hydrate / pin`
 3. 再把 knowledge 创建流程接到 `remember`
 4. 再补 knowledge-to-memory 的查询展示
-5. 最后再做 reflect 和 OpenClaw adapter
+5. 最后再做 reflect 和 OpenClaw skill adapter
 
 这样做的原因是：
 
 - 没有 stable schema，后续逻辑都会返工
 - 没有 runtime API，外部 agent 无法接入
 - 没有 UI 映射，人无法验证系统到底“记住了什么”
-- 没有 adapter，暂时还不影响 QukaAI 自己先完成 memory runtime
+- 没有 skill adapter，暂时还不影响 QukaAI 自己先完成 memory runtime
 
 ## 15. 结论
 

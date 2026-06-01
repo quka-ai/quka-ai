@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/davidscottmills/goeditorjs"
+	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
 const (
@@ -26,7 +27,7 @@ type FileStorageInterface interface {
 
 // ReplaceMarkdownStaticResourcesWithPresignedURL 替换markdown中的静态资源URL为预签名URL
 func ReplaceMarkdownStaticResourcesWithPresignedURL(content string, fileStorage FileStorageInterface) string {
-	if content == "" || fileStorage == nil {
+	if len(content) == 0 || fileStorage == nil {
 		return content
 	}
 
@@ -34,7 +35,8 @@ func ReplaceMarkdownStaticResourcesWithPresignedURL(content string, fileStorage 
 	imageRegex := regexp.MustCompile(`!\[(.*?)\]\(([^)]+)\)`)
 
 	// 替换图片URL
-	content = imageRegex.ReplaceAllStringFunc(content, func(match string) string {
+	strContent := string(content)
+	convertedContent := imageRegex.ReplaceAllStringFunc(strContent, func(match string) string {
 		// 提取URL部分
 		submatches := imageRegex.FindStringSubmatch(match)
 		if len(submatches) != 3 {
@@ -62,7 +64,6 @@ func ReplaceMarkdownStaticResourcesWithPresignedURL(content string, fileStorage 
 				}
 			}
 		}
-
 		return match
 	})
 
@@ -70,7 +71,7 @@ func ReplaceMarkdownStaticResourcesWithPresignedURL(content string, fileStorage 
 	htmlImgRegex := regexp.MustCompile(`<img[^>]+src\s*=\s*["']([^"']+)["'][^>]*>`)
 
 	// 替换HTML img标签中的src
-	content = htmlImgRegex.ReplaceAllStringFunc(content, func(match string) string {
+	convertedContent = htmlImgRegex.ReplaceAllStringFunc(convertedContent, func(match string) string {
 		// 提取src属性值
 		srcRegex := regexp.MustCompile(`src\s*=\s*["']([^"']+)["']`)
 		srcMatches := srcRegex.FindStringSubmatch(match)
@@ -102,7 +103,7 @@ func ReplaceMarkdownStaticResourcesWithPresignedURL(content string, fileStorage 
 		return match
 	})
 
-	return content
+	return convertedContent
 }
 
 // ReplaceEditorJSBlocksStaticResourcesWithPresignedURL 替换EditorJS blocks中的静态资源URL为预签名URL
@@ -123,8 +124,8 @@ func ReplaceEditorJSBlocksStaticResourcesWithPresignedURL(blocks []goeditorjs.Ed
 }
 
 // ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL 替换EditorJS blocks中的静态资源URL为预签名URL
-func ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON string, fileStorage FileStorageInterface) string {
-	if blocksJSON == "" || fileStorage == nil {
+func ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON types.KnowledgeContent, fileStorage FileStorageInterface) types.KnowledgeContent {
+	if len(blocksJSON) == 0 || fileStorage == nil {
 		return blocksJSON
 	}
 
@@ -139,10 +140,70 @@ func ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(blocksJSON string,
 
 	// 重新序列化JSON
 	if newJSON, err := json.Marshal(data); err == nil {
-		return string(newJSON)
+		return newJSON
 	}
 
 	return blocksJSON
+}
+
+// ReplaceBlockNoteBlocksStaticResourcesWithPresignedURL 替换 BlockNote blocks 中的静态资源 URL 为预签名 URL。
+func ReplaceBlockNoteBlocksStaticResourcesWithPresignedURL(blocks []BlockNoteBlock, fileStorage FileStorageInterface) []BlockNoteBlock {
+	for i := range blocks {
+		switch blocks[i].Type {
+		case "image", "video", "audio", "file":
+			blocks[i] = processBlockNoteFileBlock(blocks[i], fileStorage)
+		}
+
+		if len(blocks[i].Children) > 0 {
+			blocks[i].Children = ReplaceBlockNoteBlocksStaticResourcesWithPresignedURL(blocks[i].Children, fileStorage)
+		}
+	}
+
+	return blocks
+}
+
+// ReplaceBlockNoteBlocksJsonStaticResourcesWithPresignedURL 替换 BlockNote blocks JSON 中的静态资源 URL 为预签名 URL。
+func ReplaceBlockNoteBlocksJsonStaticResourcesWithPresignedURL(blocksJSON types.KnowledgeContent, fileStorage FileStorageInterface) types.KnowledgeContent {
+	if len(blocksJSON) == 0 || fileStorage == nil {
+		return blocksJSON
+	}
+
+	var blocks []BlockNoteBlock
+	if err := json.Unmarshal([]byte(blocksJSON), &blocks); err != nil {
+		return blocksJSON
+	}
+
+	blocks = ReplaceBlockNoteBlocksStaticResourcesWithPresignedURL(blocks, fileStorage)
+	if newJSON, err := json.Marshal(blocks); err == nil {
+		return newJSON
+	}
+
+	return blocksJSON
+}
+
+func processBlockNoteFileBlock(block BlockNoteBlock, fileStorage FileStorageInterface) BlockNoteBlock {
+	originalURL := stringProp(block.Props, "url")
+	if fileStorage != nil {
+		originalURL = strings.Replace(originalURL, fileStorage.GetStaticDomain(), "", 1)
+	}
+
+	if ShouldPresignURL(originalURL) {
+		objectPath := ExtractObjectPath(originalURL)
+		if objectPath != "" {
+			if presignedURL, err := fileStorage.GenGetObjectPreSignURL(objectPath); err == nil {
+				block.Props["url"] = presignedURL
+			} else {
+				slog.Warn("Failed to generate presigned URL for BlockNote file block",
+					slog.String("object_path", objectPath),
+					slog.String("error", err.Error()))
+				if block.Type == "image" {
+					block.Props["url"] = PRESIGN_FAILURE_PLACEHOLDER_IMAGE
+				}
+			}
+		}
+	}
+
+	return block
 }
 
 // processImageBlockWithStruct 使用结构体处理图片块中的URL
@@ -244,7 +305,7 @@ func processAttachesBlockWithStruct(block goeditorjs.EditorJSBlock, fileStorage 
 // ShouldPresignURL 判断URL是否需要预签名处理
 func ShouldPresignURL(url string) bool {
 	// 跳过已经是预签名的URL
-	if strings.Contains(url, "X-Amz-Algorithm") || strings.Contains(url, "Signature") {
+	if (strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")) && (strings.Contains(url, "X-Amz-Algorithm") || strings.Contains(url, "Signature")) {
 		return false
 	}
 

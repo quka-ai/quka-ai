@@ -117,15 +117,15 @@ func (j *JournalTool) InvokableRun(ctx context.Context, argumentsInJSON string, 
 				return "", fmt.Errorf("failed to decrypt journal content: %w", err)
 			}
 
-			// 将 EditorJS 格式转换为 Markdown
-			md, err := editorjs.ConvertEditorJSRawToMarkdown(content)
+			// 自动兼容旧 EditorJS 与新 BlockNote journal 内容。
+			md, err := editorjs.ConvertRawToMarkdownAuto(content)
 			if err != nil {
 				return "", fmt.Errorf("failed to convert journal content to markdown: %w", err)
 			}
 
 			sb.WriteString(v.Date)
 			sb.WriteString("  \n")
-			sb.WriteString(md)
+			sb.WriteString(string(md))
 			sb.WriteString("  \n------  \n")
 		}
 	}

@@ -25,11 +25,13 @@ type QueryResult struct {
 }
 
 type GetVectorsOptions struct {
-	ID          string
-	SpaceID     string
-	UserID      string
-	KnowledgeID string
-	Resource    *ResourceQuery
+	ID           string
+	SpaceID      string
+	SpaceIDs     []string
+	UserID       string
+	KnowledgeID  string
+	KnowledgeIDs []string
+	Resource     *ResourceQuery
 }
 
 func (opts GetVectorsOptions) Apply(query *sq.SelectBuilder) {
@@ -37,10 +39,16 @@ func (opts GetVectorsOptions) Apply(query *sq.SelectBuilder) {
 		*query = query.Where(sq.Eq{"id": opts.ID})
 	}
 	if opts.KnowledgeID != "" {
-		*query = query.Where(sq.Eq{"knowledge_id": opts.ID})
+		*query = query.Where(sq.Eq{"knowledge_id": opts.KnowledgeID})
+	}
+	if len(opts.KnowledgeIDs) > 0 {
+		*query = query.Where(sq.Eq{"knowledge_id": opts.KnowledgeIDs})
 	}
 	if opts.SpaceID != "" {
 		*query = query.Where(sq.Eq{"space_id": opts.SpaceID})
+	}
+	if len(opts.SpaceIDs) > 0 {
+		*query = query.Where(sq.Eq{"space_id": opts.SpaceIDs})
 	}
 	if opts.UserID != "" {
 		*query = query.Where(sq.Eq{"user_id": opts.UserID})

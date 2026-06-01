@@ -257,6 +257,38 @@ type ChatSessionPinStore interface {
 	List(ctx context.Context, page, pageSize uint64) ([]types.ChatSessionPin, error)
 }
 
+type MemoryStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.Memory) error
+	Get(ctx context.Context, spaceID, id string) (*types.Memory, error)
+	GetByKnowledgeID(ctx context.Context, spaceID, knowledgeID string) (*types.Memory, error)
+	Update(ctx context.Context, spaceID, id string, data types.UpdateMemoryArgs) error
+	Delete(ctx context.Context, spaceID, id string) error
+	DeleteByIDs(ctx context.Context, spaceID string, ids []string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	List(ctx context.Context, opts types.GetMemoryOptions, page, pageSize uint64) ([]types.Memory, error)
+	Total(ctx context.Context, opts types.GetMemoryOptions) (uint64, error)
+}
+
+type MemoryEdgeStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.MemoryEdge) error
+	Delete(ctx context.Context, spaceID, id string) error
+	DeleteByMemoryIDs(ctx context.Context, spaceID string, memoryIDs []string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	List(ctx context.Context, opts types.GetMemoryEdgeOptions, page, pageSize uint64) ([]types.MemoryEdge, error)
+}
+
+type MemoryBindingStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.MemoryBinding) error
+	Update(ctx context.Context, spaceID, id string, data types.MemoryBinding) error
+	Delete(ctx context.Context, spaceID, id string) error
+	DeleteByMemoryIDs(ctx context.Context, spaceID string, memoryIDs []string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+	List(ctx context.Context, opts types.GetMemoryBindingOptions, page, pageSize uint64) ([]types.MemoryBinding, error)
+}
+
 type ButlerTableStore interface {
 	sqlstore.SqlCommons
 	Create(ctx context.Context, data types.ButlerTable) error

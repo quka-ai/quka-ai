@@ -3,7 +3,6 @@ package process
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -290,21 +289,18 @@ func (p *KnowledgeProcess) processEmbedding(req *EmbeddingRequest) {
 		// 	CreatedAt      int64  `json:"created_at" db:"created_at"`           // 创建时间
 		// }
 
-		markdownContent := string(req.data.Content)
-		if req.data.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			markdownContent, err = editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(req.data.Content))
-			if err != nil {
-				slog.Error("Failed to convert editor blocks to markdown", append(logAttrs, slog.String("error", err.Error()))...)
-				return
-			}
+		markdownContent, err := editorjs.ConvertKnowledgeRawToMarkdown(req.data.ContentType, req.data.Content)
+		if err != nil {
+			slog.Error("Failed to convert knowledge content to markdown", append(logAttrs, slog.String("error", err.Error()))...)
+			return
 		}
 		chunksData = append(chunksData, types.KnowledgeChunk{
 			ID:             req.data.ID,
 			KnowledgeID:    req.data.ID,
 			SpaceID:        req.data.SpaceID,
 			UserID:         req.data.UserID,
-			Chunk:          markdownContent,
-			OriginalLength: len([]rune(markdownContent)),
+			Chunk:          string(markdownContent),
+			OriginalLength: len([]rune(string(markdownContent))),
 			UpdatedAt:      time.Now().Unix(),
 			CreatedAt:      time.Now().Unix(),
 		})
@@ -455,16 +451,13 @@ func (p *KnowledgeProcess) processSummary(req *SummaryRequest) {
 	}()
 
 	sw := mark.NewSensitiveWork()
-	markdownContent := string(req.data.Content)
-	if req.data.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-		markdownContent, err = editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(req.data.Content))
-		if err != nil {
-			slog.Error("Failed to convert editor blocks to markdown", append(logAttrs, slog.String("error", err.Error()))...)
-			return
-		}
+	markdownContent, err := editorjs.ConvertKnowledgeRawToMarkdown(req.data.ContentType, req.data.Content)
+	if err != nil {
+		slog.Error("Failed to convert knowledge content to markdown", append(logAttrs, slog.String("error", err.Error()))...)
+		return
 	}
 
-	secretContent := sw.Do(markdownContent)
+	secretContent := sw.Do(string(markdownContent))
 
 	summary, err := p.core.Srv().AI().Chunk(ctx, &secretContent)
 	if err != nil {
@@ -481,10 +474,10 @@ func (p *KnowledgeProcess) processSummary(req *SummaryRequest) {
 	}
 
 	if len(summary.Chunks) == 0 {
-		summary.Chunks = append(summary.Chunks, markdownContent)
+		summary.Chunks = append(summary.Chunks, string(markdownContent))
 	}
 
-	originalLenght := len([]rune(markdownContent))
+	originalLenght := len([]rune(string(markdownContent)))
 	var chunks []*types.KnowledgeChunk
 	for _, v := range summary.Chunks {
 		chunks = append(chunks, &types.KnowledgeChunk{

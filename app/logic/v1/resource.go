@@ -86,6 +86,10 @@ func (l *ResourceLogic) Delete(spaceID, id string) error {
 			return errors.New("ResourceLogic.Delete.VectorStore.DeleteByResource", i18n.ERROR_INTERNAL, err)
 		}
 
+		if err = NewKnowledgeLogic(l.ctx, l.core).deleteRegisteredMemoriesByKnowledgeIDs(ctx, spaceID, knowledgeIDs); err != nil {
+			return err
+		}
+
 		if err = l.core.Store().ResourceStore().Delete(ctx, spaceID, id); err != nil {
 			return errors.New("ResourceLogic.Delete.ResourceStore.Delete", i18n.ERROR_INTERNAL, err)
 		}

@@ -230,6 +230,27 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			}
 		}
 
+		memory := authed.Group("/:spaceid/memory")
+		{
+			viewScope := memory.Group("")
+			{
+				viewScope.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView))
+				viewScope.POST("/recall", spaceLimit("knowledge_list"), s.RecallMemory)
+				viewScope.POST("/get", spaceLimit("knowledge_list"), s.GetMemory)
+				viewScope.POST("/hydrate", spaceLimit("knowledge_list"), s.HydrateMemory)
+				viewScope.POST("/pin", spaceLimit("knowledge_list"), s.PinMemory)
+			}
+
+			editScope := memory.Group("")
+			{
+				editScope.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionEdit), spaceLimit("knowledge_modify"))
+				editScope.POST("/remember", aiLimit("create_knowledge"), s.RememberMemory)
+				editScope.POST("/reflect", aiLimit("create_knowledge"), s.ReflectMemory)
+				editScope.POST("/update", aiLimit("create_knowledge"), s.UpdateMemory)
+				editScope.POST("/delete", aiLimit("create_knowledge"), s.DeleteMemory)
+			}
+		}
+
 		rss := authed.Group("/:spaceid/rss")
 		{
 			rss.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView))

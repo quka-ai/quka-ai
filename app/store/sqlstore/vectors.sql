@@ -23,4 +23,5 @@ COMMENT ON COLUMN quka_vectors.updated_at IS '更新时间，UNIX时间戳';
 
 
 CREATE INDEX IF NOT EXISTS idx_vectors_space_id_resource_knowledge_id ON quka_vectors (space_id, resource, knowledge_id);
+CREATE INDEX IF NOT EXISTS idx_quka_vectors_user_space_knowledge ON quka_vectors (user_id, space_id, knowledge_id);
 CREATE INDEX IF NOT EXISTS idx_vectors_embedding ON quka_vectors USING hnsw (embedding vector_ip_ops) WITH (m = 32, ef_construction = 128);

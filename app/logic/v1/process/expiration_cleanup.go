@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"time"
 
@@ -141,6 +142,29 @@ func (t *ExpirationCleanupTask) hardDelete(ctx context.Context, knowledge *types
 		// 删除chunk数据
 		if err := t.core.Store().KnowledgeChunkStore().BatchDelete(txCtx, knowledge.SpaceID, knowledge.ID); err != nil {
 			slog.Warn("Failed to delete chunk data", slog.String("knowledge_id", knowledge.ID), slog.Any("error", err))
+		}
+
+		memories, err := t.core.Store().MemoryStore().List(txCtx, types.GetMemoryOptions{
+			SpaceID:     knowledge.SpaceID,
+			KnowledgeID: knowledge.ID,
+		}, types.NO_PAGINATION, types.NO_PAGINATION)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if len(memories) > 0 {
+			memoryIDs := make([]string, 0, len(memories))
+			for _, memory := range memories {
+				memoryIDs = append(memoryIDs, memory.ID)
+			}
+			if err := t.core.Store().MemoryBindingStore().DeleteByMemoryIDs(txCtx, knowledge.SpaceID, memoryIDs); err != nil {
+				return err
+			}
+			if err := t.core.Store().MemoryEdgeStore().DeleteByMemoryIDs(txCtx, knowledge.SpaceID, memoryIDs); err != nil {
+				return err
+			}
+			if err := t.core.Store().MemoryStore().DeleteByIDs(txCtx, knowledge.SpaceID, memoryIDs); err != nil {
+				return err
+			}
 		}
 
 		// 删除knowledge记录

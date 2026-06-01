@@ -1,5 +1,7 @@
 .DS_Store 
 .vscode
+.codex
+.claude
 .env
 _build
 
@@ -17,3 +19,6 @@ tmp
 
 docker-compose/data
 docker-compose/etc
+
+.gocache
+.agents/

@@ -97,12 +97,17 @@ func (l *AIFileDisposeLogic) DeleteTask(taskID string) error {
 				return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeRelMetaStore.Delete", i18n.ERROR_INTERNAL, err)
 			}
 
-			// 2.5 删除 knowledges
+			// 2.5 删除 memory 注册关系
+			if err := NewKnowledgeLogic(l.ctx, l.core).deleteRegisteredMemoriesByKnowledgeIDs(ctx, task.SpaceID, knowledgeIDs); err != nil {
+				return err
+			}
+
+			// 2.6 删除 knowledges
 			if err := l.core.Store().KnowledgeStore().BatchDelete(ctx, knowledgeIDs); err != nil {
 				return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeStore.BatchDelete", i18n.ERROR_INTERNAL, err)
 			}
 
-			// 2.6 删除 knowledge_meta
+			// 2.7 删除 knowledge_meta
 			if err := l.core.Store().KnowledgeMetaStore().Delete(ctx, metaID); err != nil {
 				return errors.New("AIFileDisposeLogic.DeleteTask.KnowledgeMetaStore.Delete", i18n.ERROR_INTERNAL, err)
 			}

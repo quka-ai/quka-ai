@@ -52,6 +52,9 @@ func (l *KnowledgeLogic) GetKnowledge(spaceID, id string) (*types.Knowledge, err
 	if data == nil {
 		return nil, errors.New("KnowledgeLogic.GetKnowledge.KnowledgeStore.GetKnowledge.nil", i18n.ERROR_NOT_FOUND, err).Code(http.StatusNotFound)
 	}
+	if isMemoryBackingKnowledge(data) {
+		return nil, errors.New("KnowledgeLogic.GetKnowledge.MemoryBackingKnowledge", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNotFound)
+	}
 
 	if len(data.Content) > 0 {
 		if data.Content, err = l.core.DecryptData(data.Content); err != nil {
@@ -59,20 +62,24 @@ func (l *KnowledgeLogic) GetKnowledge(spaceID, id string) (*types.Knowledge, err
 		}
 
 		// 替换静态资源URL为预签名URL
-		contentStr := string(data.Content)
 		switch data.ContentType {
 		case types.KNOWLEDGE_CONTENT_TYPE_BLOCKS:
-			contentStr = editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(
-				contentStr,
+			data.Content = editorjs.ReplaceEditorJSBlocksJsonStaticResourcesWithPresignedURL(
+				data.Content,
+				l.core.Plugins.FileStorage(),
+			)
+		case types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2:
+			data.Content = editorjs.ReplaceBlockNoteBlocksJsonStaticResourcesWithPresignedURL(
+				data.Content,
 				l.core.Plugins.FileStorage(),
 			)
 		default:
-			contentStr = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(
-				contentStr,
+			data.Content = types.KnowledgeContent(editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(
+				data.Content.String(),
 				l.core.Plugins.FileStorage(),
-			)
+			))
 		}
-		data.Content = types.KnowledgeContent(contentStr)
+		data.Content = types.KnowledgeContent(data.Content)
 	}
 
 	return data, nil
@@ -122,6 +129,11 @@ func (l *KnowledgeLogic) ListKnowledges(opts types.GetKnowledgeOptions, page, pa
 
 // ListUserKnowledges 获取用户创建的知识（排除 chunk 类型）
 func (l *KnowledgeLogic) ListUserKnowledges(spaceID string, keywords string, resource *types.ResourceQuery, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
+	var empty bool
+	resource, empty = filterMemoryBackingResource(resource)
+	if empty {
+		return nil, 0, nil
+	}
 	opts := types.GetKnowledgeOptions{
 		SpaceID:  spaceID,
 		Resource: resource,
@@ -138,6 +150,36 @@ func (l *KnowledgeLogic) ListChunkKnowledges(spaceID string, resource *types.Res
 		Kind:     []types.KnowledgeKind{types.KNOWLEDGE_KIND_CHUNK},
 	}
 	return l.ListKnowledges(opts, page, pagesize)
+}
+
+func isMemoryBackingKnowledge(knowledge *types.Knowledge) bool {
+	return knowledge != nil && knowledge.Resource == types.MEMORY_BACKING_RESOURCE
+}
+
+func filterMemoryBackingResource(resource *types.ResourceQuery) (*types.ResourceQuery, bool) {
+	if resource == nil {
+		return &types.ResourceQuery{Exclude: []string{types.MEMORY_BACKING_RESOURCE}}, false
+	}
+
+	next := &types.ResourceQuery{
+		Include: append([]string(nil), resource.Include...),
+		Exclude: append([]string(nil), resource.Exclude...),
+	}
+
+	if len(next.Include) > 0 {
+		next.Include = lo.Filter(next.Include, func(item string, _ int) bool {
+			return item != types.MEMORY_BACKING_RESOURCE
+		})
+		if len(next.Include) == 0 {
+			return nil, true
+		}
+		return next, false
+	}
+
+	if !lo.Contains(next.Exclude, types.MEMORY_BACKING_RESOURCE) {
+		next.Exclude = append(next.Exclude, types.MEMORY_BACKING_RESOURCE)
+	}
+	return next, false
 }
 
 func (l *KnowledgeLogic) GetTaskKnowledges(spaceID, taskID string, page, pagesize uint64) ([]*types.Knowledge, uint64, error) {
@@ -172,15 +214,18 @@ func (l *KnowledgeLogic) Delete(spaceID, id string) error {
 	if knowledge == nil {
 		return nil
 	}
+	if isMemoryBackingKnowledge(knowledge) {
+		return errors.New("KnowledgeLogic.Delete.MemoryBackingKnowledge", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNotFound)
+	}
 
 	return l.core.Store().Transaction(l.ctx, func(ctx context.Context) error {
-		if knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
+		if knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS || knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
 			actData, err := l.core.DecryptData(knowledge.Content)
 			if err != nil {
 				slog.Error("Failed to decrypt knowledge data for mark file status to delete", slog.String("error", err.Error()))
 				actData = knowledge.Content
 			}
-			if err = UpdateFilesToDelete(ctx, l.core, spaceID, actData); err != nil {
+			if err = UpdateFilesToDelete(ctx, l.core, spaceID, actData, knowledge.ContentType); err != nil {
 				slog.Error("Failed to remark knowledge files to delete status", slog.String("knowledge_id", id), slog.String("space_id", spaceID), slog.Any("error", err))
 			}
 		}
@@ -197,8 +242,55 @@ func (l *KnowledgeLogic) Delete(spaceID, id string) error {
 			return errors.New("KnowledgeLogic.Delete.VectorStore.Delete", i18n.ERROR_INTERNAL, err)
 		}
 
+		if err := l.deleteRegisteredMemoryByKnowledgeID(ctx, spaceID, id); err != nil {
+			return err
+		}
+
 		return nil
 	})
+}
+
+func (l *KnowledgeLogic) deleteRegisteredMemoryByKnowledgeID(ctx context.Context, spaceID, knowledgeID string) error {
+	return l.deleteRegisteredMemoriesByKnowledgeIDs(ctx, spaceID, []string{knowledgeID})
+}
+
+func (l *KnowledgeLogic) deleteRegisteredMemoriesByKnowledgeIDs(ctx context.Context, spaceID string, knowledgeIDs []string) error {
+	knowledgeIDs = lo.Uniq(lo.Filter(knowledgeIDs, func(item string, _ int) bool {
+		return strings.TrimSpace(item) != ""
+	}))
+	if len(knowledgeIDs) == 0 {
+		return nil
+	}
+
+	memories, err := l.core.Store().MemoryStore().List(ctx, types.GetMemoryOptions{
+		SpaceID:      spaceID,
+		KnowledgeIDs: knowledgeIDs,
+	}, types.NO_PAGINATION, types.NO_PAGINATION)
+	if err != nil && err != sql.ErrNoRows {
+		return errors.New("KnowledgeLogic.deleteRegisteredMemoriesByKnowledgeIDs.MemoryStore.List", i18n.ERROR_INTERNAL, err)
+	}
+	if len(memories) == 0 {
+		return nil
+	}
+
+	memoriesBySpaceID := lo.GroupBy(memories, func(item types.Memory) string {
+		return item.SpaceID
+	})
+	for memorySpaceID, spaceMemories := range memoriesBySpaceID {
+		memoryIDs := lo.Uniq(lo.Map(spaceMemories, func(item types.Memory, _ int) string {
+			return item.ID
+		}))
+		if err := l.core.Store().MemoryBindingStore().DeleteByMemoryIDs(ctx, memorySpaceID, memoryIDs); err != nil {
+			return errors.New("KnowledgeLogic.deleteRegisteredMemoriesByKnowledgeIDs.MemoryBindingStore.DeleteByMemoryIDs", i18n.ERROR_INTERNAL, err)
+		}
+		if err := l.core.Store().MemoryEdgeStore().DeleteByMemoryIDs(ctx, memorySpaceID, memoryIDs); err != nil {
+			return errors.New("KnowledgeLogic.deleteRegisteredMemoriesByKnowledgeIDs.MemoryEdgeStore.DeleteByMemoryIDs", i18n.ERROR_INTERNAL, err)
+		}
+		if err := l.core.Store().MemoryStore().DeleteByIDs(ctx, memorySpaceID, memoryIDs); err != nil {
+			return errors.New("KnowledgeLogic.deleteRegisteredMemoriesByKnowledgeIDs.MemoryStore.DeleteByIDs", i18n.ERROR_INTERNAL, err)
+		}
+	}
+	return nil
 }
 
 func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeArgs) error {
@@ -209,6 +301,9 @@ func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeAr
 
 	if oldKnowledge == nil {
 		return errors.New("KnowledgeLogic.Update.KnowledgeStore.GetKnowledge", i18n.ERROR_NOT_FOUND, err).Code(http.StatusNotFound)
+	}
+	if isMemoryBackingKnowledge(oldKnowledge) {
+		return errors.New("KnowledgeLogic.Update.MemoryBackingKnowledge", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNotFound)
 	}
 
 	if args.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
@@ -221,6 +316,17 @@ func (l *KnowledgeLogic) Update(spaceID, id string, args types.UpdateKnowledgeAr
 		args.Content, err = json.Marshal(blocks)
 		if err != nil {
 			return errors.New("KnowledgeLogic.Update.ConvertEditorJSBlocksToRaw", i18n.ERROR_INTERNAL, err)
+		}
+	} else if args.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
+		var blocks []editorjs.BlockNoteBlock
+		if err := json.Unmarshal(json.RawMessage(args.Content), &blocks); err != nil {
+			return errors.New("KnowledgeLogic.Update.ParseBlockNoteBlocks", i18n.ERROR_INTERNAL, err)
+		}
+
+		blocks = editorjs.RemoveBlockNoteFileBlockHost(blocks, lo.If(l.core.Cfg().ObjectStorage.S3.UsePathStyle, l.core.Cfg().ObjectStorage.S3.Bucket).Else(""))
+		args.Content, err = json.Marshal(blocks)
+		if err != nil {
+			return errors.New("KnowledgeLogic.Update.RemoveBlockNoteFileBlockHost", i18n.ERROR_INTERNAL, err)
 		}
 	}
 
@@ -383,10 +489,10 @@ func (l *KnowledgeLogic) GetQueryRelevanceKnowledges(spaceID, userID, query stri
 			return types.RAGDocs{}, nil, errors.New("KnowledgeLogic.Query.DecryptData", i18n.ERROR_INTERNAL, err)
 		}
 
-		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			content, err := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
+		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS || v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
+			content, err := editorjs.ConvertKnowledgeRawToMarkdown(v.ContentType, v.Content)
 			if err != nil {
-				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
+				slog.Error("Failed to convert knowledge content to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue
 			}
 
@@ -555,8 +661,17 @@ func filterKnowledgeFiles(content types.KnowledgeContent) ([]string, error) {
 	return files, nil
 }
 
-func UpdateFilesUploaded(ctx context.Context, core *core.Core, spaceID string, content types.KnowledgeContent) error {
-	paths, err := parseEditorJsonToFilesPath(core, content)
+func filterBlockNoteKnowledgeFiles(content types.KnowledgeContent) ([]string, error) {
+	var blocks []editorjs.BlockNoteBlock
+	if err := json.Unmarshal(content, &blocks); err != nil {
+		return nil, errors.New("filterBlockNoteKnowledgeFiles.ParseContentBlocks", i18n.ERROR_INTERNAL, err)
+	}
+
+	return editorjs.ExtractBlockNoteFileURLs(blocks), nil
+}
+
+func UpdateFilesUploaded(ctx context.Context, core *core.Core, spaceID string, content types.KnowledgeContent, contentType types.KnowledgeContentType) error {
+	paths, err := parseKnowledgeFilesPath(core, content, contentType)
 	if err != nil {
 		return errors.Trace("UpdateFilesUploaded", err)
 	}
@@ -567,8 +682,16 @@ func UpdateFilesUploaded(ctx context.Context, core *core.Core, spaceID string, c
 	return nil
 }
 
-func parseEditorJsonToFilesPath(core *core.Core, content types.KnowledgeContent) ([]string, error) {
-	files, err := filterKnowledgeFiles(content)
+func parseKnowledgeFilesPath(core *core.Core, content types.KnowledgeContent, contentType types.KnowledgeContentType) ([]string, error) {
+	var (
+		files []string
+		err   error
+	)
+	if contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
+		files, err = filterBlockNoteKnowledgeFiles(content)
+	} else {
+		files, err = filterKnowledgeFiles(content)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -588,8 +711,8 @@ func parseEditorJsonToFilesPath(core *core.Core, content types.KnowledgeContent)
 	return paths, nil
 }
 
-func UpdateFilesToDelete(ctx context.Context, core *core.Core, spaceID string, content types.KnowledgeContent) error {
-	paths, err := parseEditorJsonToFilesPath(core, content)
+func UpdateFilesToDelete(ctx context.Context, core *core.Core, spaceID string, content types.KnowledgeContent, contentType types.KnowledgeContentType) error {
+	paths, err := parseKnowledgeFilesPath(core, content, contentType)
 	if err != nil {
 		return errors.Trace("UpdateFilesToDelete", err)
 	}
@@ -599,10 +722,15 @@ func UpdateFilesToDelete(ctx context.Context, core *core.Core, spaceID string, c
 	return nil
 }
 
-func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType, source types.KnowledgeSource, sourceRef string) (string, error) {
+func (l *KnowledgeLogic) insertContent(isSync bool, autoRegisterMemory bool, spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType, source types.KnowledgeSource, sourceRef string) (string, error) {
 	if resource == "" {
 		resource = types.DEFAULT_RESOURCE
 	}
+
+	var (
+		err         error
+		encryptData []byte
+	)
 
 	if contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
 		block, err := editorjs.ParseRawToBlocks(json.RawMessage(content))
@@ -615,12 +743,18 @@ func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, ki
 		if err != nil {
 			return "", errors.New("KnowledgeLogic.insertContent.RemoveFileBlockHost", i18n.ERROR_INTERNAL, err)
 		}
-	}
+	} else if contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
+		var blocks []editorjs.BlockNoteBlock
+		if err := json.Unmarshal(json.RawMessage(content), &blocks); err != nil {
+			return "", errors.New("KnowledgeLogic.insertContent.ParseBlockNoteBlocks", i18n.ERROR_INTERNAL, err)
+		}
 
-	var (
-		err         error
-		encryptData []byte
-	)
+		blocks = editorjs.RemoveBlockNoteFileBlockHost(blocks, lo.If(l.core.Cfg().ObjectStorage.S3.UsePathStyle, l.core.Cfg().ObjectStorage.S3.Bucket).Else(""))
+		content, err = json.Marshal(blocks)
+		if err != nil {
+			return "", errors.New("KnowledgeLogic.insertContent.RemoveBlockNoteFileBlockHost", i18n.ERROR_INTERNAL, err)
+		}
+	}
 
 	if encryptData, err = l.core.EncryptData([]byte(content.String())); err != nil {
 		return "", errors.New("KnowledgeLogic.InsertContent.EncryptDatae", i18n.ERROR_INTERNAL, err)
@@ -654,6 +788,12 @@ func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, ki
 		return "", errors.New("KnowledgeLogic.InsertContent.Store.KnowledgeStore.Create", i18n.ERROR_INTERNAL, err)
 	}
 
+	if autoRegisterMemory {
+		if _, err = NewMemoryLogic(l.ctx, l.core).RegisterKnowledgeMemory(spaceID, &knowledge, knowledgeSourceToMemoryAuthor(source), knowledgeSourceToMemorySource(source), sourceRef); err != nil {
+			return "", errors.New("KnowledgeLogic.InsertContent.MemoryLogic.RegisterKnowledgeMemory", i18n.ERROR_INTERNAL, err)
+		}
+	}
+
 	knowledge.Content = content
 	if isSync {
 		if err = l.processKnowledgeAsync(knowledge); err != nil {
@@ -670,11 +810,11 @@ func (l *KnowledgeLogic) insertContent(isSync bool, spaceID, resource string, ki
 		})
 	}
 
-	if contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
+	if contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS || contentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
 		go safe.Run(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer cancel()
-			if err := UpdateFilesUploaded(ctx, l.core, spaceID, content); err != nil {
+			if err := UpdateFilesUploaded(ctx, l.core, spaceID, content, contentType); err != nil {
 				slog.Error("Failed to update files uploaded status", slog.String("space_id", spaceID), slog.Any("error", err))
 			}
 		})
@@ -689,15 +829,19 @@ const (
 )
 
 func (l *KnowledgeLogic) InsertContentAsync(spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType) (string, error) {
-	return l.insertContent(InserTypeAsync, spaceID, resource, kind, content, contentType, types.KNOWLEDGE_SOURCE_PLATFORM, "")
+	return l.insertContent(InserTypeAsync, false, spaceID, resource, kind, content, contentType, types.KNOWLEDGE_SOURCE_PLATFORM, "")
 }
 
 func (l *KnowledgeLogic) InsertContentAsyncWithSource(spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType, source types.KnowledgeSource, sourceRef string) (string, error) {
-	return l.insertContent(InserTypeAsync, spaceID, resource, kind, content, contentType, types.KNOWLEDGE_SOURCE_PLATFORM, "")
+	return l.insertContent(InserTypeAsync, false, spaceID, resource, kind, content, contentType, source, sourceRef)
+}
+
+func (l *KnowledgeLogic) InsertContentAsyncWithSourceWithoutMemory(spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType, source types.KnowledgeSource, sourceRef string) (string, error) {
+	return l.insertContent(InserTypeAsync, false, spaceID, resource, kind, content, contentType, source, sourceRef)
 }
 
 func (l *KnowledgeLogic) InsertContent(spaceID, resource string, kind types.KnowledgeKind, content types.KnowledgeContent, contentType types.KnowledgeContentType) (string, error) {
-	return l.insertContent(InserTypeSync, spaceID, resource, kind, content, contentType, types.KNOWLEDGE_SOURCE_PLATFORM, "")
+	return l.insertContent(InserTypeSync, false, spaceID, resource, kind, content, contentType, types.KNOWLEDGE_SOURCE_PLATFORM, "")
 	// sw := mark.NewSensitiveWork()
 	// content = sw.Do(content)
 

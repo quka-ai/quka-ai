@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/davidscottmills/goeditorjs"
+	"github.com/quka-ai/quka-ai/pkg/types"
 )
 
 func TestConvertEditorJSRawToMarkdown_VideoPreservesSourceURL(t *testing.T) {
@@ -31,12 +32,12 @@ func TestConvertEditorJSRawToMarkdown_VideoPreservesSourceURL(t *testing.T) {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 
-	markdown, err := ConvertEditorJSRawToMarkdown(raw)
+	markdown, err := ConvertEditorJSRawToMarkdown(types.KnowledgeContent(raw))
 	if err != nil {
 		t.Fatalf("ConvertEditorJSRawToMarkdown() error = %v", err)
 	}
 
-	if !strings.Contains(markdown, `<source src="https://static.example.com/object/uploads/demo.mp4?a=123123">`) {
+	if !strings.Contains(string(markdown), `<source src="https://static.example.com/object/uploads/demo.mp4?a=123123">`) {
 		t.Fatalf("expected video source URL in markdown, got %q", markdown)
 	}
 

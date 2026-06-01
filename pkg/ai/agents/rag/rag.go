@@ -204,10 +204,10 @@ func GetQueryRelevanceKnowledges(core *core.Core, spaceID, userID, query string,
 			return types.RAGDocs{}, nil, fmt.Errorf("failed to decrypt knowledge data: %w", err)
 		}
 
-		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			content, err := editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content))
+		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS || v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
+			content, err := editorjs.ConvertKnowledgeRawToMarkdown(v.ContentType, v.Content)
 			if err != nil {
-				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
+				slog.Error("Failed to convert knowledge content to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue
 			}
 

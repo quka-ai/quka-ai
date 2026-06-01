@@ -151,7 +151,6 @@ func (h *GetKnowledgeHandler) Handle(
 		}, GetKnowledgeOutput{}, nil
 	}
 
-	var contentStr string
 	if knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
 		blocks, err := editorjs.ParseRawToBlocks(json.RawMessage(knowledge.Content))
 		if err != nil {
@@ -163,16 +162,28 @@ func (h *GetKnowledgeHandler) Handle(
 		}
 
 		knowledge.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
-		contentStr, err = editorjs.ConvertEditorJSBlocksToMarkdown(blocks.Blocks)
+		knowledge.Content, err = editorjs.ConvertEditorJSBlocksToMarkdown(blocks.Blocks)
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", knowledge.ID), slog.String("error", err.Error()))
 		}
+	} else if knowledge.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
+		var blocks []editorjs.BlockNoteBlock
+		if err := json.Unmarshal(json.RawMessage(knowledge.Content), &blocks); err != nil {
+			slog.Error("Failed to parse blocknote blocks", slog.String("knowledge_id", knowledge.ID), slog.String("error", err.Error()))
+		}
+
+		if len(blocks) > 6 {
+			blocks = blocks[:6]
+		}
+
+		knowledge.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
+		knowledge.Content = types.KnowledgeContent(editorjs.ConvertBlockNoteBlocksToMarkdown(blocks))
 	}
 
 	// 构建输出
 	output := GetKnowledgeOutput{
 		ID:          knowledge.ID,
-		Content:     contentStr,
+		Content:     string(knowledge.Content),
 		ContentType: string(knowledge.ContentType),
 		Kind:        knowledge.Kind.String(),
 		CreatedAt:   knowledge.CreatedAt,
@@ -185,7 +196,7 @@ func (h *GetKnowledgeHandler) Handle(
 		knowledge.ID,
 		knowledge.Kind.String(),
 		formatTimestamp(knowledge.CreatedAt),
-		contentStr,
+		string(knowledge.Content),
 	)
 
 	return &mcp.CallToolResult{

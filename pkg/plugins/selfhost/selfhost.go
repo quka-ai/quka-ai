@@ -3,7 +3,6 @@ package selfhost
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -303,21 +302,22 @@ func (s *SelfHostPlugin) AppendKnowledgeContentToDocs(docs []*types.PassageInfo,
 	})
 
 	for _, v := range knowledges {
-		content := string(v.Content)
-		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
-			if content, err = editorjs.ConvertEditorJSRawToMarkdown(json.RawMessage(v.Content)); err != nil {
-				slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
+		if v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS || v.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
+			if content, err := editorjs.ConvertKnowledgeRawToMarkdown(v.ContentType, v.Content); err != nil {
+				slog.Error("Failed to convert knowledge content to markdown", slog.String("knowledge_id", v.ID), slog.String("error", err.Error()))
 				continue
+			} else {
+				v.Content = types.KnowledgeContent(content)
 			}
 		}
 
 		// 对所有转换后的markdown内容进行预签名URL替换
-		content = editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(content, s.FileStorage())
+		v.Content = types.KnowledgeContent(editorjs.ReplaceMarkdownStaticResourcesWithPresignedURL(v.Content.String(), s.FileStorage()))
 
 		docs = append(docs, &types.PassageInfo{
 			ID:       v.ID,
 			Title:    v.Title,
-			Content:  content,
+			Content:  v.Content.String(),
 			DateTime: v.MaybeDate,
 			Resource: lo.If(resourceTitle[v.Resource] != "", resourceTitle[v.Resource]).Else(v.Resource),
 		})

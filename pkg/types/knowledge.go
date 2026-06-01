@@ -11,7 +11,9 @@ import (
 )
 
 const (
-	DEFAULT_RESOURCE = "knowledge"
+	DEFAULT_RESOURCE        = "knowledge"
+	MEMORY_BACKING_RESOURCE = "__memory__"
+	EMPTY_RESOURCE_SENTINEL = "__quka_no_resource__"
 )
 
 // export const cards = pgTable('cards', {
@@ -230,16 +232,19 @@ func (a *KnowledgeContent) scanBytes(src []byte) error {
 type KnowledgeContentType string
 
 const (
-	KNOWLEDGE_CONTENT_TYPE_MARKDOWN KnowledgeContentType = "markdown"
-	KNOWLEDGE_CONTENT_TYPE_HTML     KnowledgeContentType = "html"
-	KNOWLEDGE_CONTENT_TYPE_BLOCKS   KnowledgeContentType = "blocks"
-	KNOWLEDGE_CONTENT_TYPE_UNKNOWN  KnowledgeContentType = "unknown"
+	KNOWLEDGE_CONTENT_TYPE_MARKDOWN  KnowledgeContentType = "markdown"
+	KNOWLEDGE_CONTENT_TYPE_HTML      KnowledgeContentType = "html"
+	KNOWLEDGE_CONTENT_TYPE_BLOCKS    KnowledgeContentType = "blocks"
+	KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 KnowledgeContentType = "blocks_v2"
+	KNOWLEDGE_CONTENT_TYPE_UNKNOWN   KnowledgeContentType = "unknown"
 )
 
 func StringToKnowledgeContentType(str string) KnowledgeContentType {
 	switch strings.ToLower(str) {
 	case string(KNOWLEDGE_CONTENT_TYPE_BLOCKS):
 		return KNOWLEDGE_CONTENT_TYPE_BLOCKS
+	case string(KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2):
+		return KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2
 	case string(KNOWLEDGE_CONTENT_TYPE_MARKDOWN):
 		return KNOWLEDGE_CONTENT_TYPE_MARKDOWN
 	case string(KNOWLEDGE_CONTENT_TYPE_HTML):
@@ -255,6 +260,7 @@ type GetKnowledgeOptions struct {
 	Kind        []KnowledgeKind
 	ExcludeKind []KnowledgeKind
 	SpaceID     string
+	SpaceIDs    []string
 	UserID      string
 	Resource    *ResourceQuery
 	Stage       KnowledgeStage
@@ -279,6 +285,9 @@ func (opts GetKnowledgeOptions) Apply(query *sq.SelectBuilder) {
 	}
 	if opts.SpaceID != "" {
 		*query = query.Where(sq.Eq{"space_id": opts.SpaceID})
+	}
+	if len(opts.SpaceIDs) > 0 {
+		*query = query.Where(sq.Eq{"space_id": opts.SpaceIDs})
 	}
 	if opts.UserID != "" {
 		*query = query.Where(sq.Eq{"user_id": opts.UserID})

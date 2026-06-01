@@ -17,3 +17,20 @@ type ContentPinV1 struct {
 }
 
 const CHAT_SESSION_PIN_VERSION_V1 = "v1"
+
+type ChatSessionHydrationV2 struct {
+	Core           []string `json:"core"`
+	Working        []string `json:"working"`
+	RecentEpisodic []string `json:"recent_episodic"`
+	GeneratedAt    int64    `json:"generated_at"`
+	Version        string   `json:"version"`
+}
+
+type ContentPinV2 struct {
+	Knowledges []string                `json:"knowledges"`
+	Journals   []string                `json:"journals"`
+	Memories   []string                `json:"memories"`
+	Hydration  *ChatSessionHydrationV2 `json:"hydration,omitempty"`
+}
+
+const CHAT_SESSION_PIN_VERSION_V2 = "v2"
