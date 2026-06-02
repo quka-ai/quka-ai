@@ -7,7 +7,8 @@ export const defaultSettings: ExtensionSettings = {
   authType: 'access',
   token: '',
   selectedSpaceId: '',
-  selectedResourceId: 'knowledge'
+  selectedResourceId: 'knowledge',
+  selectedChatSessionId: ''
 };
 
 export async function loadSettings(): Promise<ExtensionSettings> {

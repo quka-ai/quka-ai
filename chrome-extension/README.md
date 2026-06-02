@@ -7,6 +7,7 @@ Builds a Manifest V3 Chrome popup for QukaAI.
 - `GET /api/v1/user/info` with `X-Access-Token` or `X-Authorization`
 - `GET /api/v1/space/list`
 - `GET /api/v1/:spaceid/resource/list`
+- `GET /api/v1/:spaceid/chat/list`
 - `POST /api/v1/:spaceid/chat`
 - `POST /api/v1/:spaceid/chat/:session/message/id`
 - `POST /api/v1/:spaceid/chat/:session/message`

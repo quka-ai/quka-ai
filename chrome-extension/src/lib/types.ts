@@ -8,6 +8,7 @@ export interface ExtensionSettings {
   token: string;
   selectedSpaceId: string;
   selectedResourceId: string;
+  selectedChatSessionId: string;
 }
 
 export interface QukaUser {
@@ -56,6 +57,63 @@ export interface SummaryResult {
   messageId: string;
   answerId: string;
   text: string;
+}
+
+export interface ChatSession {
+  id: string;
+  space_id: string;
+  user_id: string;
+  title: string;
+  session_type: number;
+  status: number;
+  created_at: number;
+  latest_access_time: number;
+}
+
+export interface ChatMessageMeta {
+  message_id: string;
+  sequence: number;
+  send_time: number;
+  role: number;
+  user_id: string;
+  session_id: string;
+  space_id: string;
+  complete: number;
+  message_type: number;
+  message?: {
+    text?: string;
+  };
+  attach?: Array<{
+    type: string;
+    url: string;
+    ai_desc?: string;
+  }>;
+}
+
+export interface ChatMessageDetail {
+  meta: ChatMessageMeta;
+  ext?: {
+    rel_docs?: Array<{
+      id: string;
+      title: string;
+      resource: string;
+      space_id: string;
+    }>;
+    evaluate?: number;
+    tool_name?: string;
+    tool_args?: string;
+    is_evaluate_enable?: boolean;
+  } | null;
+}
+
+export interface ChatHistoryResponse {
+  list: ChatMessageDetail[];
+  total: number;
+}
+
+export interface ChatSendResult {
+  sequence: number;
+  answer_id: string;
 }
 
 export type MemoryBlocks = PartialBlock[];

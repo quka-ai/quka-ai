@@ -10,7 +10,7 @@ interface TabsProps<T extends string> {
 
 export function Tabs<T extends string>({ value, tabs, onValueChange }: TabsProps<T>) {
   return (
-    <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+    <div className="grid gap-1 rounded-lg bg-muted p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
       {tabs.map(tab => (
         <button
           key={tab.value}

@@ -1,7 +1,18 @@
 import md5 from 'crypto-js/md5';
 
 import { sleep } from './utils';
-import type { AuthType, ExtensionSettings, MemoryBlocks, QukaUser, Resource, SummaryResult, UserSpace } from './types';
+import type {
+  AuthType,
+  ChatHistoryResponse,
+  ChatSendResult,
+  ChatSession,
+  ExtensionSettings,
+  MemoryBlocks,
+  QukaUser,
+  Resource,
+  SummaryResult,
+  UserSpace
+} from './types';
 
 interface ApiResponse<T> {
   meta?: {
@@ -16,23 +27,6 @@ interface LoginResponse {
   meta: QukaUser;
   token: string;
   expire_at: number;
-}
-
-interface MessageDetail {
-  meta: {
-    message_id: string;
-    sequence: number;
-    role: number;
-    complete: number;
-    message?: {
-      text?: string;
-    };
-  };
-}
-
-interface ChatHistoryResponse {
-  list: MessageDetail[];
-  total: number;
 }
 
 export function normalizeHost(host: string) {
@@ -134,6 +128,117 @@ export async function listResources(settings: ExtensionSettings, spaceId: string
   return data.list || [];
 }
 
+export async function listChatSessions(settings: ExtensionSettings, spaceId: string, page = 1, pageSize = 20) {
+  const data = await request<{ list: ChatSession[]; total: number }>(settings, `/${spaceId}/chat/list?page=${page}&pagesize=${pageSize}`);
+  return {
+    list: data.list || [],
+    total: data.total || 0
+  };
+}
+
+export async function createChatSession(settings: ExtensionSettings, spaceId: string) {
+  const data = await request<{ session_id: string }>(settings, `/${spaceId}/chat`, {
+    method: 'POST'
+  });
+
+  return data.session_id;
+}
+
+export async function getChatHistory(settings: ExtensionSettings, spaceId: string, sessionId: string, page = 1, pageSize = 50, afterSequence = 0) {
+  return request<ChatHistoryResponse>(settings, `/${spaceId}/chat/${sessionId}/history/list?page=${page}&pagesize=${pageSize}&after_sequence=${afterSequence}`);
+}
+
+interface SendChatOptions {
+  agent?: string;
+  enableThinking?: boolean;
+  enableSearch?: boolean;
+  enableKnowledge?: boolean;
+}
+
+export async function sendChatMessage(
+  settings: ExtensionSettings,
+  spaceId: string,
+  sessionId: string,
+  message: string,
+  options: SendChatOptions = {}
+): Promise<ChatSendResult & { messageId: string }> {
+  const messageId = await request<string>(settings, `/${spaceId}/chat/${sessionId}/message/id`, {
+    method: 'POST'
+  });
+  const sendResult = await request<ChatSendResult>(settings, `/${spaceId}/chat/${sessionId}/message`, {
+    method: 'POST',
+    body: JSON.stringify({
+      message_id: messageId,
+      message,
+      agent: options.agent || '',
+      files: [],
+      enable_thinking: options.enableThinking ?? false,
+      enable_search: options.enableSearch ?? false,
+      enable_knowledge: options.enableKnowledge ?? true
+    })
+  });
+
+  return {
+    ...sendResult,
+    messageId
+  };
+}
+
+export async function waitForChatAnswer(
+  settings: ExtensionSettings,
+  spaceId: string,
+  sessionId: string,
+  answerId: string,
+  onHistory?: (history: ChatHistoryResponse) => void
+) {
+  const startedAt = Date.now();
+  let latest = '';
+
+  while (Date.now() - startedAt < 90000) {
+    const history = await getChatHistory(settings, spaceId, sessionId, 1, 50, 0);
+    onHistory?.(history);
+
+    const answer = history.list.find(item => item.meta.message_id === answerId);
+
+    if (answer) {
+      latest = answer.meta.message?.text || latest;
+
+      if (answer.meta.complete === 1) {
+        return latest;
+      }
+
+      if ([4, 5, 6, 7].includes(answer.meta.complete)) {
+        throw new Error(latest || 'QukaAI response did not complete.');
+      }
+    }
+
+    await sleep(1500);
+  }
+
+  if (latest) {
+    return latest;
+  }
+
+  throw new Error('Timed out waiting for QukaAI response.');
+}
+
+export async function sendChatMessageAndWait(
+  settings: ExtensionSettings,
+  spaceId: string,
+  sessionId: string,
+  message: string,
+  options: SendChatOptions = {},
+  onHistory?: (history: ChatHistoryResponse) => void
+) {
+  const sendResult = await sendChatMessage(settings, spaceId, sessionId, message, options);
+  const text = await waitForChatAnswer(settings, spaceId, sessionId, sendResult.answer_id, onHistory);
+
+  return {
+    ...sendResult,
+    text
+  };
+}
+
 export async function createKnowledge(settings: ExtensionSettings, spaceId: string, resource: string, blocks: MemoryBlocks) {
   const data = await request<{ id: string }>(settings, `/${spaceId}/knowledge`, {
     method: 'POST',
@@ -160,63 +265,20 @@ export async function summarizePage(
     text: string;
   }
 ): Promise<SummaryResult> {
-  const { session_id: sessionId } = await request<{ session_id: string }>(settings, `/${spaceId}/chat`, {
-    method: 'POST'
-  });
-  const messageId = await request<string>(settings, `/${spaceId}/chat/${sessionId}/message/id`, {
-    method: 'POST'
-  });
+  const sessionId = await createChatSession(settings, spaceId);
   const message = buildSummaryPrompt(page);
-  const sendResult = await request<{ sequence: number; answer_id: string }>(settings, `/${spaceId}/chat/${sessionId}/message`, {
-    method: 'POST',
-    body: JSON.stringify({
-      message_id: messageId,
-      message,
-      agent: '',
-      files: [],
-      enable_thinking: false,
-      enable_search: false,
-      enable_knowledge: false
-    })
+  const sendResult = await sendChatMessageAndWait(settings, spaceId, sessionId, message, {
+    enableThinking: false,
+    enableSearch: false,
+    enableKnowledge: false
   });
-  const text = await waitForAnswer(settings, spaceId, sessionId, sendResult.answer_id);
 
   return {
     sessionId,
-    messageId,
+    messageId: sendResult.messageId,
     answerId: sendResult.answer_id,
-    text
+    text: sendResult.text
   };
-}
-
-async function waitForAnswer(settings: ExtensionSettings, spaceId: string, sessionId: string, answerId: string) {
-  const startedAt = Date.now();
-  let latest = '';
-
-  while (Date.now() - startedAt < 90000) {
-    const history = await request<ChatHistoryResponse>(settings, `/${spaceId}/chat/${sessionId}/history/list?page=1&pagesize=20&after_sequence=0`);
-    const answer = history.list.find(item => item.meta.message_id === answerId) || history.list.find(item => item.meta.role === 2);
-
-    if (answer) {
-      latest = answer.meta.message?.text || latest;
-
-      if (answer.meta.complete === 1) {
-        return latest;
-      }
-
-      if ([4, 5, 6, 7].includes(answer.meta.complete)) {
-        throw new Error(latest || 'QukaAI response did not complete.');
-      }
-    }
-
-    await sleep(1500);
-  }
-
-  if (latest) {
-    return latest;
-  }
-
-  throw new Error('Timed out waiting for QukaAI summary.');
 }
 
 function buildSummaryPrompt(page: { title: string; url: string; description: string; selection: string; text: string }) {
