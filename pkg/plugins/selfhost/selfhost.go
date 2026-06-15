@@ -222,13 +222,14 @@ var limiter = make(map[string]*rate.Limiter)
 func (s *SelfHostPlugin) UseLimiter(c *gin.Context, key string, method string, opts ...core.LimitOption) core.Limiter {
 	cfg := &core.LimitConfig{
 		Limit: 60,
+		Every: time.Minute,
 	}
 	for _, opt := range opts {
 		opt(cfg)
 	}
 	l, exist := limiter[key]
 	if !exist {
-		limit := rate.Every(time.Minute / time.Duration(cfg.Limit))
+		limit := rate.Every(cfg.Every / time.Duration(cfg.Limit))
 		limiter[key] = rate.NewLimiter(limit, cfg.Limit*2)
 		l = limiter[key]
 	}
@@ -277,6 +278,10 @@ func (s *SelfHostPlugin) DeleteSpace(ctx context.Context, spaceID string) error 
 		}
 
 		if err := s.core.AppCore.Store().KnowledgeMetaStore().DeleteAll(ctx, spaceID); err != nil {
+			return err
+		}
+
+		if err := s.core.AppCore.Store().FixedPinStore().DeleteAll(ctx, spaceID); err != nil {
 			return err
 		}
 		return nil

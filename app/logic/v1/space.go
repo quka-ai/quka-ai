@@ -282,6 +282,10 @@ func (l *SpaceLogic) DeleteUserSpace(spaceID string) error {
 			return errors.New("SpaceLogic.DeleteUserSpace.ChatSessionPinStore.DeleteAll", i18n.ERROR_INTERNAL, err)
 		}
 
+		if err := l.core.Store().FixedPinStore().DeleteAll(ctx, spaceID); err != nil {
+			return errors.New("SpaceLogic.DeleteUserSpace.FixedPinStore.DeleteAll", i18n.ERROR_INTERNAL, err)
+		}
+
 		if err := l.core.Store().ChatMessageStore().DeleteAll(ctx, spaceID); err != nil {
 			return errors.New("SpaceLogic.DeleteUserSpace.ChatMessageStore.DeleteAll", i18n.ERROR_INTERNAL, err)
 		}

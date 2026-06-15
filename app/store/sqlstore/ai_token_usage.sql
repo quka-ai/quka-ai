@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS quka_ai_token_usage (
     object_id VARCHAR(32) NOT NULL,            -- 对象 ID
     model VARCHAR(100) NOT NULL,                 -- ai模型名称
     usage_prompt INTEGER NOT NULL,              -- 使用的提示词令牌数
+    usage_cache INTEGER NOT NULL DEFAULT 0,      -- 命中缓存的提示词令牌数
     usage_output INTEGER NOT NULL,              -- 使用的输出令牌数
     created_at BIGINT NOT NULL                  -- 记录创建时间
 );

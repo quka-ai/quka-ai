@@ -153,6 +153,34 @@ func TestBuildMemoryRecallVectorOptionsRejectsEmptyKnowledgeSet(t *testing.T) {
 	}
 }
 
+func TestBuildMemoryRecallVectorOptionsIgnoresInlineWorkingMemory(t *testing.T) {
+	opts, ok := buildMemoryRecallVectorOptions("space_1", []types.Memory{
+		{
+			ID:          "mem_working",
+			SpaceID:     "space_1",
+			UserID:      "user_a",
+			MemoryType:  types.MEMORY_TYPE_WORKING,
+			Scope:       types.MEMORY_SCOPE_USER,
+			Content:     types.KnowledgeContent("inline working note"),
+			ContentType: types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN,
+		},
+		{
+			ID:          "mem_semantic",
+			SpaceID:     "space_1",
+			UserID:      "user_a",
+			MemoryType:  types.MEMORY_TYPE_SEMANTIC,
+			KnowledgeID: "kg_semantic",
+			Scope:       types.MEMORY_SCOPE_USER,
+		},
+	})
+	if !ok {
+		t.Fatal("buildMemoryRecallVectorOptions() returned ok=false")
+	}
+	if !reflect.DeepEqual(opts.KnowledgeIDs, []string{"kg_semantic"}) {
+		t.Fatalf("KnowledgeIDs = %#v, want only durable backing knowledge", opts.KnowledgeIDs)
+	}
+}
+
 func TestKnowledgeSourceMemoryDefaults(t *testing.T) {
 	if got := knowledgeSourceToMemorySource(types.KNOWLEDGE_SOURCE_PLATFORM); got != types.MEMORY_SOURCE_MANUAL {
 		t.Fatalf("platform source mapped to %q, want manual", got)

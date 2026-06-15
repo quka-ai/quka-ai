@@ -211,6 +211,9 @@ func (t *RememberMemoryTool) InvokableRun(ctx context.Context, argumentsInJSON s
 	if err != nil {
 		return "", err
 	}
+	if knowledgeID == "" {
+		return fmt.Sprintf("Memory saved. memory_id=%s layer=%s", memoryID, layer), nil
+	}
 	return fmt.Sprintf("Memory saved. memory_id=%s knowledge_id=%s layer=%s", memoryID, knowledgeID, layer), nil
 }
 

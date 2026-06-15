@@ -133,6 +133,15 @@ func TestGetMemoryBindingOptionsApplyUserID(t *testing.T) {
 	}
 }
 
+func TestMemoryHasInlineContent(t *testing.T) {
+	if !(Memory{Content: KnowledgeContent("short-lived working context")}).HasInlineContent() {
+		t.Fatal("memory with inline content should report HasInlineContent")
+	}
+	if (Memory{Content: KnowledgeContent("   ")}).HasInlineContent() {
+		t.Fatal("blank inline content should not report HasInlineContent")
+	}
+}
+
 func TestRuntimeContextExtractionReflectionContentOmitsReasoning(t *testing.T) {
 	content := (&RuntimeContextExtraction{
 		Messages: []RuntimeContextMessage{

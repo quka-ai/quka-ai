@@ -243,6 +243,9 @@ func (s *HttpSrv) PinMemory(c *gin.Context) {
 type UpdateMemoryRequest struct {
 	ID              string                      `json:"id" binding:"required"`
 	Status          types.MemoryStatus          `json:"status"`
+	Title           *string                     `json:"title"`
+	Content         *types.KnowledgeContent     `json:"content"`
+	ContentType     types.KnowledgeContentType  `json:"content_type"`
 	Importance      *int16                      `json:"importance"`
 	Confidence      *float64                    `json:"confidence"`
 	AuthorType      types.MemoryAuthorType      `json:"author_type"`
@@ -263,6 +266,9 @@ func (s *HttpSrv) UpdateMemory(c *gin.Context) {
 	spaceID, _ := v1.InjectSpaceID(c)
 	if err := v1.NewMemoryLogic(c, s.Core).Update(spaceID, req.ID, types.UpdateMemoryArgs{
 		Status:          req.Status,
+		Title:           req.Title,
+		Content:         req.Content,
+		ContentType:     req.ContentType,
 		Importance:      req.Importance,
 		Confidence:      req.Confidence,
 		AuthorType:      req.AuthorType,

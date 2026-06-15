@@ -11,10 +11,11 @@
 更具体地说：
 
 - `Knowledge` 负责保存原始内容、标题、标签、来源、资源分组、处理阶段，并驱动摘要、分块、向量化流程。
-- `Memory` 不直接保存正文内容，而是通过 `knowledge_id` 指向一条 `Knowledge`，再补充记忆类型、作用域、可信度、重要度、来源、实体键、访问统计、运行时绑定和记忆之间的关系。
-- 一条 `Memory` 必须依附一条 `Knowledge`；但一条 `Knowledge` 不必然拥有对应的 `Memory`。当前数据库层通过 `quka_memory.knowledge_id` 的唯一索引保证一个 knowledge 最多对应一条 memory。
+- durable `Memory` 不直接保存正文内容，而是通过 `knowledge_id` 指向一条 hidden backing `Knowledge`，再补充记忆类型、作用域、可信度、重要度、来源、实体键、访问统计、运行时绑定和记忆之间的关系。
+- `working` memory 可以不创建 backing `Knowledge`，而是在 `quka_memory.content` 中保存加密的短生命周期上下文，用于当前 runtime context 的 hydrate。
+- 一条 durable `Memory` 必须依附一条 hidden backing `Knowledge`；但一条 `Knowledge` 不必然拥有对应的 `Memory`。当前数据库层通过 `quka_memory.knowledge_id` 的 partial unique index 保证一个非空 knowledge 最多对应一条 memory，同时允许多条 inline working memory 不绑定 knowledge。
 - 普通知识创建后默认只进入知识库、分块、向量化和 RAG 检索；只有被用户、agent 或治理流程显式提升为 agent memory 时，才创建对应 memory。
-- 由 memory API 自己创建的背板 knowledge 会使用隐藏资源 `__memory__`，不会出现在普通知识列表和知识详情接口中。
+- 由 durable memory API 自己创建的背板 knowledge 会使用隐藏资源 `__memory__`，不会出现在普通知识列表和知识详情接口中。Inline working memory 不创建 knowledge。
 
 可以把两者理解为：
 
@@ -27,7 +28,7 @@
 | 分块 / 向量 / RAG 检索          |
 +---------------|---------------+
                 |
-                | optional quka_memory.knowledge_id
+                | durable memory uses quka_memory.knowledge_id
                 v
 +-------------------------------+
 | Memory                        |
@@ -36,6 +37,11 @@
 | 类型 / 作用域 / 权限 / 重要度    |
 | recall / hydrate / pin / edge  |
 +-------------------------------+
+                ^
+                |
+                | working memory may store encrypted inline content
+                |
+        quka_memory.content
 ```
 
 ## 2. 数据模型关系
@@ -46,7 +52,7 @@
 
 - `id`: knowledge ID。
 - `space_id`, `user_id`: 所属空间和作者。
-- `resource`: 资源分组，默认是 `knowledge`；memory 背板内容使用 `__memory__`。
+- `resource`: 资源分组，默认是 `knowledge`；durable memory 背板内容使用 `__memory__`。
 - `kind`: 内容类型，如 `text`、`image`、`video`、`url`、`chunk`、`rss`。
 - `content`, `content_type`: 加密后的正文内容及格式，支持 `markdown`、`html`、`blocks`、`blocks_v2`。
 - `title`, `tags`, `maybe_date`: AI 摘要阶段生成或更新的展示和检索信息。
@@ -61,7 +67,8 @@
 `quka_memory` 是记忆目录表，核心字段包括：
 
 - `id`: memory ID。
-- `knowledge_id`: 指向 `quka_knowledge.id`，这是 memory 与正文内容之间的主连接。
+- `knowledge_id`: durable memory 指向 `quka_knowledge.id`，这是 durable memory 与正文内容之间的主连接；inline working memory 可为空。
+- `title`, `content`, `content_type`: working memory 的内联标题和加密正文；durable memory 仍以 backing knowledge 为正文来源。
 - `space_id`, `user_id`, `scope`: 决定记忆属于个人、空间，还是用户全局层。
 - `memory_type`: 记忆类型，包括 `core`、`episodic`、`semantic`、`working`。
 - `status`: 生命周期状态，包括 `active`、`archived`、`superseded`、`deleted`。
@@ -143,9 +150,10 @@ HTTP 入口是 `POST /:spaceid/memory/remember`。
 `MemoryLogic.Remember` 支持两种写入方式：
 
 1. 请求携带已有 `knowledge_id`：memory 直接绑定这条 knowledge。
-2. 请求不携带 `knowledge_id`：系统先创建一条隐藏 knowledge，再创建 memory。
+2. 请求不携带 `knowledge_id` 且不是 `working` memory：系统先创建一条隐藏 knowledge，再创建 memory。
+3. 请求不携带 `knowledge_id` 且 `memory_type=working`：系统直接把内容加密写入 `quka_memory.content`，不创建 knowledge。
 
-第二种方式创建的 hidden knowledge 使用：
+durable memory 自动创建的 hidden knowledge 使用：
 
 ```text
 resource = "__memory__"
@@ -155,8 +163,8 @@ resource = "__memory__"
 
 随后 `MemoryLogic.Remember` 会：
 
-1. 读取对应 knowledge。
-2. 检查是否已经存在绑定该 knowledge 的 memory。
+1. 对 durable memory 读取对应 knowledge；对 inline working memory 校验内容非空。
+2. 对 durable memory 检查是否已经存在绑定该 knowledge 的 memory。
 3. 如果存在，则更新重要度、可信度、作者、认知状态、实体键和访问字段。
 4. 如果不存在，则创建新的 `quka_memory`。
 
@@ -205,7 +213,7 @@ HTTP 入口是 `POST /:spaceid/memory/recall`。
 8. 返回 memory 元数据和 knowledge 正文。
 9. 更新 memory 的 `last_accessed_at` 和 `access_count`。
 
-因此，memory recall 的内容匹配并不是只查 `quka_memory`。`quka_memory` 决定候选池和治理排序，真正的正文检索仍复用 knowledge 的 chunk/vector 能力。
+因此，memory recall 的内容匹配并不是只查 `quka_memory`。`quka_memory` 决定候选池和治理排序；durable memory 的正文检索复用 knowledge 的 chunk/vector 能力，inline working memory 则按内联标题、正文和 entity_key 做轻量匹配，不参与 vector 检索。
 
 ### 4.4 上下文装配：Hydrate
 
@@ -278,10 +286,10 @@ Memory 删除分软删除和硬删除：
 
 这条路径适合把用户明确认可、agent 明确需要、或治理流程筛选出的内容纳入 agent runtime 记忆。
 
-### 5.3 Memory 直接创建时
+### 5.3 Durable Memory 直接创建时
 
 ```text
-调用 /memory/remember，不传 knowledge_id
+调用 /memory/remember，不传 knowledge_id，且 memory_type 不是 working
   -> 创建 resource="__memory__" 的 hidden Knowledge
   -> 创建 quka_memory 指向该 hidden Knowledge
   -> KnowledgeProcess 继续为 hidden Knowledge 生成 chunks 和 vectors
@@ -289,7 +297,19 @@ Memory 删除分软删除和硬删除：
 
 这条路径让 memory 可以复用 knowledge 的内容、分块和向量能力，同时避免把 agent 记忆暴露到普通知识列表。
 
-### 5.4 删除 Knowledge 时
+### 5.4 Working Memory 直接创建时
+
+```text
+调用 /memory/remember，不传 knowledge_id，且 memory_type=working
+  -> 不创建 Knowledge
+  -> 加密内容写入 quka_memory.content
+  -> 创建 quka_memory，其中 knowledge_id 为空
+  -> 后续可被 pin / hydrate / recall 作为 runtime working context 使用
+```
+
+这条路径适合短生命周期的 agent runtime 上下文。它不会触发 knowledge 的摘要、分块和向量化，也不会出现在用户知识库。
+
+### 5.5 删除 Knowledge 时
 
 ```text
 删除普通 Knowledge
@@ -300,13 +320,15 @@ Memory 删除分软删除和硬删除：
 
 当前代码禁止通过普通 knowledge API 删除 `__memory__` 背板 knowledge。memory 背板内容应通过 memory delete/forget 入口治理。
 
-### 5.5 忘记 Memory 时
+### 5.6 忘记 Memory 时
 
 ```text
 Forget Memory
   -> 删除 memory / bindings / edges
-  -> 如果 delete_knowledge=true
+  -> 如果 delete_knowledge=true 且存在 knowledge_id
        -> 删除 backing knowledge / chunks / vectors
+  -> 如果是 inline working memory
+       -> 不触碰 knowledge / chunks / vectors
 ```
 
 这条路径是清理 memory 及其内容背板的推荐方式。
@@ -328,7 +350,7 @@ Knowledge API 面向用户知识库和 RAG 内容管理：
 
 Memory API 面向 agent/runtime 的持久记忆：
 
-- `remember`: 写入或更新记忆；可创建隐藏背板 knowledge，也可把已有 knowledge 提升为 memory。
+- `remember`: 写入或更新记忆；durable memory 可创建隐藏背板 knowledge，也可把已有 knowledge 提升为 memory；working memory 可直接内联保存短生命周期上下文。
 - `recall`: 根据 query、类型、作用域召回记忆。
 - `hydrate`: 为运行时拼装可注入上下文的记忆文本。
 - `pin`: 将记忆固定到某个 runtime context。
@@ -343,7 +365,7 @@ Memory API 面向 agent/runtime 的持久记忆：
 - `RememberUserMemory`: 保存持久记忆。
 - `ForgetUserMemory`: 遗忘错误、过时或重复的记忆。
 
-这些 tools 最终仍然调用 `MemoryLogic`。它们对模型暴露的是 memory 语义，对系统内部使用的是 knowledge 背板和 memory 目录的组合能力。
+这些 tools 最终仍然调用 `MemoryLogic`。它们对模型暴露的是 memory 语义；对系统内部而言，durable memory 使用 knowledge 背板和 memory 目录组合，working memory 使用 memory 目录中的内联加密内容。
 
 Knowledge tools 则更偏向显式的知识 CRUD，用于让 agent 创建、读取、更新用户知识内容。
 
@@ -351,10 +373,11 @@ Knowledge tools 则更偏向显式的知识 CRUD，用于让 agent 创建、读�
 
 当前实现的关键取舍是“内容统一，语义分层”：
 
-- 正文只放在 knowledge 体系中，减少重复存储。
-- memory 复用 knowledge 的加密、分块、向量化和 RAG 检索能力。
-- memory 自己只负责记忆治理字段和运行时上下文关系。
-- hidden resource `__memory__` 让 agent memory 不污染普通知识列表。
+- durable 正文放在 hidden backing knowledge 体系中，减少重复存储并复用内容处理流水线。
+- durable memory 复用 knowledge 的加密、分块、向量化和 RAG 检索能力。
+- working memory 使用 `quka_memory` 内联加密内容，不进入 knowledge 处理流水线。
+- memory 自己负责记忆治理字段、运行时上下文关系，以及 working memory 的轻量正文。
+- hidden resource `__memory__` 让 durable agent memory 不污染普通知识列表；inline working memory 不创建 knowledge。
 - 普通知识默认不注册为 memory，避免把资料库全部混入 agent runtime 记忆。
 - 需要被 agent 长期使用的知识，通过显式提升、pin、remember 或 reflect 进入 memory。
 
@@ -362,9 +385,9 @@ Knowledge tools 则更偏向显式的知识 CRUD，用于让 agent 创建、读�
 
 - 删除语义要区分“删除知识”和“忘记记忆”。前者会清理普通 knowledge 以及可能指向它的 memory；后者可选择是否连同背板 knowledge 一起删除。
 - 普通 knowledge API 不允许操作 `__memory__` 背板内容，避免绕过 memory 生命周期。
-- memory recall 的质量依赖 knowledge 的异步处理是否完成。如果 backing knowledge 还没完成 embedding，召回仍可通过 metadata 排序兜底，但向量命中能力会延迟到 `stage=DONE` 后完整可用。
-- 当前 `quka_memory.knowledge_id` 是唯一索引，因此系统语义是一条 knowledge 最多对应一条 memory，而不是多个不同 memory 共享同一条 knowledge。没有 memory 的 knowledge 仍然是合法的普通知识。
+- durable memory recall 的质量依赖 knowledge 的异步处理是否完成。如果 backing knowledge 还没完成 embedding，召回仍可通过 metadata 排序兜底，但向量命中能力会延迟到 `stage=DONE` 后完整可用。Working memory 不依赖 embedding。
+- 当前 `quka_memory.knowledge_id` 是 partial unique index，因此系统语义是一条非空 knowledge 最多对应一条 durable memory，而不是多个不同 durable memory 共享同一条 knowledge。没有 memory 的 knowledge 仍然是合法的普通知识；inline working memory 的 `knowledge_id` 为空。
 
 ## 9. 一句话总结
 
-`Knowledge` 是 QukaAI 的内容底座，负责“存什么、怎么分块、怎么向量化、怎么被 RAG 检索”；`Memory` 是按需建立在 knowledge 之上的 agent runtime 记忆层，负责“哪些内容应该被当作记忆、谁能看到、何时召回、如何固定到上下文、何时遗忘”。
+`Knowledge` 是 QukaAI 的用户知识内容底座，负责“存什么、怎么分块、怎么向量化、怎么被 RAG 检索”；`Memory` 是 agent runtime 记忆层，负责“哪些内容应该被当作记忆、谁能看到、何时召回、如何固定到上下文、何时遗忘”。Durable memory 通过 hidden backing knowledge 复用内容流水线；working memory 通过 `quka_memory` 内联内容保持轻量和短生命周期。

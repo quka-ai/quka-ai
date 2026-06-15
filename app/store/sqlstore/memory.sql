@@ -2,10 +2,13 @@ CREATE TABLE IF NOT EXISTS quka_memory (
     id VARCHAR(32) PRIMARY KEY,
     space_id VARCHAR(32) NOT NULL,
     user_id VARCHAR(32) NOT NULL,
-    knowledge_id VARCHAR(32) NOT NULL,
+    knowledge_id VARCHAR(32) NOT NULL DEFAULT '',
     memory_type VARCHAR(20) NOT NULL,
     scope VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL,
+    title VARCHAR(255) NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    content_type VARCHAR(20) NOT NULL DEFAULT 'markdown',
     importance SMALLINT NOT NULL DEFAULT 50,
     confidence NUMERIC(4,3) NOT NULL DEFAULT 0.700,
     author_type VARCHAR(20) NOT NULL DEFAULT 'agent',
@@ -24,11 +27,16 @@ CREATE TABLE IF NOT EXISTS quka_memory (
     CONSTRAINT chk_quka_memory_layer_scope CHECK (
         (scope = 'user' AND user_id <> '')
         OR (scope = 'space' AND space_id <> '-' AND space_id <> '')
+    ),
+    CONSTRAINT chk_quka_memory_content_backing CHECK (
+        knowledge_id <> ''
+        OR (memory_type = 'working' AND content <> '')
     )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quka_memory_knowledge_id
-ON quka_memory (knowledge_id);
+ON quka_memory (knowledge_id)
+WHERE knowledge_id <> '';
 
 CREATE INDEX IF NOT EXISTS idx_quka_memory_space_type_status
 ON quka_memory (space_id, memory_type, status);
@@ -45,8 +53,11 @@ ON quka_memory (user_id, scope, space_id, status, memory_type, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quka_memory_user_layer_entity
 ON quka_memory (user_id, scope, space_id, entity_key, status);
 
-COMMENT ON COLUMN quka_memory.knowledge_id IS '关联的knowledge id';
+COMMENT ON COLUMN quka_memory.knowledge_id IS '关联的hidden backing knowledge id; working memory may be empty and use inline content';
 COMMENT ON COLUMN quka_memory.memory_type IS '记忆类型，如core/episodic/semantic/working';
+COMMENT ON COLUMN quka_memory.title IS 'working memory inline title or cache title';
+COMMENT ON COLUMN quka_memory.content IS 'working memory inline encrypted content; durable memories use backing knowledge';
+COMMENT ON COLUMN quka_memory.content_type IS 'working memory inline content type';
 COMMENT ON COLUMN quka_memory.space_id IS 'memory namespace: "-" for user-global memory, otherwise the owning space id for user-space or space-shared memory';
 COMMENT ON COLUMN quka_memory.scope IS 'memory scope: user for private user layers, space for shared memory visible to space members';
 COMMENT ON COLUMN quka_memory.status IS '记忆状态';

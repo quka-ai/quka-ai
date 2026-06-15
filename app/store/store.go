@@ -257,6 +257,15 @@ type ChatSessionPinStore interface {
 	List(ctx context.Context, page, pageSize uint64) ([]types.ChatSessionPin, error)
 }
 
+type FixedPinStore interface {
+	sqlstore.SqlCommons
+	Create(ctx context.Context, data types.FixedPin) error
+	Get(ctx context.Context, spaceID, userID string) (*types.FixedPin, error)
+	Upsert(ctx context.Context, data types.FixedPin) error
+	Delete(ctx context.Context, spaceID, userID string) error
+	DeleteAll(ctx context.Context, spaceID string) error
+}
+
 type MemoryStore interface {
 	sqlstore.SqlCommons
 	Create(ctx context.Context, data types.Memory) error

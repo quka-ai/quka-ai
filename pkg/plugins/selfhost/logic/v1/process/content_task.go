@@ -87,6 +87,7 @@ func removeEmptyLine(text string) string {
 		trim := strings.TrimSpace(line)
 		if trim != "" {
 			newStr.WriteString(trim)
+			newStr.WriteString("\n")
 		}
 	}
 	return newStr.String()

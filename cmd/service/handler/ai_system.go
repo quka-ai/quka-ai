@@ -33,6 +33,7 @@ func (s *HttpSrv) ReloadAIConfig(c *gin.Context) {
 		response.APIError(c, errors.New("reload failed", i18n.ERROR_INTERNAL, err))
 		return
 	}
+	v1.InvalidateLLMGatewayModelCache()
 
 	response.APISuccess(c, map[string]interface{}{
 		"message": i18n.MESSAGE_AI_CONFIG_RELOAD_SUCCESS,
@@ -197,6 +198,7 @@ func (s *HttpSrv) UpdateAIUsage(c *gin.Context) {
 		response.APIError(c, errors.New("UpdateAIUsage.ReloadAI", i18n.ERROR_INTERNAL, err))
 		return
 	}
+	v1.InvalidateLLMGatewayModelCache()
 
 	response.APISuccess(c, map[string]interface{}{
 		"message": i18n.MESSAGE_AI_USAGE_UPDATE_SUCCESS,

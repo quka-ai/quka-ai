@@ -24,7 +24,7 @@ func NewAITokenUsageStore(provider SqlProviderAchieve) *AITokenUsageStore {
 	repo := &AITokenUsageStore{}
 	repo.SetProvider(provider)
 	repo.SetTable(types.TABLE_AI_TOKEN_USAGE)
-	repo.SetAllColumns("space_id", "user_id", "type", "sub_type", "model", "object_id", "usage_prompt", "usage_output", "created_at")
+	repo.SetAllColumns("space_id", "user_id", "type", "sub_type", "model", "object_id", "usage_prompt", "usage_cache", "usage_output", "created_at")
 	return repo
 }
 
@@ -34,8 +34,8 @@ func (s *AITokenUsageStore) Create(ctx context.Context, data types.AITokenUsage)
 		data.CreatedAt = time.Now().Unix()
 	}
 	query := sq.Insert(s.GetTable()).
-		Columns("space_id", "user_id", "type", "sub_type", "model", "object_id", "usage_prompt", "usage_output", "created_at").
-		Values(data.SpaceID, data.UserID, data.Type, data.SubType, data.Model, data.ObjectID, data.UsagePrompt, data.UsageOutput, data.CreatedAt)
+		Columns("space_id", "user_id", "type", "sub_type", "model", "object_id", "usage_prompt", "usage_cache", "usage_output", "created_at").
+		Values(data.SpaceID, data.UserID, data.Type, data.SubType, data.Model, data.ObjectID, data.UsagePrompt, data.UsageCache, data.UsageOutput, data.CreatedAt)
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *AITokenUsageStore) List(ctx context.Context, spaceID, userID string, pa
 
 // ListUserEachModelUsage
 func (s *AITokenUsageStore) ListUserEachModelUsage(ctx context.Context, userID string, st, et time.Time) ([]types.AITokenSummary, error) {
-	query := sq.Select("sum(usage_prompt) as usage_prompt,sum(usage_output) as usage_output,model").From(s.GetTable()).
+	query := sq.Select("sum(usage_prompt) as usage_prompt", "sum(usage_cache) as usage_cache", "sum(usage_output) as usage_output", "model").From(s.GetTable()).
 		Where(sq.And{sq.Eq{"user_id": userID}, sq.GtOrEq{"created_at": st.Unix()}, sq.LtOrEq{"created_at": et.Unix()}}).GroupBy("model")
 
 	queryString, args, err := query.ToSql()
@@ -120,7 +120,7 @@ func (s *AITokenUsageStore) ListUserEachModelUsage(ctx context.Context, userID s
 }
 
 func (s *AITokenUsageStore) SumUserUsageByType(ctx context.Context, userID string, st, et time.Time) ([]types.UserTokenUsageWithType, error) {
-	query := sq.Select("SUM(usage_prompt) as usage_prompt", "SUM(usage_output) as usage_output", "type", "sub_type", "user_id").From(s.GetTable()).
+	query := sq.Select("SUM(usage_prompt) as usage_prompt", "SUM(usage_cache) as usage_cache", "SUM(usage_output) as usage_output", "type", "sub_type", "user_id").From(s.GetTable()).
 		Where(sq.Eq{"user_id": userID}).Where(sq.And{sq.GtOrEq{"created_at": st.Unix()}, sq.LtOrEq{"created_at": et.Unix()}}).GroupBy("type", "sub_type")
 
 	queryString, args, err := query.ToSql()
@@ -136,7 +136,7 @@ func (s *AITokenUsageStore) SumUserUsageByType(ctx context.Context, userID strin
 }
 
 func (s *AITokenUsageStore) SumUserUsage(ctx context.Context, userID string, st, et time.Time) (types.UserTokenUsage, error) {
-	query := sq.Select("SUM(usage_prompt) as usage_prompt", "SUM(usage_output) as usage_output", "user_id").From(s.GetTable()).
+	query := sq.Select("SUM(usage_prompt) as usage_prompt", "SUM(usage_cache) as usage_cache", "SUM(usage_output) as usage_output", "user_id").From(s.GetTable()).
 		Where(sq.Eq{"user_id": userID}).Where(sq.And{sq.GtOrEq{"created_at": st.Unix()}, sq.LtOrEq{"created_at": et.Unix()}}).
 		GroupBy("user_id")
 

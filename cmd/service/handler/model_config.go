@@ -28,6 +28,7 @@ func (s *HttpSrv) CreateModelConfig(c *gin.Context) {
 		response.APIError(c, err)
 		return
 	}
+	v1.InvalidateLLMGatewayModelCache()
 
 	response.APISuccess(c, model)
 }
@@ -46,6 +47,7 @@ func (s *HttpSrv) GetModelConfig(c *gin.Context) {
 		response.APIError(c, err)
 		return
 	}
+	v1.InvalidateLLMGatewayModelCache()
 
 	response.APISuccess(c, model)
 }
@@ -132,6 +134,7 @@ func (s *HttpSrv) DeleteModelConfig(c *gin.Context) {
 		response.APIError(c, err)
 		return
 	}
+	v1.InvalidateLLMGatewayModelCache()
 
 	response.APISuccess(c, map[string]interface{}{
 		"message": "模型配置删除成功",

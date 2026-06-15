@@ -54,6 +54,7 @@ type Stores struct {
 	store.UserStore
 	store.ChatSessionStore
 	store.ChatSessionPinStore
+	store.FixedPinStore
 	store.ChatMessageStore
 	store.ChatSummaryStore
 	store.ChatMessageExtStore
@@ -290,6 +291,10 @@ func (p *Provider) JournalStore() store.JournalStore {
 
 func (p *Provider) ChatSessionPinStore() store.ChatSessionPinStore {
 	return p.stores.ChatSessionPinStore
+}
+
+func (p *Provider) FixedPinStore() store.FixedPinStore {
+	return p.stores.FixedPinStore
 }
 
 func (p *Provider) BulterTableStore() store.ButlerTableStore {

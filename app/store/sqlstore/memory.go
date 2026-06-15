@@ -2,6 +2,7 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -26,7 +27,7 @@ func NewMemoryStore(provider SqlProviderAchieve) *MemoryStore {
 	store.SetTable(types.TABLE_MEMORY)
 	store.SetAllColumns(
 		"id", "space_id", "user_id", "knowledge_id", "memory_type", "scope", "status",
-		"importance", "confidence", "author_type", "epistemic_status", "source_kind",
+		"title", "content", "content_type", "importance", "confidence", "author_type", "epistemic_status", "source_kind",
 		"source_ref", "entity_key", "dedupe_key", "conflict_state", "valid_from", "valid_to",
 		"last_accessed_at", "access_count", "created_at", "updated_at",
 	)
@@ -46,7 +47,7 @@ func (s *MemoryStore) Create(ctx context.Context, data types.Memory) error {
 		Columns(s.GetAllColumns()...).
 		Values(
 			data.ID, data.SpaceID, data.UserID, data.KnowledgeID, data.MemoryType, data.Scope, data.Status,
-			data.Importance, data.Confidence, data.AuthorType, data.EpistemicStatus, data.SourceKind,
+			data.Title, data.Content.String(), data.ContentType, data.Importance, data.Confidence, data.AuthorType, data.EpistemicStatus, data.SourceKind,
 			data.SourceRef, data.EntityKey, data.DedupeKey, data.ConflictState, data.ValidFrom, data.ValidTo,
 			data.LastAccessedAt, data.AccessCount, data.CreatedAt, data.UpdatedAt,
 		)
@@ -79,6 +80,9 @@ func (s *MemoryStore) Get(ctx context.Context, spaceID, id string) (*types.Memor
 }
 
 func (s *MemoryStore) GetByKnowledgeID(ctx context.Context, spaceID, knowledgeID string) (*types.Memory, error) {
+	if knowledgeID == "" {
+		return nil, sql.ErrNoRows
+	}
 	query := sq.Select(s.GetAllColumns()...).From(s.GetTable()).Where(sq.Eq{
 		"space_id":     spaceID,
 		"knowledge_id": knowledgeID,
@@ -103,6 +107,15 @@ func (s *MemoryStore) Update(ctx context.Context, spaceID, id string, data types
 
 	if data.Status != "" {
 		query = query.Set("status", data.Status)
+	}
+	if data.Title != nil {
+		query = query.Set("title", *data.Title)
+	}
+	if data.Content != nil {
+		query = query.Set("content", data.Content.String())
+	}
+	if data.ContentType != "" {
+		query = query.Set("content_type", data.ContentType)
 	}
 	if data.Importance != nil {
 		query = query.Set("importance", *data.Importance)

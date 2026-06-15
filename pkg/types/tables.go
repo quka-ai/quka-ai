@@ -25,6 +25,7 @@ const (
 	TABLE_USER               = TableName("user")
 	TABLE_CHAT_SESSION       = TableName("chat_session")
 	TABLE_CHAT_SESSION_PIN   = TableName("chat_session_pin")
+	TABLE_FIXED_PIN          = TableName("fixed_pin")
 	TABLE_CHAT_MESSAGE       = TableName("chat_message")
 	TABLE_CHAT_SUMMARY       = TableName("chat_summary")
 	TABLE_CHAT_MESSAGE_EXT   = TableName("chat_message_ext")

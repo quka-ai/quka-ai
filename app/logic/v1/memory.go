@@ -167,12 +167,17 @@ func (l *MemoryLogic) RegisterKnowledgeMemory(spaceID string, knowledge *types.K
 func (l *MemoryLogic) Remember(spaceID string, args RememberMemoryArgs) (string, string, error) {
 	user := l.GetUserInfo()
 	knowledgeID := args.KnowledgeID
+	memoryType := args.MemoryType
+	if memoryType == "" {
+		memoryType = types.MEMORY_TYPE_SEMANTIC
+	}
 	scope := args.Scope
 	if scope == "" {
 		scope = types.MEMORY_SCOPE_USER
 	}
 
-	if knowledgeID == "" {
+	inlineWorking := knowledgeID == "" && memoryType == types.MEMORY_TYPE_WORKING
+	if knowledgeID == "" && !inlineWorking {
 		if err := l.ensureCanCreateMemory(spaceID, scope); err != nil {
 			return "", "", err
 		}
@@ -191,9 +196,12 @@ func (l *MemoryLogic) Remember(spaceID string, args RememberMemoryArgs) (string,
 		knowledgeID = id
 	}
 
-	knowledge, err := l.core.Store().KnowledgeStore().GetKnowledge(l.ctx, spaceID, knowledgeID)
-	if err != nil {
-		return "", "", errors.New("MemoryLogic.Remember.KnowledgeStore.GetKnowledge", i18n.ERROR_INTERNAL, err)
+	var err error
+	if knowledgeID != "" {
+		_, err = l.core.Store().KnowledgeStore().GetKnowledge(l.ctx, spaceID, knowledgeID)
+		if err != nil {
+			return "", "", errors.New("MemoryLogic.Remember.KnowledgeStore.GetKnowledge", i18n.ERROR_INTERNAL, err)
+		}
 	}
 
 	existing, err := l.core.Store().MemoryStore().GetByKnowledgeID(l.ctx, spaceID, knowledgeID)
@@ -226,6 +234,19 @@ func (l *MemoryLogic) Remember(spaceID string, args RememberMemoryArgs) (string,
 		if args.EntityKey != "" {
 			updateArgs.EntityKey = &args.EntityKey
 		}
+		if existing.MemoryType == types.MEMORY_TYPE_WORKING && len(args.Content) > 0 {
+			encryptedContent, err := l.encryptMemoryInlineContent(args.Content)
+			if err != nil {
+				return "", "", err
+			}
+			updateArgs.Content = &encryptedContent
+			if args.Title != "" {
+				updateArgs.Title = &args.Title
+			}
+			if args.ContentType != "" {
+				updateArgs.ContentType = args.ContentType
+			}
+		}
 		if err = l.core.Store().MemoryStore().Update(l.ctx, spaceID, existing.ID, updateArgs); err != nil {
 			return "", "", errors.New("MemoryLogic.Remember.MemoryStore.Update", i18n.ERROR_INTERNAL, err)
 		}
@@ -236,10 +257,6 @@ func (l *MemoryLogic) Remember(spaceID string, args RememberMemoryArgs) (string,
 		return "", "", err
 	}
 
-	memoryType := args.MemoryType
-	if memoryType == "" {
-		memoryType = types.MEMORY_TYPE_SEMANTIC
-	}
 	authorType := args.AuthorType
 	if authorType == "" {
 		authorType = types.MEMORY_AUTHOR_HUMAN
@@ -260,6 +277,24 @@ func (l *MemoryLogic) Remember(spaceID string, args RememberMemoryArgs) (string,
 	if sourceKind == "" {
 		sourceKind = types.MEMORY_SOURCE_MANUAL
 	}
+	contentType := args.ContentType
+	if contentType == "" {
+		contentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
+	}
+	var inlineContent types.KnowledgeContent
+	if inlineWorking {
+		if strings.TrimSpace(args.Content.String()) == "" {
+			return "", "", errors.New("MemoryLogic.Remember.WorkingMemoryContentRequired", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
+		}
+		inlineContent, err = l.encryptMemoryInlineContent(args.Content)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	dedupeKeyKnowledgeID := knowledgeID
+	if dedupeKeyKnowledgeID == "" {
+		dedupeKeyKnowledgeID = utils.MD5(strings.TrimSpace(args.Content.String()))
+	}
 
 	memory := types.Memory{
 		ID:              utils.GenRandomID(),
@@ -269,6 +304,9 @@ func (l *MemoryLogic) Remember(spaceID string, args RememberMemoryArgs) (string,
 		MemoryType:      memoryType,
 		Scope:           scope,
 		Status:          types.MEMORY_STATUS_ACTIVE,
+		Title:           args.Title,
+		Content:         inlineContent,
+		ContentType:     contentType,
 		Importance:      importance,
 		Confidence:      confidence,
 		AuthorType:      authorType,
@@ -276,7 +314,7 @@ func (l *MemoryLogic) Remember(spaceID string, args RememberMemoryArgs) (string,
 		SourceKind:      sourceKind,
 		SourceRef:       args.SourceRef,
 		EntityKey:       args.EntityKey,
-		DedupeKey:       buildMemoryDedupeKey(spaceID, knowledge.ID, args.EntityKey),
+		DedupeKey:       buildMemoryDedupeKey(spaceID, dedupeKeyKnowledgeID, args.EntityKey),
 		ConflictState:   types.MEMORY_CONFLICT_NONE,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -366,7 +404,7 @@ func (l *MemoryLogic) Recall(spaceID string, args RecallMemoryArgs) ([]MemoryRec
 		if len(candidates) >= candidateLimit {
 			return
 		}
-		if memory.ID == "" || memory.KnowledgeID == "" {
+		if memory.ID == "" || (memory.KnowledgeID == "" && !memory.HasInlineContent()) {
 			return
 		}
 		if _, ok := candidateByMemoryID[memory.ID]; ok {
@@ -380,7 +418,7 @@ func (l *MemoryLogic) Recall(spaceID string, args RecallMemoryArgs) ([]MemoryRec
 		if len(candidates) >= candidateLimit {
 			break
 		}
-		if queryLower == "" || strings.Contains(strings.ToLower(memory.EntityKey), queryLower) {
+		if queryLower == "" || strings.Contains(strings.ToLower(memory.EntityKey), queryLower) || l.inlineMemoryMatches(memory, queryLower) {
 			appendCandidate(memory)
 		}
 	}
@@ -389,7 +427,18 @@ func (l *MemoryLogic) Recall(spaceID string, args RecallMemoryArgs) ([]MemoryRec
 		if len(candidates) >= candidateLimit {
 			break
 		}
-		if _, hit := vectorHits[memory.KnowledgeID]; hit {
+		if memory.KnowledgeID != "" {
+			if _, hit := vectorHits[memory.KnowledgeID]; hit {
+				appendCandidate(memory)
+			}
+		}
+	}
+
+	for _, memory := range memories {
+		if len(candidates) >= candidateLimit {
+			break
+		}
+		if l.inlineMemoryMatches(memory, queryLower) {
 			appendCandidate(memory)
 		}
 	}
@@ -404,27 +453,29 @@ func (l *MemoryLogic) Recall(spaceID string, args RecallMemoryArgs) ([]MemoryRec
 	knowledgeIDs := lo.Map(candidates, func(item types.Memory, _ int) string {
 		return item.KnowledgeID
 	})
+	knowledgeIDs = lo.Filter(knowledgeIDs, func(item string, _ int) bool {
+		return item != ""
+	})
 	knowledgeIDs = lo.Uniq(knowledgeIDs)
-	if len(knowledgeIDs) == 0 {
-		return nil, nil
-	}
 
-	knowledgeList, err := l.core.Store().KnowledgeStore().ListKnowledges(l.ctx, types.GetKnowledgeOptions{
-		SpaceIDs: accessibleMemorySpaceIDs(spaceID),
-		IDs:      knowledgeIDs,
-	}, types.NO_PAGINATION, types.NO_PAGINATION)
-	if err != nil {
-		return nil, errors.New("MemoryLogic.Recall.KnowledgeStore.ListKnowledges", i18n.ERROR_INTERNAL, err)
-	}
-	knowledgeByID := make(map[string]*types.Knowledge, len(knowledgeList))
-	for _, knowledge := range knowledgeList {
-		if knowledge == nil {
-			continue
+	knowledgeByID := make(map[string]*types.Knowledge, len(knowledgeIDs))
+	if len(knowledgeIDs) > 0 {
+		knowledgeList, err := l.core.Store().KnowledgeStore().ListKnowledges(l.ctx, types.GetKnowledgeOptions{
+			SpaceIDs: accessibleMemorySpaceIDs(spaceID),
+			IDs:      knowledgeIDs,
+		}, types.NO_PAGINATION, types.NO_PAGINATION)
+		if err != nil {
+			return nil, errors.New("MemoryLogic.Recall.KnowledgeStore.ListKnowledges", i18n.ERROR_INTERNAL, err)
 		}
-		if knowledge.Content, err = l.core.DecryptData(knowledge.Content); err != nil {
-			return nil, errors.New("MemoryLogic.Recall.DecryptData", i18n.ERROR_INTERNAL, err)
+		for _, knowledge := range knowledgeList {
+			if knowledge == nil {
+				continue
+			}
+			if knowledge.Content, err = l.core.DecryptData(knowledge.Content); err != nil {
+				return nil, errors.New("MemoryLogic.Recall.DecryptData", i18n.ERROR_INTERNAL, err)
+			}
+			knowledgeByID[knowledge.ID] = knowledge
 		}
-		knowledgeByID[knowledge.ID] = knowledge
 	}
 
 	evidenceByMemoryID := make(map[string][]string)
@@ -456,10 +507,14 @@ func (l *MemoryLogic) Recall(spaceID string, args RecallMemoryArgs) ([]MemoryRec
 		if _, ok := seen[memory.ID]; ok {
 			return nil
 		}
-		knowledge, ok := knowledgeByID[memory.KnowledgeID]
-		if !ok || knowledge == nil {
+		item, err := l.memoryRecallItemFromMemory(memory, knowledgeByID)
+		if err != nil {
+			return err
+		}
+		if item == nil || item.Knowledge == nil {
 			return nil
 		}
+		knowledge := item.Knowledge
 
 		if queryLower != "" {
 			contentLower := strings.ToLower(knowledge.Content.String())
@@ -481,15 +536,11 @@ func (l *MemoryLogic) Recall(spaceID string, args RecallMemoryArgs) ([]MemoryRec
 		memory.LastAccessedAt = now
 		memory.AccessCount = access
 
-		item := MemoryRecallItem{
-			Memory:    &memory,
-			Knowledge: knowledge,
-		}
 		if args.IncludeEvidence {
 			item.Evidence = evidenceByMemoryID[memory.ID]
 		}
 		seen[memory.ID] = struct{}{}
-		items = append(items, item)
+		items = append(items, *item)
 		return nil
 	}
 
@@ -514,21 +565,102 @@ func (l *MemoryLogic) Get(spaceID, id string) (*MemoryRecallItem, error) {
 		return nil, errors.New("MemoryLogic.Get.MemoryNotFound", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNotFound)
 	}
 
-	knowledge, err := l.core.Store().KnowledgeStore().GetKnowledge(l.ctx, memory.SpaceID, memory.KnowledgeID)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, errors.New("MemoryLogic.Get.KnowledgeStore.GetKnowledge", i18n.ERROR_INTERNAL, err)
+	item, err := l.memoryRecallItemFromMemory(*memory, nil)
+	if err != nil {
+		return nil, err
 	}
-	if knowledge == nil {
+	if item == nil || item.Knowledge == nil {
 		return nil, errors.New("MemoryLogic.Get.KnowledgeNotFound", i18n.ERROR_NOT_FOUND, nil).Code(http.StatusNotFound)
 	}
-	if knowledge.Content, err = l.core.DecryptData(knowledge.Content); err != nil {
-		return nil, errors.New("MemoryLogic.Get.DecryptData", i18n.ERROR_INTERNAL, err)
+	return item, nil
+}
+
+func (l *MemoryLogic) memoryRecallItemFromMemory(memory types.Memory, knowledgeByID map[string]*types.Knowledge) (*MemoryRecallItem, error) {
+	memoryCopy := memory
+	if memory.KnowledgeID == "" {
+		knowledge, err := l.inlineMemoryKnowledgeView(memory)
+		if err != nil {
+			return nil, err
+		}
+		if knowledge == nil {
+			return nil, nil
+		}
+		return &MemoryRecallItem{Memory: &memoryCopy, Knowledge: knowledge}, nil
 	}
 
-	return &MemoryRecallItem{
-		Memory:    memory,
-		Knowledge: knowledge,
+	knowledge := knowledgeByID[memory.KnowledgeID]
+	if knowledge == nil {
+		var err error
+		knowledge, err = l.core.Store().KnowledgeStore().GetKnowledge(l.ctx, memory.SpaceID, memory.KnowledgeID)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, errors.New("MemoryLogic.memoryRecallItemFromMemory.KnowledgeStore.GetKnowledge", i18n.ERROR_INTERNAL, err)
+		}
+		if knowledge == nil {
+			return nil, nil
+		}
+		if knowledge.Content, err = l.core.DecryptData(knowledge.Content); err != nil {
+			return nil, errors.New("MemoryLogic.memoryRecallItemFromMemory.DecryptData", i18n.ERROR_INTERNAL, err)
+		}
+	}
+	return &MemoryRecallItem{Memory: &memoryCopy, Knowledge: knowledge}, nil
+}
+
+func (l *MemoryLogic) inlineMemoryKnowledgeView(memory types.Memory) (*types.Knowledge, error) {
+	if !memory.HasInlineContent() {
+		return nil, nil
+	}
+	content, err := l.decryptMemoryInlineContent(memory.Content)
+	if err != nil {
+		return nil, err
+	}
+	contentType := memory.ContentType
+	if contentType == "" {
+		contentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
+	}
+	return &types.Knowledge{
+		ID:          memory.KnowledgeID,
+		SpaceID:     memory.SpaceID,
+		UserID:      memory.UserID,
+		Resource:    types.MEMORY_BACKING_RESOURCE,
+		Kind:        types.KNOWLEDGE_KIND_TEXT,
+		Title:       memory.Title,
+		Content:     content,
+		ContentType: contentType,
+		Source:      memorySourceToKnowledgeSource(memory.SourceKind).String(),
+		SourceRef:   memory.SourceRef,
+		CreatedAt:   memory.CreatedAt,
+		UpdatedAt:   memory.UpdatedAt,
 	}, nil
+}
+
+func (l *MemoryLogic) inlineMemoryMatches(memory types.Memory, queryLower string) bool {
+	if queryLower == "" || memory.KnowledgeID != "" || !memory.HasInlineContent() {
+		return false
+	}
+	if strings.Contains(strings.ToLower(memory.Title), queryLower) || strings.Contains(strings.ToLower(memory.EntityKey), queryLower) {
+		return true
+	}
+	content, err := l.decryptMemoryInlineContent(memory.Content)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(content.String()), queryLower)
+}
+
+func (l *MemoryLogic) encryptMemoryInlineContent(content types.KnowledgeContent) (types.KnowledgeContent, error) {
+	encrypted, err := l.core.EncryptData([]byte(content.String()))
+	if err != nil {
+		return nil, errors.New("MemoryLogic.encryptMemoryInlineContent.EncryptData", i18n.ERROR_INTERNAL, err)
+	}
+	return types.KnowledgeContent(encrypted), nil
+}
+
+func (l *MemoryLogic) decryptMemoryInlineContent(content types.KnowledgeContent) (types.KnowledgeContent, error) {
+	decrypted, err := l.core.DecryptData(content)
+	if err != nil {
+		return nil, errors.New("MemoryLogic.decryptMemoryInlineContent.DecryptData", i18n.ERROR_INTERNAL, err)
+	}
+	return types.KnowledgeContent(decrypted), nil
 }
 
 func (l *MemoryLogic) recallByVector(spaceID string, args RecallMemoryArgs, memories []types.Memory) (map[string]struct{}, error) {
@@ -765,7 +897,7 @@ func (l *MemoryLogic) loadAccessibleMemoryItems(spaceID string, memoryIDs []stri
 	})
 	orderedMemories := make([]types.Memory, 0, len(memories))
 	for _, id := range memoryIDs {
-		if memory, ok := memoryByID[id]; ok && memory.KnowledgeID != "" {
+		if memory, ok := memoryByID[id]; ok && (memory.KnowledgeID != "" || memory.HasInlineContent()) {
 			orderedMemories = append(orderedMemories, memory)
 		}
 	}
@@ -776,33 +908,39 @@ func (l *MemoryLogic) loadAccessibleMemoryItems(spaceID string, memoryIDs []stri
 	knowledgeIDs := lo.Uniq(lo.Map(orderedMemories, func(item types.Memory, _ int) string {
 		return item.KnowledgeID
 	}))
-	knowledgeList, err := l.core.Store().KnowledgeStore().ListKnowledges(l.ctx, types.GetKnowledgeOptions{
-		SpaceIDs: accessibleMemorySpaceIDs(spaceID),
-		IDs:      knowledgeIDs,
-	}, types.NO_PAGINATION, types.NO_PAGINATION)
-	if err != nil {
-		return nil, errors.New("MemoryLogic.loadAccessibleMemoryItems.KnowledgeStore.ListKnowledges", i18n.ERROR_INTERNAL, err)
-	}
+	knowledgeIDs = lo.Filter(knowledgeIDs, func(item string, _ int) bool {
+		return item != ""
+	})
+	knowledgeByID := make(map[string]*types.Knowledge, len(knowledgeIDs))
+	if len(knowledgeIDs) > 0 {
+		knowledgeList, err := l.core.Store().KnowledgeStore().ListKnowledges(l.ctx, types.GetKnowledgeOptions{
+			SpaceIDs: accessibleMemorySpaceIDs(spaceID),
+			IDs:      knowledgeIDs,
+		}, types.NO_PAGINATION, types.NO_PAGINATION)
+		if err != nil {
+			return nil, errors.New("MemoryLogic.loadAccessibleMemoryItems.KnowledgeStore.ListKnowledges", i18n.ERROR_INTERNAL, err)
+		}
 
-	knowledgeByID := make(map[string]*types.Knowledge, len(knowledgeList))
-	for _, knowledge := range knowledgeList {
-		if knowledge == nil {
-			continue
+		for _, knowledge := range knowledgeList {
+			if knowledge == nil {
+				continue
+			}
+			if knowledge.Content, err = l.core.DecryptData(knowledge.Content); err != nil {
+				return nil, errors.New("MemoryLogic.loadAccessibleMemoryItems.DecryptData", i18n.ERROR_INTERNAL, err)
+			}
+			knowledgeByID[knowledge.ID] = knowledge
 		}
-		if knowledge.Content, err = l.core.DecryptData(knowledge.Content); err != nil {
-			return nil, errors.New("MemoryLogic.loadAccessibleMemoryItems.DecryptData", i18n.ERROR_INTERNAL, err)
-		}
-		knowledgeByID[knowledge.ID] = knowledge
 	}
 
 	items := make([]MemoryRecallItem, 0, len(orderedMemories))
 	for _, memory := range orderedMemories {
-		knowledge := knowledgeByID[memory.KnowledgeID]
-		if knowledge == nil {
-			continue
+		item, err := l.memoryRecallItemFromMemory(memory, knowledgeByID)
+		if err != nil {
+			return nil, err
 		}
-		memoryCopy := memory
-		items = append(items, MemoryRecallItem{Memory: &memoryCopy, Knowledge: knowledge})
+		if item != nil && item.Knowledge != nil {
+			items = append(items, *item)
+		}
 	}
 	return items, nil
 }
@@ -861,7 +999,7 @@ func (l *MemoryLogic) Pin(spaceID string, args PinMemoryArgs) error {
 			}
 		}
 
-		access := int64(1)
+		access := memory.AccessCount + 1
 		_ = l.core.Store().MemoryStore().Update(l.ctx, memory.SpaceID, memoryID, types.UpdateMemoryArgs{
 			LastAccessedAt: &now,
 			AccessCount:    &access,
@@ -953,6 +1091,28 @@ func (l *MemoryLogic) Update(spaceID, id string, args types.UpdateMemoryArgs) er
 	}
 	if err := l.ensureCanMutateMemory(memory); err != nil {
 		return err
+	}
+	if args.Content != nil {
+		if memory.MemoryType != types.MEMORY_TYPE_WORKING || memory.KnowledgeID != "" {
+			return errors.New("MemoryLogic.Update.DurableContentUpdateUnsupported", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
+		}
+		if strings.TrimSpace(args.Content.String()) == "" {
+			return errors.New("MemoryLogic.Update.EmptyWorkingMemoryContent", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
+		}
+		encryptedContent, err := l.encryptMemoryInlineContent(*args.Content)
+		if err != nil {
+			return err
+		}
+		args.Content = &encryptedContent
+		if args.ContentType == "" {
+			args.ContentType = memory.ContentType
+			if args.ContentType == "" {
+				args.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
+			}
+		}
+	}
+	if args.Title != nil && memory.MemoryType != types.MEMORY_TYPE_WORKING && memory.KnowledgeID != "" {
+		return errors.New("MemoryLogic.Update.DurableTitleUpdateUnsupported", i18n.ERROR_INVALIDARGUMENT, nil).Code(http.StatusBadRequest)
 	}
 	if err := l.core.Store().MemoryStore().Update(l.ctx, memory.SpaceID, id, args); err != nil {
 		return errors.New("MemoryLogic.Update.MemoryStore.Update", i18n.ERROR_INTERNAL, err)

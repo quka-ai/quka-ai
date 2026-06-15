@@ -139,6 +139,13 @@ func setupHttpRouter(s *handler.HttpSrv) {
 			share.POST("/copy/knowledge", middleware.Authorization(s.Core), middleware.PaymentRequired, s.CopyKnowledge)
 		}
 
+		llmGateway := apiV1.Group("/llm-gateway/v1")
+		llmGateway.Use(middleware.LLMGatewayAuthorization(s.Core), middleware.LLMGatewayPaymentRequired())
+		{
+			llmGateway.GET("/models", s.LLMGatewayModels)
+			llmGateway.POST("/chat/completions", aiLimit("llm_gateway", core.WithLimit(30), core.WithRange(time.Hour)), s.LLMGatewayChatCompletions)
+		}
+
 		authed := apiV1.Group("")
 		authed.Use(middleware.Authorization(s.Core))
 
@@ -249,6 +256,14 @@ func setupHttpRouter(s *handler.HttpSrv) {
 				editScope.POST("/update", aiLimit("create_knowledge"), s.UpdateMemory)
 				editScope.POST("/delete", aiLimit("create_knowledge"), s.DeleteMemory)
 			}
+		}
+
+		fixedPin := authed.Group("/:spaceid/fixed-pin")
+		{
+			fixedPin.Use(middleware.VerifySpaceIDPermission(s.Core, srv.PermissionView), userLimit("fixed_pin"))
+			fixedPin.GET("", s.GetFixedPin)
+			fixedPin.PUT("", s.UpsertFixedPin)
+			fixedPin.DELETE("", s.DeleteFixedPin)
 		}
 
 		rss := authed.Group("/:spaceid/rss")

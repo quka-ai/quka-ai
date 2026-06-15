@@ -27,6 +27,7 @@ func (s *HttpSrv) CreateModelProvider(c *gin.Context) {
 		response.APIError(c, err)
 		return
 	}
+	v1.InvalidateLLMGatewayModelCache()
 
 	response.APISuccess(c, provider)
 }
@@ -45,6 +46,7 @@ func (s *HttpSrv) GetModelProvider(c *gin.Context) {
 		response.APIError(c, err)
 		return
 	}
+	v1.InvalidateLLMGatewayModelCache()
 
 	response.APISuccess(c, provider)
 }
@@ -131,6 +133,7 @@ func (s *HttpSrv) DeleteModelProvider(c *gin.Context) {
 		response.APIError(c, err)
 		return
 	}
+	v1.InvalidateLLMGatewayModelCache()
 
 	response.APISuccess(c, map[string]interface{}{
 		"message": "提供商删除成功",

@@ -26,11 +26,17 @@ USING (
 ) dup
 WHERE b.ctid = dup.ctid;
 
+DROP INDEX IF EXISTS idx_quka_memory_binding_user_context;
+
 CREATE INDEX IF NOT EXISTS idx_quka_memory_binding_user_context
 ON quka_memory_binding (space_id, user_id, context_type, context_id);
 
+DROP INDEX IF EXISTS idx_quka_memory_binding_user_memory;
+
 CREATE INDEX IF NOT EXISTS idx_quka_memory_binding_user_memory
 ON quka_memory_binding (user_id, memory_id);
+
+DROP INDEX IF EXISTS idx_quka_memory_binding_unique_context_memory;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quka_memory_binding_unique_context_memory
 ON quka_memory_binding (space_id, user_id, memory_id, context_type, context_id, binding_type);

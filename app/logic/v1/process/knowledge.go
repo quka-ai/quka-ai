@@ -580,12 +580,16 @@ type RecordUsageRequest struct {
 }
 
 type RecordChatUsageRequest struct {
-	ctx       context.Context
-	model     string
-	messageID string
-	subType   string
-	usage     *openai.Usage
-	response  chan CommonProcessResponse
+	ctx        context.Context
+	model      string
+	messageID  string
+	spaceID    string
+	userID     string
+	objectID   string
+	subType    string
+	usage      *openai.Usage
+	usageCache int
+	response   chan CommonProcessResponse
 }
 
 type RecordKnowledgeUsageRequest struct {
@@ -633,6 +637,27 @@ func NewRecordChatUsageRequest(model, subType, messageID string, usage *openai.U
 		subType:   subType,
 		usage:     usage,
 		response:  resp,
+	}
+	return resp
+}
+
+func NewRecordUserChatUsageRequest(model, subType, spaceID, userID, objectID string, usage *openai.Usage, usageCache int) chan CommonProcessResponse {
+	if knowledgeProcess == nil || knowledgeProcess.ctx.Err() != nil {
+		slog.Error("Knowledge Process not working", slog.String("user_id", userID), slog.String("object_id", objectID), slog.Any("usage", usage))
+		return nil
+	}
+
+	resp := make(chan CommonProcessResponse, 1)
+	knowledgeProcess.RecordChatUsageChan <- &RecordChatUsageRequest{
+		ctx:        context.Background(),
+		model:      model,
+		spaceID:    spaceID,
+		userID:     userID,
+		objectID:   objectID,
+		subType:    subType,
+		usage:      usage,
+		usageCache: usageCache,
+		response:   resp,
 	}
 	return resp
 }
@@ -703,7 +728,11 @@ func (p *KnowledgeProcess) ProcessUsage() {
 				continue
 			}
 
-			p.CheckProcess(fmt.Sprintf("message_%s_%s_usage", req.messageID, req.subType), func() {
+			processID := req.messageID
+			if processID == "" {
+				processID = req.objectID
+			}
+			p.CheckProcess(fmt.Sprintf("message_%s_%s_usage", processID, req.subType), func() {
 				req.response <- CommonProcessResponse{
 					Error: p.RecordChatUsage(req),
 				}
@@ -799,6 +828,27 @@ func (p *KnowledgeProcess) RecordChatUsage(req *RecordChatUsageRequest) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
+	if req.userID != "" {
+		err := p.core.Store().AITokenUsageStore().Create(ctx, types.AITokenUsage{
+			SpaceID:     req.spaceID,
+			UserID:      req.userID,
+			Type:        types.USAGE_TYPE_CHAT,
+			SubType:     req.subType,
+			ObjectID:    req.objectID,
+			Model:       req.model,
+			UsagePrompt: req.usage.PromptTokens,
+			UsageCache:  req.usageCache,
+			UsageOutput: req.usage.CompletionTokens,
+			CreatedAt:   time.Now().Unix(),
+		})
+		if err != nil {
+			slog.Error("Process RecordChatUsage failed", slog.String("error", err.Error()),
+				slog.String("space_id", req.spaceID), slog.String("object_id", req.objectID), slog.String("user_id", req.userID), slog.Any("usage", req.usage))
+			return err
+		}
+		return nil
+	}
+
 	relMessage, err := p.core.Store().ChatMessageStore().GetOne(ctx, req.messageID)
 	if err != nil {
 		return err
@@ -812,11 +862,12 @@ func (p *KnowledgeProcess) RecordChatUsage(req *RecordChatUsageRequest) error {
 		ObjectID:    req.messageID,
 		Model:       req.model,
 		UsagePrompt: req.usage.PromptTokens,
+		UsageCache:  req.usageCache,
 		UsageOutput: req.usage.CompletionTokens,
 		CreatedAt:   time.Now().Unix(),
 	})
 	if err != nil {
-		slog.Error("Process RecordKnowledgeUsage failed", slog.String("error", err.Error()),
+		slog.Error("Process RecordChatUsage failed", slog.String("error", err.Error()),
 			slog.String("space_id", relMessage.SpaceID), slog.String("message_id", relMessage.ID), slog.String("user_id", relMessage.UserID), slog.Any("usage", req.usage))
 		return err
 	}

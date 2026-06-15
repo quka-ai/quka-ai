@@ -1,0 +1,1 @@
+ALTER TABLE quka_ai_token_usage ADD COLUMN IF NOT EXISTS usage_cache INTEGER NOT NULL DEFAULT 0;

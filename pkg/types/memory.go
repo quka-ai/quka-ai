@@ -128,6 +128,9 @@ type Memory struct {
 	MemoryType      MemoryType            `json:"memory_type" db:"memory_type"`
 	Scope           MemoryScope           `json:"scope" db:"scope"`
 	Status          MemoryStatus          `json:"status" db:"status"`
+	Title           string                `json:"title" db:"title"`
+	Content         KnowledgeContent      `json:"content" db:"content"`
+	ContentType     KnowledgeContentType  `json:"content_type" db:"content_type"`
 	Importance      int16                 `json:"importance" db:"importance"`
 	Confidence      float64               `json:"confidence" db:"confidence"`
 	AuthorType      MemoryAuthorType      `json:"author_type" db:"author_type"`
@@ -145,8 +148,15 @@ type Memory struct {
 	UpdatedAt       int64                 `json:"updated_at" db:"updated_at"`
 }
 
+func (m Memory) HasInlineContent() bool {
+	return strings.TrimSpace(m.Content.String()) != ""
+}
+
 type UpdateMemoryArgs struct {
 	Status          MemoryStatus
+	Title           *string
+	Content         *KnowledgeContent
+	ContentType     KnowledgeContentType
 	Importance      *int16
 	Confidence      *float64
 	AuthorType      MemoryAuthorType

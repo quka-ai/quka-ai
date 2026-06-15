@@ -488,6 +488,10 @@ func (l *AdminUserLogic) deleteSpaceChatData(ctx context.Context, spaceID string
 		return fmt.Errorf("failed to delete chat session pins: %w", err)
 	}
 
+	if err := l.core.Store().FixedPinStore().DeleteAll(ctx, spaceID); err != nil {
+		return fmt.Errorf("failed to delete fixed pins: %w", err)
+	}
+
 	// 删除聊天摘要
 	if err := l.core.Store().ChatSummaryStore().DeleteAll(ctx, spaceID); err != nil {
 		return fmt.Errorf("failed to delete chat summaries: %w", err)

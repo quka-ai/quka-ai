@@ -96,7 +96,6 @@ func Authorization(core *core.Core) gin.HandlerFunc {
 			response.APIError(ctx, errors.Trace(tracePrefix, err))
 			return
 		}
-
 		if matched {
 			return
 		}
