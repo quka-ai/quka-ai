@@ -1,7 +1,12 @@
 package v1
 
 import (
+	"bytes"
+	"compress/gzip"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -119,4 +124,68 @@ func TestChatCompletionsURL(t *testing.T) {
 	require.Equal(t, "https://example.com/v1/chat/completions", chatCompletionsURL("https://example.com/v1"))
 	require.Equal(t, "https://example.com/v1/chat/completions", chatCompletionsURL("https://example.com/v1/"))
 	require.Equal(t, "https://example.com/v1/chat/completions", chatCompletionsURL("https://example.com/v1/chat/completions"))
+}
+
+func TestResponseBodyReaderDecodesGzip(t *testing.T) {
+	resp := &http.Response{
+		Header: http.Header{
+			"Content-Encoding": []string{"gzip"},
+		},
+		Body: io.NopCloser(bytes.NewReader(gzipBytes(t, []byte(`{"ok":true}`)))),
+	}
+
+	reader, decoded, err := responseBodyReader(resp)
+	require.NoError(t, err)
+	require.True(t, decoded)
+	defer reader.Close()
+
+	body, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, `{"ok":true}`, string(body))
+}
+
+func TestCopyResponseHeadersDropsContentEncodingAfterDecode(t *testing.T) {
+	src := http.Header{
+		"Content-Type":     []string{"application/json"},
+		"Content-Encoding": []string{"gzip"},
+		"Content-Length":   []string{"128"},
+	}
+	dst := http.Header{}
+
+	copyResponseHeaders(dst, src, true)
+
+	require.Equal(t, "application/json", dst.Get("Content-Type"))
+	require.Empty(t, dst.Get("Content-Encoding"))
+	require.Empty(t, dst.Get("Content-Length"))
+}
+
+func TestProxyJSONResponseDecodesGzip(t *testing.T) {
+	logic := &LLMGatewayLogic{}
+	recorder := httptest.NewRecorder()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type":     []string{"application/json"},
+			"Content-Encoding": []string{"gzip"},
+		},
+		Body: io.NopCloser(bytes.NewReader(gzipBytes(t, []byte(`{"id":"chatcmpl-test","choices":[]}`)))),
+	}
+
+	err := logic.proxyJSONResponse(recorder, resp, "gpt-test", "request-test")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+	require.Empty(t, recorder.Header().Get("Content-Encoding"))
+	require.Equal(t, `{"id":"chatcmpl-test","choices":[]}`, recorder.Body.String())
+}
+
+func gzipBytes(t *testing.T, data []byte) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	writer := gzip.NewWriter(&buf)
+	_, err := writer.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	return buf.Bytes()
 }

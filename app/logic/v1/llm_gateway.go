@@ -3,6 +3,7 @@ package v1
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -161,6 +162,7 @@ func (l *LLMGatewayLogic) ProxyChatCompletions(w http.ResponseWriter, r *http.Re
 	}
 	upstreamReq.Header.Set("Authorization", "Bearer "+resolved.APIKey)
 	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("Accept-Encoding", "identity")
 	if accept := r.Header.Get("Accept"); accept != "" {
 		upstreamReq.Header.Set("Accept", accept)
 	}
@@ -246,12 +248,20 @@ func rewriteChatCompletionPayload(payload map[string]any, upstreamModel string) 
 }
 
 func (l *LLMGatewayLogic) proxyJSONResponse(w http.ResponseWriter, resp *http.Response, modelName, requestID string) error {
-	body, err := io.ReadAll(resp.Body)
+	bodyReader, decoded, err := responseBodyReader(resp)
+	if err != nil {
+		return gatewayError(http.StatusBadGateway, "upstream_error", "Failed to decode upstream response")
+	}
+	if decoded {
+		defer bodyReader.Close()
+	}
+
+	body, err := io.ReadAll(bodyReader)
 	if err != nil {
 		return gatewayError(http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
 	}
 
-	copyResponseHeaders(w.Header(), resp.Header)
+	copyResponseHeaders(w.Header(), resp.Header, decoded)
 	w.WriteHeader(resp.StatusCode)
 	if _, err := w.Write(body); err != nil {
 		return err
@@ -271,14 +281,22 @@ func (l *LLMGatewayLogic) proxyStreamingResponse(w http.ResponseWriter, resp *ht
 		return gatewayError(http.StatusInternalServerError, "streaming_unsupported", "Streaming is not supported by the server")
 	}
 
-	copyResponseHeaders(w.Header(), resp.Header)
+	bodyReader, decoded, err := responseBodyReader(resp)
+	if err != nil {
+		return gatewayError(http.StatusBadGateway, "upstream_error", "Failed to decode upstream response")
+	}
+	if decoded {
+		defer bodyReader.Close()
+	}
+
+	copyResponseHeaders(w.Header(), resp.Header, decoded)
 	if w.Header().Get("Content-Type") == "" {
 		w.Header().Set("Content-Type", "text/event-stream")
 	}
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(resp.StatusCode)
 
-	reader := bufio.NewReader(resp.Body)
+	reader := bufio.NewReader(bodyReader)
 	var recorded bool
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -468,9 +486,30 @@ func chatCompletionsURL(baseURL string) string {
 	return trimmed + "/chat/completions"
 }
 
-func copyResponseHeaders(dst, src http.Header) {
+func responseBodyReader(resp *http.Response) (io.ReadCloser, bool, error) {
+	if !hasGzipContentEncoding(resp.Header.Get("Content-Encoding")) {
+		return resp.Body, false, nil
+	}
+
+	reader, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return nil, false, err
+	}
+	return reader, true, nil
+}
+
+func hasGzipContentEncoding(contentEncoding string) bool {
+	for _, encoding := range strings.Split(contentEncoding, ",") {
+		if strings.EqualFold(strings.TrimSpace(encoding), "gzip") {
+			return true
+		}
+	}
+	return false
+}
+
+func copyResponseHeaders(dst, src http.Header, decoded bool) {
 	for key, values := range src {
-		if shouldSkipResponseHeader(key) {
+		if shouldSkipResponseHeader(key, decoded) {
 			continue
 		}
 		for _, value := range values {
@@ -479,10 +518,12 @@ func copyResponseHeaders(dst, src http.Header) {
 	}
 }
 
-func shouldSkipResponseHeader(key string) bool {
+func shouldSkipResponseHeader(key string, decoded bool) bool {
 	switch strings.ToLower(key) {
 	case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length":
 		return true
+	case "content-encoding":
+		return decoded
 	default:
 		return false
 	}

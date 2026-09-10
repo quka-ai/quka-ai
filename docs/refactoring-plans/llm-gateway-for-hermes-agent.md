@@ -259,7 +259,8 @@ Gateway 应保留 OpenAI Chat Completions 请求体中的未知字段，避免�
 ```
 
 3. 使用后端 provider API Key 设置上游 `Authorization: Bearer <provider-key>`。
-4. 只透传安全 Header，例如：
+4. 请求上游时设置 `Accept-Encoding: identity`，避免 OpenAI-compatible agent 收到不可直接消费的压缩 SSE/JSON。
+5. 只透传安全 Header，例如：
    - `Content-Type`
    - `Accept`
    - `OpenAI-Organization` 可按需禁用
@@ -272,6 +273,7 @@ Gateway 不能使用现有 `response.APISuccess` 包装响应，否则会破坏 
 非流式：
 
 - 读取完整上游 JSON。
+- 如果上游仍返回 `Content-Encoding: gzip`，先在 Gateway 解压，再移除响应里的 `Content-Encoding`/`Content-Length`。
 - 从 `usage.prompt_tokens`、`usage.prompt_tokens_details.cached_tokens`、`usage.completion_tokens` 解析 usage。
 - 原样写回 status、content-type、body。
 - 投递到 `KnowledgeProcess.RecordChatUsageChan` 异步写 usage，不在 gateway logic 中另开直写 store 的旁路。
@@ -279,6 +281,7 @@ Gateway 不能使用现有 `response.APISuccess` 包装响应，否则会破坏 
 流式：
 
 - 保持 `Content-Type: text/event-stream`。
+- 如果上游 SSE 被 gzip 压缩，Gateway 先解压再逐行解析和转发，避免 Hermes Agent 收到压缩字节。
 - 使用 `http.Flusher` 边读边写，降低 agent 感知延迟。
 - 旁路解析 SSE `data:` 内容：
   - 遇到 `[DONE]` 只转发，不记录。

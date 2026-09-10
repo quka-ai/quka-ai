@@ -55,3 +55,41 @@ func TestKnowledgeToKnowledgeResponseLiteReplacesHiddenContentInBlocks(t *testin
 		t.Fatalf("expected content type to be markdown, got %q", result.ContentType)
 	}
 }
+
+func TestKnowledgeToKnowledgeResponseKeepsBlockNoteRawContent(t *testing.T) {
+	content := types.KnowledgeContent(`[
+		{
+			"id": "heading-1",
+			"type": "heading",
+			"props": {"level": 2},
+			"content": [
+				{"type": "text", "text": "BlockNote 标题", "styles": {}}
+			]
+		},
+		{
+			"id": "paragraph-1",
+			"type": "paragraph",
+			"props": {},
+			"content": [
+				{"type": "text", "text": "正文", "styles": {"bold": true}}
+			]
+		}
+	]`)
+
+	item := &types.Knowledge{
+		ID:          "knowledge-3",
+		SpaceID:     "space-1",
+		ContentType: types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2,
+		Content:     content,
+		UpdatedAt:   1,
+		CreatedAt:   1,
+	}
+
+	result := KnowledgeToKnowledgeResponse(item)
+	if result.ContentType != types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2 {
+		t.Fatalf("expected content type to remain blocks_v2, got %q", result.ContentType)
+	}
+	if result.Content != string(content) {
+		t.Fatalf("expected BlockNote content to remain raw, got %q", result.Content)
+	}
+}

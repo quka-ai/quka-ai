@@ -6,6 +6,18 @@
 **优先级**: 高  
 **作者**: Codex  
 
+## 0. 2026-09-07 Skill 契约补充
+
+本次补充聚焦 `.agents/skills/openclaw-quka-memory-adapter` 的文档契约，不涉及业务代码修改。
+
+调整目标：
+
+- 将 OpenClaw 适配层的旧假设从“每条 knowledge 都有 matching memory”修正为“knowledge 可按需提升或投影为 memory”。
+- 明确 `Knowledge` 是用户拥有的 canonical content，`Memory` 是 agent runtime context。
+- 将 `knowledge_id` 在 memory API 返回中的语义限定为 backing/provenance metadata，而不是 memory identity。
+- 明确 OpenClaw 适配器必须以 `memory_id` 作为 `recall/get/pin` 等 memory workflow 的稳定身份。
+- 补充 promotion 与 projection 规则，避免 agent 通过 memory endpoint 隐式污染用户知识库。
+
 ## 1. 背景
 
 原设计中，普通 `knowledge` 创建后会默认注册一条 `semantic/user` memory。这个做法可以让 agent 无感使用用户知识，但会把用户资料库、网页、文档、笔记全部混入 agent runtime 记忆，导致 `recall / hydrate / pin / reflect` 的语义边界变模糊。

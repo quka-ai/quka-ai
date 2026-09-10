@@ -15,6 +15,7 @@ import (
 	"github.com/quka-ai/quka-ai/pkg/auth"
 	"github.com/quka-ai/quka-ai/pkg/types"
 	"github.com/quka-ai/quka-ai/pkg/types/protocol"
+	"github.com/quka-ai/quka-ai/pkg/utils"
 )
 
 type Author interface {
@@ -41,10 +42,10 @@ func NewSimpleJWTAuthHandler(store Author) *SimpleAuthHandler {
 // OnConnecting 处理连接认证 - 支持 auth token 和 access token 验证
 func (a *SimpleAuthHandler) OnConnecting(ctx context.Context, event centrifuge.ConnectEvent) (centrifuge.ConnectReply, error) {
 	slog.Info("WebSocket connection attempt",
-		slog.String("token", event.Token),
+		slog.String("token", utils.MaskString(event.Token, 6, 4)),
 		slog.Any("headers", event.Headers))
 
-	if event.Headers["x-auth-type"] == "" {
+	if event.Headers["x-auth-type"] == "" && len(event.Data) > 0 {
 		slog.Debug("None headers in websocket connection request", slog.String("data", string(event.Data)))
 		var connectData struct {
 			AppID    string `json:"x-appid"`

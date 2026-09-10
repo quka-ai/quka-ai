@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -119,7 +118,7 @@ func (s *HttpSrv) GetKnowledge(c *gin.Context) {
 		return
 	}
 
-	response.APISuccess(c, KnowledgeToKnowledgeResponse(knowledge, v1.IsAppClient(c)))
+	response.APISuccess(c, KnowledgeToKnowledgeResponse(knowledge))
 }
 
 type ListKnowledgeRequest struct {
@@ -237,7 +236,7 @@ func (s *HttpSrv) GetTaskKnowledge(c *gin.Context) {
 	})
 }
 
-func KnowledgeToKnowledgeResponse(item *types.Knowledge, preferMarkdown bool) *types.KnowledgeResponse {
+func KnowledgeToKnowledgeResponse(item *types.Knowledge) *types.KnowledgeResponse {
 	result := &types.KnowledgeResponse{
 		ID:          item.ID,
 		SpaceID:     item.SpaceID,
@@ -252,15 +251,16 @@ func KnowledgeToKnowledgeResponse(item *types.Knowledge, preferMarkdown bool) *t
 		CreatedAt:   item.CreatedAt,
 	}
 
-	if (result.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS || item.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS_V2) && preferMarkdown {
+	if item.ContentType == types.KNOWLEDGE_CONTENT_TYPE_BLOCKS {
 		markdown, err := editorjs.ConvertKnowledgeRawToMarkdown(result.ContentType, item.Content)
 		if err != nil {
 			slog.Error("Failed to convert knowledge content to markdown", slog.String("knowledge_id", result.ID), slog.String("error", err.Error()))
+			result.Content = string(item.Content)
+			return result
 		}
-		fmt.Println(123, markdown)
 
 		result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
-		result.Content = string(markdown)
+		result.Content = markdown
 	} else {
 		result.Content = string(item.Content)
 	}
@@ -288,11 +288,13 @@ func KnowledgeToKnowledgeResponseLite(item *types.Knowledge) *types.KnowledgeRes
 		// 	blocks.Blocks = blocks.Blocks[:6]
 		// }
 		var err error
-		result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
 		result.Content, err = editorjs.ConvertKnowledgeRawToMarkdown(item.ContentType, item.Content)
 		if err != nil {
 			slog.Error("Failed to convert editor blocks to markdown", slog.String("knowledge_id", item.ID), slog.String("error", err.Error()))
+			result.Content = string(item.Content)
+			return result
 		}
+		result.ContentType = types.KNOWLEDGE_CONTENT_TYPE_MARKDOWN
 		result.Content = replaceHiddenContent(result.Content)
 	} else {
 		result.Content = replaceHiddenContent(string(item.Content))
